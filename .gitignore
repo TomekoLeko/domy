@@ -1,0 +1,17 @@
+# Django specific
+*.log
+*.pot
+*.pyc
+__pycache__/
+db.sqlite3
+media/
+
+# Environment variables
+.env
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
