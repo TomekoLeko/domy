@@ -1,5 +1,8 @@
 from django.shortcuts import render
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 
 def home(request):
-    return HttpResponse('Hello, World! This is the home page.')
+  if request.user.is_authenticated:
+    return render(request, 'home.html')
+
+  return render(request, 'home.html')

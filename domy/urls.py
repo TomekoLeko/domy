@@ -17,8 +17,10 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from domy.views import home
+from django.urls import include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-     path('home/', home, name='home'),
+     path('', home, name='home'),
+     path('', include('users.urls')), 
 ]
