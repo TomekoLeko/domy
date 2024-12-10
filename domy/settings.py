@@ -15,6 +15,7 @@ import dj_database_url
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -77,12 +78,23 @@ WSGI_APPLICATION = 'domy.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+if ENVIRONMENT == 'production':
+    # Production settings
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.getenv('DATABASE_URL'),
+            conn_max_age=600,  # Reuse database connections for better performance
+            ssl_require=True   # Require SSL for security in production
+        )
     }
-}
+else:
+    # Development settings (SQLite)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
+    }
 
 DATABASE_URL = os.getenv('DATABASE_URL')  # Get DATABASE_URL from the environment
 if DATABASE_URL:
