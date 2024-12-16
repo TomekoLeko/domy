@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Produkty{% endblock %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product List</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Enforcing consistent image aspect ratio (3:4) */
+        .product-image {
+            width: 100%;
+            height: 0;
+            padding-top: 75%; /* 3:4 ratio */
+            background-size: contain; /* Ensures the whole image is visible */
+            background-repeat: no-repeat; /* Prevents tiling if the image is smaller */
+            background-position: center; /* Centers the image */
+        }
+        .toggle-button {
+          width: 200px; /* Fixed width */
+      }
+      </style>
+
+    </style>
+</head>
+<body>
+    <div class="container my-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="text-center">Product List</h1>
+            <button class="btn btn-primary toggle-button d-flex justify-content-center align-items-center" type="button" 
+        data-bs-toggle="collapse" data-bs-target="#addProductForm" 
+        aria-expanded="false" aria-controls="addProductForm" id="toggleFormButton">
+    <i id="toggleFormIcon" class="bi bi-plus-circle me-2"></i>
+    <span id="toggleFormText">Dodaj produkt</span>
+</button>
+        </div>
+
+        <!-- Add Product Form -->
+        <div class="collapse mb-4" id="addProductForm">
+            <form method="POST" enctype="multipart/form-data" action="{% url 'add_product' %}">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="name" class="form-label">Product Name</label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="image" class="form-label">Product Image</label>
+                    <input type="file" class="form-control" id="image" name="image">
+                </div>
+                <!-- Add a wrapper div for the Submit button -->
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="btn btn-success">Submit</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Product List -->
+        <div class="row">
+            {% for product in products %}
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="product-image" style="background-image: url('{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}');">
+                        </div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ product.name }}</h5>
+                            <p class="card-text">{{ product.description|default:"No description available." }}</p>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggleFormButton = document.getElementById('toggleFormButton');
+            const toggleFormIcon = document.getElementById('toggleFormIcon');
+            const toggleFormText = document.getElementById('toggleFormText');
+            const addProductForm = document.getElementById('addProductForm');
+            const form = document.querySelector('#addProductForm form');
+            const bootstrapCollapse = new bootstrap.Collapse(addProductForm, { toggle: false });
+
+            // Update button text dynamically
+            addProductForm.addEventListener('shown.bs.collapse', () => {
+              toggleFormText.textContent = 'Anuluj';
+              toggleFormIcon.classList.remove('bi-plus-circle');
+              toggleFormIcon.classList.add('bi-arrow-bar-up');
+            });
+
+            addProductForm.addEventListener('hidden.bs.collapse', () => {
+              toggleFormText.textContent = 'Dodaj produkt';
+              toggleFormIcon.classList.remove('bi-arrow-bar-up');
+              toggleFormIcon.classList.add('bi-plus-circle');
+
+
+            });
+
+            toggleFormButton.addEventListener('click', () => {
+                const isExpanded = toggleFormButton.getAttribute('aria-expanded') === 'true';
+                if (isExpanded) {
+                    form.reset(); // Clear the form fields
+                    bootstrapCollapse.hide(); // Fold the form programmatically
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
+{% endblock %}
