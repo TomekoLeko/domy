@@ -7,66 +7,123 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Product List</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        /* Enforcing consistent image aspect ratio (3:4) */
-        .product-image {
-            width: 100%;
-            height: 0;
-            padding-top: 75%; /* 3:4 ratio */
-            background-size: contain; /* Ensures the whole image is visible */
-            background-repeat: no-repeat; /* Prevents tiling if the image is smaller */
-            background-position: center; /* Centers the image */
+        .edit-button {
+            position: absolute;
+            top: 35px;
+            right: 35px;
+            display: none;
+            z-index: 1;
+            opacity: 0.8;
+            transform: scale(3);
+            transform-origin: center;
         }
-        .toggle-button {
-          width: 200px; /* Fixed width */
-      }
-      </style>
-
+        .product-image-container:hover .edit-button {
+            display: block;
+        }
+        .edit-button:hover {
+            opacity: 1;
+            transform: scale(3.1);
+        }
     </style>
 </head>
 <body>
     <div class="container my-5">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1 class="text-center">Product List</h1>
-            <button class="btn btn-primary toggle-button d-flex justify-content-center align-items-center" type="button" 
-        data-bs-toggle="collapse" data-bs-target="#addProductForm" 
-        aria-expanded="false" aria-controls="addProductForm" id="toggleFormButton">
-    <i id="toggleFormIcon" class="bi bi-plus-circle me-2"></i>
-    <span id="toggleFormText">Dodaj produkt</span>
-</button>
+            <button
+                class="btn btn-primary toggle-button d-flex justify-content-center align-items-center" type="button"
+                data-bs-toggle="collapse" data-bs-target="#addProductForm"
+                aria-expanded="false" aria-controls="addProductForm" id="toggleFormButton"
+            >
+                <i id="toggleFormIcon" class="bi bi-plus-circle me-2"></i>
+                <span id="toggleFormText">Dodaj produkt</span>
+            </button>
         </div>
-
         <!-- Add Product Form -->
         <div class="collapse mb-4" id="addProductForm">
             <form method="POST" enctype="multipart/form-data" action="{% url 'add_product' %}">
                 {% csrf_token %}
-                <div class="mb-3">
-                    <label for="name" class="form-label">Product Name</label>
-                    <input type="text" class="form-control" id="name" name="name" required>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Product Name</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <input type="file" class="form-control" id="new_product_image" name="image">
+                        </div>
+
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                          <img id="new_product_image_preview" src="#" alt="Product Image Preview" class="img-fluid mt-3 d-none" style="max-height: 200px; object-fit: contain;">
+                          <p id="new_product_image_error" class="text-danger d-none mt-2">Invalid file type. Please select an image.</p>  
+                        </div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label for="description" class="form-label">Description</label>
-                    <textarea class="form-control" id="description" name="description" rows="3"></textarea>
-                </div>
-                <div class="mb-3">
-                    <label for="image" class="form-label">Product Image</label>
-                    <input type="file" class="form-control" id="image" name="image">
-                </div>
+
                 <!-- Add a wrapper div for the Submit button -->
                 <div class="d-flex justify-content-end">
                     <button type="submit" class="btn btn-success">Submit</button>
                 </div>
             </form>
         </div>
-
+        <!-- Edit Product Form -->
+        <div id="editOverlay" class="overlay d-none">
+            <div id="editProductForm" class="edit-form ">
+                <form method="POST" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="row">
+                        <!-- Form Fields -->
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="edit_name" class="form-label">Product Name</label>
+                                <input type="text" class="form-control" id="edit_name" name="name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_description" class="form-label">Description</label>
+                                <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
+                            </div>
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-success me-2">Save</button>
+                                <button type="button" class="btn btn-secondary" id="cancelEditButton">Cancel</button>
+                            </div>
+                        </div>
+                        <!-- Image Preview -->
+                        <div class="col-md-6 d-flex flex-column align-items-center">
+                            <img id="edit_image_preview" src="#" alt="Product Image"
+                                class="img-fluid mb-3" style="max-height: 200px; object-fit: contain;">
+                            <input type="file" class="form-control" id="edit_image" name="image">
+                            <p id="edit_image_error" class="text-danger d-none mt-2">Invalid file type. Please select an image.</p>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
         <!-- Product List -->
         <div class="row">
             {% for product in products %}
                 <div class="col-md-4 mb-4">
                     <div class="card h-100">
-                        <div class="product-image" style="background-image: url('{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}');">
+                        <div class="product-image-container my-3">
+                            <div class="product-image" style="background-image: url('{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}');">
+                            </div>
+                            <button
+                                class="edit-button btn btn-light btn-sm "
+                                data-product-id="{{ product.id }}"
+                                    data-product-name="{{ product.name }}"
+                                    data-product-description="{{ product.description }}"
+                                    data-product-image="{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}"
+                            >
+                                <i class="bi bi-pencil-square">
+                                </i>
+                            </button>
                         </div>
                         <div class="card-body">
                             <h5 class="card-title">{{ product.name }}</h5>
@@ -86,27 +143,105 @@
             const form = document.querySelector('#addProductForm form');
             const bootstrapCollapse = new bootstrap.Collapse(addProductForm, { toggle: false });
 
-            // Update button text dynamically
+          // Update the preview image when a new file is selected in the edit form
+            const editImageInput = document.getElementById('edit_image');
+            const editImagePreview = document.getElementById('edit_image_preview');
+            const editImageError = document.getElementById('edit_image_error');
+
+            editImageInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function (e) {
+                            editImagePreview.src = e.target.result;
+                            editImageError.classList.add('d-none');
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        editImageError.classList.remove('d-none');
+                        editImagePreview.src = '#';
+                    }
+                } else {
+                    editImagePreview.src = '#';
+                    editImageError.classList.add('d-none');
+                }
+            });
+
+          // Update the preview image when a new file is selected in the add product form
+           const newProductImageInput = document.getElementById('new_product_image');
+           const newProductImagePreview = document.getElementById('new_product_image_preview');
+           const newProductImageError = document.getElementById('new_product_image_error');
+
+           newProductImageInput.addEventListener('change', (event) => {
+               const file = event.target.files[0];
+               if (file) {
+                   // Check if the file is an image
+                   if (file.type.startsWith('image/')) {
+                       const reader = new FileReader();
+                       reader.onload = function (e) {
+                           newProductImagePreview.src = e.target.result;
+                           newProductImagePreview.classList.remove('d-none'); // Show the preview
+                           newProductImageError.classList.add('d-none'); // Hide error if valid image
+                       };
+                       reader.readAsDataURL(file);
+                   } else {
+                       // Show an error if the file is not an image
+                       newProductImageError.classList.remove('d-none');
+                       newProductImagePreview.classList.add('d-none'); // Hide the preview
+                       newProductImagePreview.src = '#'; // Reset the preview to placeholder
+                   }
+               } else {
+                   newProductImagePreview.classList.add('d-none'); // Hide the preview if no file is selected
+                   newProductImageError.classList.add('d-none'); // Hide error if no file is selected
+                   newProductImagePreview.src = '#'; // Reset the preview to placeholder
+               }
+           });
+
+            // Update Dodaj produkt button text dynamically
             addProductForm.addEventListener('shown.bs.collapse', () => {
               toggleFormText.textContent = 'Anuluj';
               toggleFormIcon.classList.remove('bi-plus-circle');
               toggleFormIcon.classList.add('bi-arrow-bar-up');
             });
-
             addProductForm.addEventListener('hidden.bs.collapse', () => {
               toggleFormText.textContent = 'Dodaj produkt';
               toggleFormIcon.classList.remove('bi-arrow-bar-up');
               toggleFormIcon.classList.add('bi-plus-circle');
-
-
             });
 
             toggleFormButton.addEventListener('click', () => {
                 const isExpanded = toggleFormButton.getAttribute('aria-expanded') === 'true';
                 if (isExpanded) {
-                    form.reset(); // Clear the form fields
-                    bootstrapCollapse.hide(); // Fold the form programmatically
+                    form.reset();
+                    newProductImagePreview.src = '#';
+                    newProductImagePreview.classList.add('d-none');
+                    bootstrapCollapse.hide();
                 }
+            });
+
+            const overlay = document.getElementById('editOverlay');
+            const cancelEditButton = document.getElementById('cancelEditButton');
+
+            cancelEditButton.addEventListener('click', () => {
+                console.log("Cancel button clicked")
+                overlay.classList.add('d-none');
+            });
+
+            document.querySelectorAll('.edit-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    document.getElementById('editOverlay').classList.remove('d-none'); 
+
+                    const productId = button.getAttribute('data-product-id');
+                    const productName = button.getAttribute('data-product-name');
+                    const productDescription = button.getAttribute('data-product-description');
+                    const productImage = button.getAttribute('data-product-image');
+
+                    document.getElementById('edit_name').value = productName;
+                    document.getElementById('edit_description').value = productDescription;
+                    document.getElementById('edit_image_preview').src = productImage; 
+                    document.querySelector('#editProductForm form').action = `/edit/${productId}/`;
+                });
             });
         });
     </script>

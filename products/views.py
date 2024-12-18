@@ -1,8 +1,8 @@
-from django.shortcuts import render
-from .models import Product
+from .models import Product, ProductImage
 from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
+from django.shortcuts import get_object_or_404, redirect, render
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -31,3 +31,28 @@ def add_product(request):
         return HttpResponseRedirect(reverse('products'))
 
     return HttpResponseBadRequest("Invalid request method.")
+
+@require_authenticated_staff_or_superuser
+def edit_product(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+
+    if request.method == 'POST':
+        product.name = request.POST.get('name', product.name)
+        product.description = request.POST.get('description', product.description)
+
+        if 'image' in request.FILES:
+            uploaded_image = request.FILES['image']
+
+            existing_images = product.images.all()
+            if existing_images.exists():
+                image_instance = existing_images.first()
+                image_instance.image = uploaded_image
+                image_instance.save()
+            else:
+                ProductImage.objects.create(product=product, image=uploaded_image)
+
+        product.save()
+
+        return HttpResponseRedirect(reverse('products'))
+
+    return render(request, 'products/edit_product.html', {'product': product})
