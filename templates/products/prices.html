@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}Produkty{% endblock %}
+{% block content %}
+    <div class="container mt-4">
+        <h2>Cenniki</h2>
+        <div class="accordion" id="priceListAccordion">
+            {% for price_list in price_lists %}
+                <div class="accordion-item" data-price-list-id="{{ price_list.id }}">
+                    <h2 class="accordion-header" id="heading{{ forloop.counter }}">
+                        <button class="accordion-button collapsed" type="button" 
+                                data-bs-toggle="collapse" 
+                                data-bs-target="#collapse{{ forloop.counter }}" 
+                                aria-expanded="false" 
+                                aria-controls="collapse{{ forloop.counter }}">
+                            {{ price_list.name }}
+                        </button>
+                    </h2>
+                    <div id="collapse{{ forloop.counter }}" 
+                         class="accordion-collapse collapse" 
+                         aria-labelledby="heading{{ forloop.counter }}" 
+                         data-bs-parent="#priceListAccordion">
+                        <div class="accordion-body">
+                            {% include "products/partials/price_list_edit_form.html" with price_list=price_list %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+
+            <!-- Add New Price List Item -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingNew">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapseNew" 
+                            aria-expanded="false" 
+                            aria-controls="collapseNew"
+                            style="background-color: #198754; color: white; --bs-accordion-btn-icon: url('data:image/svg+xml,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27 fill=%27%23ffffff%27%3e%3cpath fill-rule=%27evenodd%27 d=%27M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z%27/%3e%3c/svg%3e'); --bs-accordion-btn-active-icon: url('data:image/svg+xml,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27 fill=%27%23ffffff%27%3e%3cpath fill-rule=%27evenodd%27 d=%27M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z%27/%3e%3c/svg%3e');">
+                        Dodaj nowy cennik
+                    </button>
+                </h2>
+                <div id="collapseNew" 
+                     class="accordion-collapse collapse" 
+                     aria-labelledby="headingNew" 
+                     data-bs-parent="#priceListAccordion">
+                    <div class="accordion-body">
+                        <form id="newPriceListForm" method="POST" action="{% url 'add_price_list' %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="priceListName" class="form-label">Nazwa cennika</label>
+                                <input type="text" class="form-control" id="priceListName" name="name" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="addPriceListBtn">Dodaj</button>
+                        </form>
+
+                        <div id="pricesTable" style="display: none;" class="mt-4">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Nazwa</th>
+                                        <th>Produkt</th>
+                                        <th>Netto</th>
+                                        <th>Brutto</th>
+                                        <th>Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for product in products %}
+                                    <tr data-product-id="{{ product.id }}">
+                                        <td>{{ product.name }}</td>
+                                        <td>
+                                            {% if product.images.first %}
+                                                <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}" style="max-height: 50px;">
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control net-price" 
+                                                   data-original-value="">
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control gross-price" 
+                                                   data-original-value="">
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-success btn-sm save-price" style="display: none;">
+                                                Zapisz
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% block extra_js %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('newPriceListForm');
+            const pricesTable = document.getElementById('pricesTable');
+            const addButton = document.getElementById('addPriceListBtn');
+            let priceListId = null;
+
+            // Initialize event listeners for all price inputs
+            function initializePriceInputs() {
+                document.querySelectorAll('.net-price, .gross-price').forEach(input => {
+                    input.addEventListener('input', function() {
+                        const row = this.closest('tr');
+                        const saveBtn = row.querySelector('.save-price');
+                        const originalValue = this.dataset.originalValue;
+
+                        if (this.value !== originalValue) {
+                            saveBtn.style.display = 'inline-block';
+                        } else {
+                            saveBtn.style.display = 'none';
+                        }
+                    });
+                });
+
+                document.querySelectorAll('.save-price').forEach(button => {
+                    button.addEventListener('click', async function() {
+                        const row = this.closest('tr');
+                        const productId = row.dataset.productId;
+                        const netPrice = row.querySelector('.net-price').value;
+                        const grossPrice = row.querySelector('.gross-price').value;
+                        const accordionItem = this.closest('.accordion-item');
+                        const priceListId = accordionItem.dataset.priceListId;
+
+                        if (!priceListId) {
+                            console.error('Price list ID not found');
+                            return;
+                        }
+
+                        try {
+                            const response = await fetch("{% url 'save_price' %}", {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                                },
+                                body: JSON.stringify({
+                                    price_list_id: priceListId,
+                                    product_id: productId,
+                                    net_price: netPrice,
+                                    gross_price: grossPrice
+                                })
+                            });
+
+                            if (response.ok) {
+                                const data = await response.json();
+                                if (data.status === 'success') {
+                                    const inputs = row.querySelectorAll('input');
+                                    inputs.forEach(input => {
+                                        input.dataset.originalValue = input.value;
+                                    });
+                                    this.style.display = 'none';
+                                } else {
+                                    console.error('Failed to save price:', data.error);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error:', error);
+                        }
+                    });
+                });
+            }
+
+            // Initialize event listeners when the page loads
+            initializePriceInputs();
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const formData = new FormData(form);
+
+                try {
+                    const response = await fetch("{% url 'add_price_list' %}", {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Create new accordion item
+                        const newAccordionItem = document.createElement('div');
+                        newAccordionItem.className = 'accordion-item';
+                        newAccordionItem.dataset.priceListId = data.price_list_id;
+
+                        const itemId = 'newItem' + data.price_list_id;
+
+                        newAccordionItem.innerHTML = `
+                            <h2 class="accordion-header" id="heading${itemId}">
+                                <button class="accordion-button" type="button" 
+                                        data-bs-toggle="collapse" 
+                                        data-bs-target="#collapse${itemId}" 
+                                        aria-expanded="true" 
+                                        aria-controls="collapse${itemId}">
+                                    ${formData.get('name')}
+                                </button>
+                            </h2>
+                            <div id="collapse${itemId}" 
+                                 class="accordion-collapse collapse show" 
+                                 aria-labelledby="heading${itemId}" 
+                                 data-bs-parent="#priceListAccordion">
+                                <div class="accordion-body">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th>Nazwa</th>
+                                                <th>Produkt</th>
+                                                <th>Netto</th>
+                                                <th>Brutto</th>
+                                                <th>Akcje</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for product in products %}
+                                            <tr data-product-id="{{ product.id }}">
+                                                <td>{{ product.name }}</td>
+                                                <td>
+                                                    {% if product.images.first %}
+                                                        <img src="{{ product.images.first.image.url }}" 
+                                                             alt="{{ product.name }}" 
+                                                             style="max-height: 50px;">
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" 
+                                                           class="form-control net-price" 
+                                                           value="0"
+                                                           data-original-value="0">
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" 
+                                                           class="form-control gross-price" 
+                                                           value="0"
+                                                           data-original-value="0">
+                                                </td>
+                                                <td>
+                                                    <button class="btn btn-success btn-sm save-price" 
+                                                            style="display: none;">
+                                                        Zapisz
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+
+                        // Insert the new item before the "Dodaj nowy cennik" item
+                        const addNewItem = document.querySelector('#headingNew').closest('.accordion-item');
+                        addNewItem.parentNode.insertBefore(newAccordionItem, addNewItem);
+
+                        // Clear the form
+                        form.reset();
+
+                        // Collapse the "Dodaj nowy cennik" section
+                        const addNewCollapse = document.querySelector('#collapseNew');
+                        const bsCollapse = bootstrap.Collapse.getInstance(addNewCollapse);
+                        if (bsCollapse) {
+                            bsCollapse.hide();
+                        }
+
+                        // Initialize event listeners for the new price list
+                        initializePriceInputs();
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            });
+        });
+    </script>
+    {% endblock %}
+{% endblock %}

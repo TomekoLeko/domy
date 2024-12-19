@@ -1,0 +1,38 @@
+<table class="table">
+    <thead>
+        <tr>
+            <th>Nazwa</th>
+            <th>Produkt</th>
+            <th>Netto</th>
+            <th>Brutto</th>
+            <th>Akcje</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for price in price_list.prices.all %}
+        <tr data-product-id="{{ price.product.id }}">
+            <td>{{ price.product.name }}</td>
+            <td>
+                {% if price.product.images.first %}
+                    <img src="{{ price.product.images.first.image.url }}" alt="{{ price.product.name }}" style="max-height: 50px;">
+                {% endif %}
+            </td>
+            <td>
+                <input type="number" step="0.01" class="form-control net-price" 
+                       value="{{ price.net_price }}"
+                       data-original-value="{{ price.net_price }}">
+            </td>
+            <td>
+                <input type="number" step="0.01" class="form-control gross-price" 
+                       value="{{ price.gross_price }}"
+                       data-original-value="{{ price.gross_price }}">
+            </td>
+            <td>
+                <button class="btn btn-success btn-sm save-price" style="display: none;">
+                    Zapisz
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
