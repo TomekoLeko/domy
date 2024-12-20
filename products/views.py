@@ -124,3 +124,4 @@ def save_price(request):
         return JsonResponse({'status': 'error', 'error': 'Price not found'}, status=404)
     except Exception as e:
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
+

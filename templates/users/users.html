@@ -1,5 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Użytkownicy{% endblock %}
+{% block extra_css %}
+<style>
+    .user-edit-form {
+        position: relative;
+    }
+    
+    .user-edit-form::before {
+        content: '';
+        position: absolute;
+        left: -24px;
+        top: -24px;
+        bottom: -24px;
+        width: 4px;
+        background-color: #198754;  /* Bootstrap success color */
+        border-radius: 2px;
+    }
+</style>
+{% endblock %}
 {% block content %}
     <div class="container mt-4">
         <h2>Użytkownicy</h2>
@@ -24,62 +42,65 @@
                          class="accordion-collapse collapse" 
                          aria-labelledby="heading{{ forloop.counter }}" 
                          data-bs-parent="#usersAccordion">
-                        <div class="accordion-body">
-                            <form class="user-edit-form">
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Nazwa</label>
-                                        <input type="text" class="form-control" name="name" 
-                                               value="{{ user.profile.name }}" data-original-value="{{ user.profile.name }}">
+                        <div class="accordion-body bg-light">
+                            <div class="border p-4 rounded bg-white shadow-sm">
+                                <form class="user-edit-form">
+                                    {% csrf_token %}
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Nazwa</label>
+                                            <input type="text" class="form-control" name="name" 
+                                                   value="{{ user.profile.name }}" data-original-value="{{ user.profile.name }}">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Telefon</label>
+                                            <input type="text" class="form-control" name="phone" 
+                                                   value="{{ user.profile.phone }}" data-original-value="{{ user.profile.phone }}">
+                                        </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Telefon</label>
-                                        <input type="text" class="form-control" name="phone" 
-                                               value="{{ user.profile.phone }}" data-original-value="{{ user.profile.phone }}">
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Adres</label>
+                                            <input type="text" class="form-control" name="address" 
+                                                   value="{{ user.profile.address }}" data-original-value="{{ user.profile.address }}">
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="row mb-3">
-                                    <div class="col-12">
-                                        <label class="form-label">Adres</label>
-                                        <input type="text" class="form-control" name="address" 
-                                               value="{{ user.profile.address }}" data-original-value="{{ user.profile.address }}">
+                                    <div class="row mb-3">
+                                        <div class="col-md-8">
+                                            <label class="form-label">Miasto</label>
+                                            <input type="text" class="form-control" name="city" 
+                                                   value="{{ user.profile.city }}" data-original-value="{{ user.profile.city }}">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Kod pocztowy</label>
+                                            <input type="text" class="form-control" name="postal" 
+                                                   value="{{ user.profile.postal }}" data-original-value="{{ user.profile.postal }}">
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="row mb-3">
-                                    <div class="col-md-8">
-                                        <label class="form-label">Miasto</label>
-                                        <input type="text" class="form-control" name="city" 
-                                               value="{{ user.profile.city }}" data-original-value="{{ user.profile.city }}">
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Cennik</label>
+                                            <select class="form-select" name="price_list" data-original-value="{{ user.profile.price_list_id|default:'' }}">
+                                                <option value="">-- Wybierz cennik --</option>
+                                                {% for price_list in price_lists %}
+                                                    <option value="{{ price_list.id }}" 
+                                                        {% if user.profile.price_list_id == price_list.id %}selected{% endif %}>
+                                                        {{ price_list.name }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label">Kod pocztowy</label>
-                                        <input type="text" class="form-control" name="postal" 
-                                               value="{{ user.profile.postal }}" data-original-value="{{ user.profile.postal }}">
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn btn-success save-user">
+                                            Zapisz
+                                        </button>
+                                        <button type="button" class="btn btn-secondary cancel-user">
+                                            Anuluj
+                                        </button>
                                     </div>
-                                </div>
-                                <div class="row mb-3">
-                                    <div class="col-12">
-                                        <label class="form-label">Cennik</label>
-                                        <select class="form-select" name="price_list" data-original-value="{{ user.profile.price_list_id|default:'' }}">
-                                            <option value="">-- Wybierz cennik --</option>
-                                            {% for price_list in price_lists %}
-                                                <option value="{{ price_list.id }}" 
-                                                    {% if user.profile.price_list_id == price_list.id %}selected{% endif %}>
-                                                    {{ price_list.name }}
-                                                </option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <button type="submit" class="btn btn-success save-user">
-                                        Zapisz
-                                    </button>
-                                    <button type="button" class="btn btn-secondary cancel-user">
-                                        Anuluj
-                                    </button>
-                                </div>
-                            </form>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -129,7 +150,7 @@
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                                'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value
                             },
                             body: JSON.stringify({
                                 user_id: userId,
@@ -140,14 +161,26 @@
                         if (response.ok) {
                             const data = await response.json();
                             if (data.status === 'success') {
+                                const nameInput = form.querySelector('[name="name"]');
+                                if (nameInput && nameInput.value) {
+                                    const accordionButton = accordionItem.querySelector('.accordion-button');
+                                    accordionButton.textContent = nameInput.value;
+                                }
                                 inputs.forEach(input => {
                                     input.dataset.originalValue = input.value;
                                 });
                                 collapseForm();
+                            } else {
+                                console.error('Failed to save:', data.message);
+                                alert('Nie udało się zapisać zmian');
                             }
+                        } else {
+                            console.error('Server error:', response.status);
+                            alert('Wystąpił błąd podczas zapisywania');
                         }
                     } catch (error) {
                         console.error('Error:', error);
+                        alert('Wystąpił błąd podczas zapisywania');
                     }
                 });
             });

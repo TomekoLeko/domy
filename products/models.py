@@ -17,7 +17,14 @@ class ProductImage(models.Model):
         return f"Image for {self.product.name}"
 
 class PriceList(models.Model):
-    name = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=255)
+    is_standard = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        # If this price list is being set as standard, unset any other standard price list
+        if self.is_standard:
+            PriceList.objects.filter(is_standard=True).update(is_standard=False)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
