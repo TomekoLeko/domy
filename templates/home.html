@@ -32,10 +32,11 @@
                     <div class="col">
                         <div class="card h-100 product-card">
                             {% if product.images.first %}
-                                <img src="{{ product.images.first.image.url }}" 
-                                     class="card-img-top" 
-                                     alt="{{ product.name }}"
-                                     style="height: 200px; object-fit: cover;">
+                                <div class="card-img-container pt-3" style="height: 200px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                                    <img src="{{ product.images.first.image.url }}" 
+                                         alt="{{ product.name }}"
+                                         style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                                </div>
                             {% endif %}
                             <div class="card-body">
                                 <h5 class="card-title">{{ product.name }}</h5>
