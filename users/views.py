@@ -64,18 +64,19 @@ def update_user_profile(request):
     try:
         user = User.objects.get(id=user_id)
         profile = user.profile
-        
+
         profile.name = data.get('name', profile.name)
         profile.address = data.get('address', profile.address)
         profile.city = data.get('city', profile.city)
         profile.postal = data.get('postal', profile.postal)
         profile.phone = data.get('phone', profile.phone)
-        
+        profile.is_beneficiary = data.get('is_beneficiary', False)
+
         if price_list_id := data.get('price_list'):
             profile.price_list_id = price_list_id
-            
+
         profile.save()
-        
+
         return JsonResponse({'status': 'success'})
     except User.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'User not found'}, status=404)

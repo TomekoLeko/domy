@@ -1,6 +1,164 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
+
 {% block content %}
-<h2>Welcome to My Django Site!</h2>
-<p>This is the home page content.</p>
+<div class="container">
+    {% if user.is_authenticated %}
+        {% if user.is_staff or user.is_superuser %}
+            <div class="mb-4">
+                {% csrf_token %}
+                <label for="buyerSelect" class="form-label">Wybierz kupującego:</label>
+                <select class="form-select" id="buyerSelect" onchange="changeBuyer(this.value)">
+                    <option value="">-- Wybierz --</option>
+                    {% for beneficiary in beneficiaries %}
+                        <option value="{{ beneficiary.id }}" 
+                                {% if selected_buyer.id == beneficiary.id %}selected{% endif %}>
+                            {{ beneficiary.profile.name|default:beneficiary.username }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        {% endif %}
+        <div class="row">
+            <div class="col">
+                <h1>Hello</h1>
+                {{ selected_buyer }}
+            </div>
+        </div>
+
+        {% if selected_buyer %}
+            <div class="row row-cols-1 row-cols-md-3 g-4">
+                {% for product in products %}
+                    <div class="col">
+                        <div class="card h-100 product-card">
+                            {% if product.images.first %}
+                                <img src="{{ product.images.first.image.url }}" 
+                                     class="card-img-top" 
+                                     alt="{{ product.name }}"
+                                     style="height: 200px; object-fit: cover;">
+                            {% endif %}
+                            <div class="card-body">
+                                <h5 class="card-title">{{ product.name }}</h5>
+                                <p class="card-text">{{ product.description }}</p>
+                                {% with buyer_price_list=selected_buyer.profile.price_list %}
+                                {% if buyer_price_list %}
+                                    {% with product_price=product.prices.all|dictsort:"price_list.id"|first %}
+                                    {% if product_price %}
+                                        <p class="card-text">
+                                            <strong>Cena: {{ product_price.gross_price }} zł</strong>
+                                        </p>
+                                        <div class="add-to-cart-overlay">
+                                            <div class="input-group">
+                                                <input type="number" 
+                                                       class="form-control" 
+                                                       value="1" 
+                                                       min="1"
+                                                       id="quantity-{{ product.id }}">
+                                                <button class="btn btn-success" 
+                                                        onclick="addToCart({{ product.id }}, {{ selected_buyer.id }})">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <p class="text-muted">Brak ceny dla tego produktu</p>
+                                    {% endif %}
+                                    {% endwith %}
+                                {% else %}
+                                    <p class="text-muted">Brak przypisanego cennika dla kupującego</p>
+                                {% endif %}
+                                {% endwith %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-warning">
+                Proszę wybrać kupującego aby zobaczyć produkty.
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="alert alert-info">
+            Zaloguj się aby zobaczyć produkty.
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .product-card {
+        position: relative;
+    }
+
+    .add-to-cart-overlay {
+        position: absolute;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .product-card:hover .add-to-cart-overlay {
+        opacity: 1;
+    }
+</style>
+
+{% block extra_js %}
+<script>
+    function changeBuyer(buyerId) {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        if (!csrfToken) {
+            console.error('CSRF token not found');
+            return;
+        }
+
+        fetch('/change-buyer/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                buyer_id: buyerId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas zmiany kupującego');
+        });
+    }
+
+    function addToCart(productId, buyerId) {
+        const quantity = parseInt(document.getElementById(`quantity-${productId}`).value);
+
+        fetch('/cart/add/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                product_id: productId,
+                buyer_id: buyerId,
+                quantity: quantity
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                updateCartIcon(data.cart_count);
+                // Show success message or update UI as needed
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+</script>
+{% endblock %}
 {% endblock %}
