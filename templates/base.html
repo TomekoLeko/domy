@@ -114,7 +114,7 @@
         <div id="cartContent">
             {% if cart and cart.items.exists %}
                 {% for item in cart.items.all %}
-                <div class="card mb-2">
+                <div class="card mb-2" data-item-id="{{ item.id }}">
                     <div class="card-body">
                         <div class="d-flex align-items-center">
                             {% if item.product.images.first %}
@@ -132,7 +132,11 @@
                                            min="1"
                                            onchange="updateCartItem({{ item.id }}, this.value)">
                                     <span class="text-muted">× {{ item.price }} zł</span>
-                                    <span class="ms-auto">{{ item.subtotal }} zł</span>
+                                    <span class="ms-auto item-subtotal">{{ item.subtotal }} zł</span>
+                                    <button class="btn btn-link text-danger ms-2 p-0" 
+                                            onclick="removeCartItem({{ item.id }})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -142,7 +146,7 @@
                 <div class="border-top pt-3 mt-3">
                     <div class="d-flex justify-content-between mb-3">
                         <strong>Razem:</strong>
-                        <strong>{{ cart.total_cost }} zł</strong>
+                        <strong class="cart-total">{{ cart.total_cost }} zł</strong>
                     </div>
                     <button class="btn btn-success w-100" onclick="createOrder()">Zamów</button>
                 </div>
@@ -187,8 +191,19 @@
                 if (data.status === 'success') {
                     // Update cart icon
                     updateCartIcon(data.cart_count);
-                    // Reload cart content
-                    location.reload();
+                    // Update item subtotal
+                    const itemRow = document.querySelector(`[data-item-id="${itemId}"]`);
+                    if (itemRow) {
+                        const subtotalElement = itemRow.querySelector('.item-subtotal');
+                        if (subtotalElement) {
+                            subtotalElement.textContent = `${data.item_subtotal} zł`;
+                        }
+                    }
+                    // Update cart total
+                    const cartTotalElement = document.querySelector('.cart-total');
+                    if (cartTotalElement) {
+                        cartTotalElement.textContent = `${data.cart_total} zł`;
+                    }
                 }
             })
             .catch(error => console.error('Error:', error));
@@ -231,6 +246,46 @@
                 cartIcon.className = 'bi bi-cart text-secondary fs-4';
                 if (cartCount) cartCount.remove();
             }
+        }
+
+        function removeCartItem(itemId) {
+            fetch('/cart/update/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    item_id: itemId,
+                    quantity: 0  // Setting quantity to 0 will remove the item
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Remove the item from DOM
+                    const itemRow = document.querySelector(`[data-item-id="${itemId}"]`);
+                    if (itemRow) {
+                        itemRow.remove();
+                    }
+
+                    // Update cart icon
+                    updateCartIcon(data.cart_count);
+
+                    // Update cart total
+                    const cartTotalElement = document.querySelector('.cart-total');
+                    if (cartTotalElement) {
+                        cartTotalElement.textContent = `${data.cart_total} zł`;
+                    }
+
+                    // If cart is empty, show empty cart message
+                    if (data.cart_count === 0) {
+                        const cartContent = document.getElementById('cartContent');
+                        cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error));
         }
     </script>
 </body>
