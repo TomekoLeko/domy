@@ -51,29 +51,57 @@
 
 </head>
 <body>
-    <header class="bg-primary text-white text-center py-3">
-        <h1>My Django Site</h1>
-        <nav>
-            <a href="/" class="text-white">Home</a> |
-            {% if not user.is_authenticated %}
-                <a href="/login/" class="text-white">Login</a> |
-            {% else %}
-                <a href="/logout/" class="text-white">Logout</a> |
-                {% if user.is_staff or user.is_superuser %}
-                    <a href="/products/" class="text-white">Produkty</a> |
-                    <a href="/prices/" class="text-white">Ceny</a> |
-                    <a href="/users/" class="text-white">Użytkownicy</a>
-                {% endif %}
-                {% if user.is_authenticated %}
-                <div class="cart-icon ms-3" onclick="toggleCart()">
-                    <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-secondary{% endif %} fs-4"></i>
-                    {% if cart and cart.total_items > 0 %}
-                    <span class="cart-count">{{ cart.total_items }}</span>
-                    {% endif %}
+    <header class="bg-primary text-white py-3">
+        <nav class="navbar navbar-expand-lg navbar-dark">
+            <div class="container">
+                <a class="navbar-brand" href="/">My Django Site</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">Zakupy</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            {% if user.is_staff or user.is_superuser %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/products/">Produkty</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/prices/">Ceny</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/users/">Użytkownicy</a>
+                                </li>
+                            {% endif %}
+                        {% endif %}
+                    </ul>
+                    <ul class="navbar-nav">
+                        {% if user.is_authenticated %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/logout/">Logout</a>
+                            </li>
+                            <li class="nav-item">
+                                <div class="cart-icon ms-3" onclick="toggleCart()">
+                                    <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-white{% endif %} fs-4"></i>
+                                    {% if cart and cart.total_items > 0 %}
+                                        <span class="cart-count">{{ cart.total_items }}</span>
+                                    {% endif %}
+                                </div>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/login/">Login</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/register/">Register</a>
+                            </li>
+                        {% endif %}
+                    </ul>
                 </div>
-                {% endif %}
-            {% endif %}
-            <a href="/register/" class="text-white">Register</a>
+            </div>
         </nav>
     </header>
 
