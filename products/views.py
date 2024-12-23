@@ -211,10 +211,24 @@ def add_to_cart(request):
             cart_item.quantity += quantity
             cart_item.save()
 
+        # Prepare cart data for response
+        cart_data = {
+            'items': [{
+                'id': item.id,
+                'name': item.product.name,
+                'quantity': item.quantity,
+                'price': str(item.price),
+                'subtotal': str(item.subtotal),
+                'image_url': item.product.images.first().image.url if item.product.images.exists() else None
+            } for item in cart.items.all()],
+            'total_cost': str(cart.total_cost)
+        }
+
         return JsonResponse({
             'status': 'success',
             'cart_count': cart.total_items,
-            'cart_total': str(cart.total_cost)
+            'cart_total': str(cart.total_cost),
+            'cart_data': cart_data
         })
 
     except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist) as e:

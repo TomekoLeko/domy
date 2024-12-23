@@ -138,7 +138,7 @@
 
     function addToCart(productId, buyerId) {
         const quantity = parseInt(document.getElementById(`quantity-${productId}`).value);
-
+        
         fetch('/cart/add/', {
             method: 'POST',
             headers: {
@@ -155,7 +155,11 @@
         .then(data => {
             if (data.status === 'success') {
                 updateCartIcon(data.cart_count);
-                // Show success message or update UI as needed
+                updateCartContent(data.cart_data);
+                const sidebar = document.getElementById('cartSidebar');
+                if (!sidebar.classList.contains('show')) {
+                    sidebar.classList.add('show');
+                }
             }
         })
         .catch(error => console.error('Error:', error));
