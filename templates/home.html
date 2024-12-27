@@ -11,7 +11,7 @@
                 <select class="form-select" id="buyerSelect" onchange="changeBuyer(this.value)">
                     <option value="">-- Wybierz --</option>
                     {% for beneficiary in beneficiaries %}
-                        <option value="{{ beneficiary.id }}" 
+                        <option value="{{ beneficiary.id }}"
                                 {% if selected_buyer.id == beneficiary.id %}selected{% endif %}>
                             {{ beneficiary.profile.name|default:beneficiary.username }}
                         </option>
@@ -28,6 +28,7 @@
 
         {% if selected_buyer %}
             <div class="row row-cols-1 row-cols-md-3 g-4">
+                {% csrf_token %}
                 {% for product in products %}
                     <div class="col">
                         <div class="card h-100 product-card">
@@ -138,7 +139,7 @@
 
     function addToCart(productId, buyerId) {
         const quantity = parseInt(document.getElementById(`quantity-${productId}`).value);
-        
+
         fetch('/cart/add/', {
             method: 'POST',
             headers: {
