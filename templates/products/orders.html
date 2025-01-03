@@ -33,29 +33,13 @@
                                     aria-expanded="false">
                                 <div class="d-flex justify-content-between align-items-center w-100">
                                     <span>{{ order.created_at|date:"d.m.Y H:i" }}</span>
-                                    {% if user.is_staff or user.is_superuser %}
-                                        <select class="form-select form-select-sm w-auto me-3 order-status-select" 
-                                                data-order-id="{{ order.id }}"
-                                                onclick="event.stopPropagation()">
-                                            <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>
-                                                Oczekujące
-                                            </option>
-                                            <option value="completed" {% if order.status == 'completed' %}selected{% endif %}>
-                                                Zrealizowane
-                                            </option>
-                                            <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>
-                                                Anulowane
-                                            </option>
-                                        </select>
-                                    {% else %}
-                                        <span class="badge {% if order.status == 'completed' %}bg-success
-                                                  {% elif order.status == 'cancelled' %}bg-danger
-                                                  {% else %}bg-primary{% endif %} me-3">
-                                            {% if order.status == 'pending' %}Oczekujące
-                                            {% elif order.status == 'completed' %}Zrealizowane
-                                            {% else %}Anulowane{% endif %}
-                                        </span>
-                                    {% endif %}
+                                    <span class="badge {% if order.status == 'completed' %}bg-success
+                                              {% elif order.status == 'cancelled' %}bg-danger
+                                              {% else %}bg-primary{% endif %} me-3">
+                                        {% if order.status == 'pending' %}Oczekujące
+                                        {% elif order.status == 'completed' %}Zrealizowane
+                                        {% else %}Anulowane{% endif %}
+                                    </span>
                                     <strong>{{ order.total_cost }} zł</strong>
                                 </div>
                             </button>
