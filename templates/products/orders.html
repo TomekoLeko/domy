@@ -25,9 +25,12 @@
         {% if orders %}
             <div class="accordion" id="ordersAccordion">
                 {% for order in orders %}
-                    <div class="accordion-item">
+                    <div class="accordion-item border border-2 mb-3 rounded">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed" type="button" 
+                            <button class="accordion-button collapsed {% if order.status == 'completed' %}bg-success-subtle border-success
+                                        {% elif order.status == 'cancelled' %}bg-danger-subtle border-danger
+                                        {% else %}bg-primary-subtle border-primary{% endif %}" 
+                                    type="button" 
                                     data-bs-toggle="collapse" 
                                     data-bs-target="#collapse{{ order.id }}" 
                                     aria-expanded="false">
@@ -48,6 +51,30 @@
                              class="accordion-collapse collapse" 
                              data-bs-parent="#ordersAccordion">
                             <div class="accordion-body bg-light">
+                                <!-- Add status slider section -->
+                                {% if user.is_staff or user.is_superuser %}
+                                <div class="border p-4 rounded bg-white shadow-sm mb-3">
+                                    <div class="row align-items-center">
+                                        <div class="col-auto">
+                                            <label class="form-label mb-0"><strong>Status zamówienia:</strong></label>
+                                        </div>
+                                        <div class="col-auto">
+                                            <select class="form-select form-select-sm order-status-select" 
+                                                    data-order-id="{{ order.id }}">
+                                                <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>
+                                                    Oczekujące
+                                                </option>
+                                                <option value="completed" {% if order.status == 'completed' %}selected{% endif %}>
+                                                    Zrealizowane
+                                                </option>
+                                                <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>
+                                                    Anulowane
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
                                 <div class="border p-4 rounded bg-white shadow-sm">
                                     <table class="table">
                                         <thead>
@@ -107,83 +134,96 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.status-step').forEach(step => {
-            step.addEventListener('click', function() {
-                const orderId = this.dataset.orderId;
-                const newStatus = this.dataset.status;
-                const currentStatus = this.closest('.status-steps')
-                    .querySelector('.status-step[data-status="' + newStatus + '"]')
-                    .classList.contains('active');
-
-                // Prevent "going back" in status
-                if (currentStatus) return;
-                
-                fetch('/orders/update-status/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                    },
-                    body: JSON.stringify({
-                        order_id: orderId,
-                        status: newStatus
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        // Update status dots
-                        const steps = this.closest('.status-steps').querySelectorAll('.status-step');
-                        let activate = false;
-                        steps.forEach(s => {
-                            if (s === this) activate = true;
-                            if (!activate) s.classList.add('active');
-                            else s.classList.remove('active');
-                        });
-                        this.classList.add('active');
-                    } else {
-                        alert('Wystąpił błąd: ' + data.message);
-                        location.reload();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Wystąpił błąd podczas aktualizacji statusu');
-                    location.reload();
-                });
-            });
+document.addEventListener('DOMContentLoaded', function() {
+    const statusSelects = document.querySelectorAll('.order-status-select');
+    
+    statusSelects.forEach(select => {
+        select.addEventListener('change', function() {
+            const orderId = this.dataset.orderId;
+            const newStatus = this.value;
+            
+            updateOrderStatus(orderId, newStatus, this);
         });
     });
 
-    function changeBuyer(buyerId) {
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-        if (!csrfToken) {
-            console.error('CSRF token not found');
-            return;
-        }
-
-        fetch('/change-buyer/', {
+    function updateOrderStatus(orderId, status, selectElement) {
+        fetch('/orders/update-status/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
             body: JSON.stringify({
-                buyer_id: buyerId
+                order_id: orderId,
+                status: status
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
+                // Update the badge in the accordion header
+                const accordionItem = selectElement.closest('.accordion-item');
+                const badge = accordionItem.querySelector('.badge');
+                
+                // Update badge color and text
+                badge.className = 'badge me-3 ' + 
+                    (status === 'completed' ? 'bg-success' : 
+                     status === 'cancelled' ? 'bg-danger' : 
+                     'bg-primary');
+                badge.textContent = status === 'pending' ? 'Oczekujące' :
+                                  status === 'completed' ? 'Zrealizowane' :
+                                  'Anulowane';
+
+                const accordionButton = accordionItem.querySelector('.accordion-button');
+                accordionButton.className = 'accordion-button collapsed ' + 
+                    (status === 'completed' ? 'bg-success-subtle border-success' : 
+                     status === 'cancelled' ? 'bg-danger-subtle border-danger' : 
+                     'bg-primary-subtle border-primary');
+
+                const accordionItemDiv = accordionItem.querySelector('.accordion-item');
+                accordionItemDiv.className = 'accordion-item border border-2 mb-3 rounded';
+            } else {
+                alert('Wystąpił błąd: ' + data.message);
                 location.reload();
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Wystąpił błąd podczas zmiany kupującego');
+            alert('Wystąpił błąd podczas aktualizacji statusu');
+            location.reload();
         });
     }
+});
+
+function changeBuyer(buyerId) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    if (!csrfToken) {
+        console.error('CSRF token not found');
+        return;
+    }
+
+    fetch('/change-buyer/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            buyer_id: buyerId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas zmiany kupującego');
+    });
+}
 </script>
 {% endblock %}
 {% endblock %} 
+
