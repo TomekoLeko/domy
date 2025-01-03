@@ -267,10 +267,9 @@ def update_cart(request):
 
 @require_POST
 def create_order(request):
-    cart_id = request.POST.get('cart_id')
-
     try:
-        cart = Cart.objects.get(id=cart_id)
+        # Get the cart for the current user
+        cart = Cart.objects.get(user=request.user)
 
         # Create order
         order = Order.objects.create(
@@ -298,9 +297,9 @@ def create_order(request):
         })
 
     except Cart.DoesNotExist:
-        return JsonResponse({'error': 'Cart not found'}, status=404)
+        return JsonResponse({'status': 'error', 'message': 'No active cart found'}, status=404)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @require_POST
 @require_authenticated_staff_or_superuser
@@ -314,4 +313,62 @@ def change_buyer(request):
         request.session.pop('selected_buyer_id', None)
 
     return JsonResponse({'status': 'success'})
+
+def orders(request):
+    User = get_user_model()
+    context = {}
+
+    if request.user.is_authenticated:
+        if request.user.is_staff or request.user.is_superuser:
+            # Get all beneficiary users for staff/superuser
+            beneficiaries = User.objects.filter(profile__is_beneficiary=True)
+            context['beneficiaries'] = beneficiaries
+            
+            # Get selected buyer or default to None
+            selected_buyer_id = request.session.get('selected_buyer_id')
+            if selected_buyer_id:
+                try:
+                    selected_buyer = User.objects.get(id=selected_buyer_id)
+                    context['selected_buyer'] = selected_buyer
+                    orders = Order.objects.filter(buyer=selected_buyer).prefetch_related(
+                        'items__product__images'
+                    ).order_by('-created_at')
+                    context['orders'] = orders
+                except User.DoesNotExist:
+                    pass
+        else:
+            # Regular user sees their own orders
+            orders = Order.objects.filter(buyer=request.user).prefetch_related(
+                'items__product__images'
+            ).order_by('-created_at')
+            context['orders'] = orders
+
+    return render(request, 'products/orders.html', context)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def update_order_status(request):
+    data = json.loads(request.body)
+    order_id = data.get('order_id')
+    new_status = data.get('status')
+    
+    try:
+        order = Order.objects.get(id=order_id)
+        order.status = new_status
+        order.save()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Status zamówienia został zaktualizowany'
+        })
+    except Order.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Zamówienie nie zostało znalezione'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 

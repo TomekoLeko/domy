@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Zamówienia{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Zamówienia</h2>
+
+    {% if user.is_authenticated %}
+        {% if user.is_staff or user.is_superuser %}
+            <div class="mb-4">
+                {% csrf_token %}
+                <label for="buyerSelect" class="form-label">Wybierz kupującego:</label>
+                <select class="form-select" id="buyerSelect" onchange="changeBuyer(this.value)">
+                    <option value="">-- Wybierz --</option>
+                    {% for beneficiary in beneficiaries %}
+                        <option value="{{ beneficiary.id }}"
+                                {% if selected_buyer.id == beneficiary.id %}selected{% endif %}>
+                            {{ beneficiary.profile.name|default:beneficiary.username }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        {% endif %}
+
+        {% if orders %}
+            <div class="accordion" id="ordersAccordion">
+                {% for order in orders %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse{{ order.id }}" 
+                                    aria-expanded="false">
+                                <div class="d-flex justify-content-between align-items-center w-100">
+                                    <span>{{ order.created_at|date:"d.m.Y H:i" }}</span>
+                                    {% if user.is_staff or user.is_superuser %}
+                                        <select class="form-select form-select-sm w-auto me-3 order-status-select" 
+                                                data-order-id="{{ order.id }}"
+                                                onclick="event.stopPropagation()">
+                                            <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>
+                                                Oczekujące
+                                            </option>
+                                            <option value="completed" {% if order.status == 'completed' %}selected{% endif %}>
+                                                Zrealizowane
+                                            </option>
+                                            <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>
+                                                Anulowane
+                                            </option>
+                                        </select>
+                                    {% else %}
+                                        <span class="badge {% if order.status == 'completed' %}bg-success
+                                                  {% elif order.status == 'cancelled' %}bg-danger
+                                                  {% else %}bg-primary{% endif %} me-3">
+                                            {% if order.status == 'pending' %}Oczekujące
+                                            {% elif order.status == 'completed' %}Zrealizowane
+                                            {% else %}Anulowane{% endif %}
+                                        </span>
+                                    {% endif %}
+                                    <strong>{{ order.total_cost }} zł</strong>
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="collapse{{ order.id }}" 
+                             class="accordion-collapse collapse" 
+                             data-bs-parent="#ordersAccordion">
+                            <div class="accordion-body bg-light">
+                                <div class="border p-4 rounded bg-white shadow-sm">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th></th>
+                                                <th>Produkt</th>
+                                                <th>Ilość</th>
+                                                <th>Cena</th>
+                                                <th>Suma</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for item in order.items.all %}
+                                                <tr>
+                                                    <td>
+                                                        {% if item.product.images.first %}
+                                                            <img src="{{ item.product.images.first.image.url }}" 
+                                                                 alt="{{ item.product.name }}"
+                                                                 style="width: 50px; height: 50px; object-fit: contain;">
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ item.product.name }}</td>
+                                                    <td>{{ item.quantity }}</td>
+                                                    <td>{{ item.price }} zł</td>
+                                                    <td>{{ item.subtotal }} zł</td>
+                                                </tr>
+                                            {% endfor %}
+                                            <tr class="table-light">
+                                                <td colspan="4" class="text-end"><strong>Razem:</strong></td>
+                                                <td><strong>{{ order.total_cost }} zł</strong></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            {% if selected_buyer or not user.is_staff %}
+                <div class="alert alert-info">
+                    Brak zamówień do wyświetlenia.
+                </div>
+            {% else %}
+                <div class="alert alert-warning">
+                    Wybierz kupującego aby zobaczyć zamówienia.
+                </div>
+            {% endif %}
+        {% endif %}
+    {% else %}
+        <div class="alert alert-warning">
+            Zaloguj się aby zobaczyć zamówienia.
+        </div>
+    {% endif %}
+</div>
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.status-step').forEach(step => {
+            step.addEventListener('click', function() {
+                const orderId = this.dataset.orderId;
+                const newStatus = this.dataset.status;
+                const currentStatus = this.closest('.status-steps')
+                    .querySelector('.status-step[data-status="' + newStatus + '"]')
+                    .classList.contains('active');
+
+                // Prevent "going back" in status
+                if (currentStatus) return;
+                
+                fetch('/orders/update-status/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        status: newStatus
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Update status dots
+                        const steps = this.closest('.status-steps').querySelectorAll('.status-step');
+                        let activate = false;
+                        steps.forEach(s => {
+                            if (s === this) activate = true;
+                            if (!activate) s.classList.add('active');
+                            else s.classList.remove('active');
+                        });
+                        this.classList.add('active');
+                    } else {
+                        alert('Wystąpił błąd: ' + data.message);
+                        location.reload();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Wystąpił błąd podczas aktualizacji statusu');
+                    location.reload();
+                });
+            });
+        });
+    });
+
+    function changeBuyer(buyerId) {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        if (!csrfToken) {
+            console.error('CSRF token not found');
+            return;
+        }
+
+        fetch('/change-buyer/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                buyer_id: buyerId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas zmiany kupującego');
+        });
+    }
+</script>
+{% endblock %}
+{% endblock %} 
