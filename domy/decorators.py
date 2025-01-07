@@ -26,3 +26,29 @@ def require_authenticated_superuser(view_func):
         return view_func(request, *args, **kwargs)
 
     return _wrapped_view
+
+def require_authenticated_beneficiary(view_func):
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('login')
+
+        if not request.user.is_beneficiary:
+            return render(request, '403.html', {'message': "Nie masz dostępu do tej strony"})
+
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped_view
+
+def require_authenticated_contributor(view_func):
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('login')
+
+        if not request.user.is_contributor:
+            return render(request, '403.html', {'message': "Nie masz dostępu do tej strony"})
+
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped_view

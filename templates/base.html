@@ -3,31 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
     <title>{% block title %}My Django Site{% endblock %}</title>
     <!-- Add any shared CSS or meta tags here -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
     {% load static %}
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <style>
+        #cartSidebar {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+            transition: right 0.3s ease;
+            z-index: 1050;
+            padding: 20px;
+        }
+
+        #cartSidebar.show {
+            right: 0;
+        }
+
+        .cart-icon {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .cart-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #198754;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
 
 </head>
 <body>
-    <header class="bg-primary text-white text-center py-3">
-        <h1>My Django Site</h1>
-        <nav>
-            <a href="/" class="text-white">Home</a> |
-            {% if not user.is_authenticated %}
-                <a href="/login/" class="text-white">Login</a> |
-            {% else %}
-                <a href="/logout/" class="text-white">Logout</a> |
-                {% if user.is_staff or user.is_superuser %}
-                    <a href="/products/" class="text-white">Produkty</a> |
-                    <a href="/prices/" class="text-white">Ceny</a> |
-                {% endif %}
-            {% endif %}
-            <a href="/register/" class="text-white">Register</a>
+    <header class="bg-primary text-white py-3">
+        <nav class="navbar navbar-expand-lg navbar-dark">
+            <div class="container">
+                <a class="navbar-brand" href="/">My Django Site</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">Zakupy</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/orders/">Zamówienia</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            {% if user.is_staff or user.is_superuser %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/products/">Produkty</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/prices/">Ceny</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/users/">Użytkownicy</a>
+                                </li>
+                            {% endif %}
+                        {% endif %}
+                    </ul>
+                    <ul class="navbar-nav">
+                        {% if user.is_authenticated %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/logout/">Logout</a>
+                            </li>
+                            <li class="nav-item">
+                                <div class="cart-icon ms-3" onclick="toggleCart()">
+                                    <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-white{% endif %} fs-4"></i>
+                                    {% if cart and cart.total_items > 0 %}
+                                        <span class="cart-count">{{ cart.total_items }}</span>
+                                    {% endif %}
+                                </div>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/login/">Login</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/register/">Register</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
         </nav>
     </header>
+
+    <!-- Cart Sidebar -->
+    <div id="cartSidebar">
+        {% csrf_token %}
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Koszyk</h5>
+            <button type="button" class="btn-close" onclick="toggleCart()"></button>
+        </div>
+        <div id="cartContent">
+            {% if cart and cart.items.exists %}
+                {% for item in cart.items.all %}
+                <div class="card mb-2" data-item-id="{{ item.id }}">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            {% if item.product.images.first %}
+                            <img src="{{ item.product.images.first.image.url }}" 
+                                 alt="{{ item.product.name }}" 
+                                 style="width: 50px; height: 50px; object-fit: cover;"
+                                 class="me-2">
+                            {% endif %}
+                            <div class="flex-grow-1">
+                                <h6 class="mb-0">{{ item.product.name }}</h6>
+                                <div class="d-flex align-items-center mt-2">
+                                    <input type="number" 
+                                           class="form-control form-control-sm w-25 me-2" 
+                                           value="{{ item.quantity }}"
+                                           min="1"
+                                           onchange="updateCartItem({{ item.id }}, this.value)">
+                                    <span class="text-muted">× {{ item.price }} zł</span>
+                                    <span class="ms-auto item-subtotal">{{ item.subtotal }} zł</span>
+                                    <button class="btn btn-link text-danger ms-2 p-0" 
+                                            onclick="removeCartItem({{ item.id }})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="border-top pt-3 mt-3">
+                    <div class="d-flex justify-content-between mb-3">
+                        <strong>Razem:</strong>
+                        <strong class="cart-total">{{ cart.total_cost }} zł</strong>
+                    </div>
+                    <button class="btn btn-success w-100" onclick="createOrder()">Zamów</button>
+                </div>
+            {% else %}
+                <p class="text-center text-muted">Koszyk jest pusty</p>
+            {% endif %}
+        </div>
+    </div>
 
     <main class="container mt-4">
         {% block content %}
@@ -41,5 +172,184 @@
 
     <!-- Add any shared JavaScript files here -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleCart() {
+            const sidebar = document.getElementById('cartSidebar');
+            sidebar.classList.toggle('show');
+        }
+
+        function updateCartItem(itemId, quantity) {
+            fetch('/cart/update/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    item_id: itemId,
+                    quantity: quantity
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update cart icon
+                    updateCartIcon(data.cart_count);
+                    // Update item subtotal
+                    const itemRow = document.querySelector(`[data-item-id="${itemId}"]`);
+                    if (itemRow) {
+                        const subtotalElement = itemRow.querySelector('.item-subtotal');
+                        if (subtotalElement) {
+                            subtotalElement.textContent = `${data.item_subtotal} zł`;
+                        }
+                    }
+                    // Update cart total
+                    const cartTotalElement = document.querySelector('.cart-total');
+                    if (cartTotalElement) {
+                        cartTotalElement.textContent = `${data.cart_total} zł`;
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function createOrder() {
+            fetch('/cart/order/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Clear cart and close sidebar
+                    toggleCart();
+                    // Show success message
+                    alert('Zamówienie zostało złożone pomyślnie!');
+                    // Reload the page after showing the message
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    alert('Wystąpił błąd: ' + (data.message || 'Nieznany błąd'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas składania zamówienia');
+            });
+        }
+
+        function updateCartIcon(count) {
+            const cartIcon = document.querySelector('.cart-icon i');
+            const cartCount = document.querySelector('.cart-count');
+
+            if (count > 0) {
+                cartIcon.className = 'bi bi-cart-fill text-success fs-4';
+                if (cartCount) {
+                    cartCount.textContent = count;
+                } else {
+                    const span = document.createElement('span');
+                    span.className = 'cart-count';
+                    span.textContent = count;
+                    document.querySelector('.cart-icon').appendChild(span);
+                }
+            } else {
+                cartIcon.className = 'bi bi-cart text-secondary fs-4';
+                if (cartCount) cartCount.remove();
+            }
+        }
+
+        function removeCartItem(itemId) {
+            fetch('/cart/update/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    item_id: itemId,
+                    quantity: 0  // Setting quantity to 0 will remove the item
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Remove the item from DOM
+                    const itemRow = document.querySelector(`[data-item-id="${itemId}"]`);
+                    if (itemRow) {
+                        itemRow.remove();
+                    }
+
+                    // Update cart icon
+                    updateCartIcon(data.cart_count);
+
+                    // Update cart total
+                    const cartTotalElement = document.querySelector('.cart-total');
+                    if (cartTotalElement) {
+                        cartTotalElement.textContent = `${data.cart_total} zł`;
+                    }
+
+                    // If cart is empty, show empty cart message
+                    if (data.cart_count === 0) {
+                        const cartContent = document.getElementById('cartContent');
+                        cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function updateCartContent(cartData) {
+            const cartContent = document.getElementById('cartContent');
+            if (cartData.items && cartData.items.length > 0) {
+                let html = '';
+                cartData.items.forEach(item => {
+                    html += `
+                        <div class="card mb-2" data-item-id="${item.id}">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    ${item.image_url ? `
+                                        <img src="${item.image_url}" 
+                                            alt="${item.name}" 
+                                            style="width: 50px; height: 50px; object-fit: cover;"
+                                            class="me-2">
+                                    ` : ''}
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0">${item.name}</h6>
+                                        <div class="d-flex align-items-center mt-2">
+                                            <input type="number" 
+                                                   class="form-control form-control-sm w-25 me-2" 
+                                                   value="${item.quantity}"
+                                                   min="1"
+                                                   onchange="updateCartItem(${item.id}, this.value)">
+                                            <span class="text-muted">× ${item.price} zł</span>
+                                            <span class="ms-auto item-subtotal">${item.subtotal} zł</span>
+                                            <button class="btn btn-link text-danger ms-2 p-0" 
+                                                    onclick="removeCartItem(${item.id})">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `
+                    <div class="border-top pt-3 mt-3">
+                        <div class="d-flex justify-content-between mb-3">
+                            <strong>Razem:</strong>
+                            <strong class="cart-total">${cartData.total_cost} zł</strong>
+                        </div>
+                        <button class="btn btn-success w-100" onclick="createOrder()">Zamów</button>
+                    </div>
+                `;
+                cartContent.innerHTML = html;
+            } else {
+                cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
+            }
+        }
+    </script>
 </body>
 </html>

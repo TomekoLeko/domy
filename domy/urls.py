@@ -24,9 +24,10 @@ from domy.views import home
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', home, name='home'),
-    path('', include('users.urls')), 
     path('', include('products.urls')),
+    path('', include('users.urls')),
+    path('', include('products.urls')),
+    path('users/', include('users.urls')),
 ]
 
 if settings.DEBUG:

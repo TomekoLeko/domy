@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Użytkownicy{% endblock %}
+{% block extra_css %}
+<style>
+    .user-edit-form {
+        position: relative;
+    }
+    
+    .user-edit-form::before {
+        content: '';
+        position: absolute;
+        left: -24px;
+        top: -24px;
+        bottom: -24px;
+        width: 4px;
+        background-color: #198754;  /* Bootstrap success color */
+        border-radius: 2px;
+    }
+</style>
+{% endblock %}
+{% block content %}
+    <div class="container mt-4">
+        <h2>Użytkownicy</h2>
+
+        <div class="accordion" id="usersAccordion">
+            {% for user in users %}
+                <div class="accordion-item" data-user-id="{{ user.id }}">
+                    <h2 class="accordion-header" id="heading{{ forloop.counter }}">
+                        <button class="accordion-button collapsed" type="button" 
+                                data-bs-toggle="collapse" 
+                                data-bs-target="#collapse{{ forloop.counter }}" 
+                                aria-expanded="false" 
+                                aria-controls="collapse{{ forloop.counter }}">
+                            {% if user.profile.name %}
+                                {{ user.profile.name }}
+                            {% else %}
+                                {{ user.username }}
+                            {% endif %}
+                        </button>
+                    </h2>
+                    <div id="collapse{{ forloop.counter }}" 
+                         class="accordion-collapse collapse" 
+                         aria-labelledby="heading{{ forloop.counter }}" 
+                         data-bs-parent="#usersAccordion">
+                        <div class="accordion-body bg-light">
+                            <div class="border p-4 rounded bg-white shadow-sm">
+                                <form class="user-edit-form">
+                                    {% csrf_token %}
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Nazwa</label>
+                                            <input type="text" class="form-control" name="name" 
+                                                   value="{{ user.profile.name }}" data-original-value="{{ user.profile.name }}">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Telefon</label>
+                                            <input type="text" class="form-control" name="phone" 
+                                                   value="{{ user.profile.phone }}" data-original-value="{{ user.profile.phone }}">
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Adres</label>
+                                            <input type="text" class="form-control" name="address" 
+                                                   value="{{ user.profile.address }}" data-original-value="{{ user.profile.address }}">
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-8">
+                                            <label class="form-label">Miasto</label>
+                                            <input type="text" class="form-control" name="city" 
+                                                   value="{{ user.profile.city }}" data-original-value="{{ user.profile.city }}">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Kod pocztowy</label>
+                                            <input type="text" class="form-control" name="postal" 
+                                                   value="{{ user.profile.postal }}" data-original-value="{{ user.profile.postal }}">
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Cennik</label>
+                                            <select class="form-select" name="price_list" data-original-value="{{ user.profile.price_list_id|default:'' }}">
+                                                <option value="">-- Wybierz cennik --</option>
+                                                {% for price_list in price_lists %}
+                                                    <option value="{{ price_list.id }}" 
+                                                        {% if user.profile.price_list_id == price_list.id %}selected{% endif %}>
+                                                        {{ price_list.name }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <div class="form-check">
+                                                <input type="checkbox" class="form-check-input" name="is_beneficiary" 
+                                                       id="is_beneficiary_{{ user.id }}"
+                                                       {% if user.profile.is_beneficiary %}checked{% endif %}
+                                                       data-original-value="{% if user.profile.is_beneficiary %}true{% else %}false{% endif %}">
+                                                <label class="form-check-label" for="is_beneficiary_{{ user.id }}">
+                                                    Beneficjent
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn btn-success save-user">
+                                            Zapisz
+                                        </button>
+                                        <button type="button" class="btn btn-secondary cancel-user">
+                                            Anuluj
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% block extra_js %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.user-edit-form').forEach(form => {
+                const inputs = form.querySelectorAll('input, select');
+                const saveButton = form.querySelector('.save-user');
+                const cancelButton = form.querySelector('.cancel-user');
+                const accordionItem = form.closest('.accordion-item');
+                const collapseElement = form.closest('.accordion-collapse');
+
+                // Function to collapse the accordion item
+                const collapseForm = () => {
+                    const bsCollapse = bootstrap.Collapse.getInstance(collapseElement);
+                    if (bsCollapse) {
+                        bsCollapse.hide();
+                    }
+                };
+
+                // Function to reset form values
+                const resetForm = () => {
+                    inputs.forEach(input => {
+                        input.value = input.dataset.originalValue;
+                    });
+                };
+
+                // Handle cancel button click
+                cancelButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    resetForm();
+                    collapseForm();
+                });
+
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const userId = this.closest('.accordion-item').dataset.userId;
+                    const formData = Object.fromEntries(new FormData(this));
+
+                    // Handle checkbox
+                    formData.is_beneficiary = this.querySelector('[name="is_beneficiary"]').checked;
+                    
+                    try {
+                        const response = await fetch("{% url 'update_user_profile' %}", {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value
+                            },
+                            body: JSON.stringify({
+                                user_id: userId,
+                                ...formData
+                            })
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.status === 'success') {
+                                const nameInput = form.querySelector('[name="name"]');
+                                if (nameInput && nameInput.value) {
+                                    const accordionButton = accordionItem.querySelector('.accordion-button');
+                                    accordionButton.textContent = nameInput.value;
+                                }
+                                inputs.forEach(input => {
+                                    input.dataset.originalValue = input.value;
+                                });
+                                collapseForm();
+                            } else {
+                                console.error('Failed to save:', data.message);
+                                alert('Nie udało się zapisać zmian');
+                            }
+                        } else {
+                            console.error('Server error:', response.status);
+                            alert('Wystąpił błąd podczas zapisywania');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        alert('Wystąpił błąd podczas zapisywania');
+                    }
+                });
+            });
+        });
+    </script>
+    {% endblock %}
+{% endblock %}
