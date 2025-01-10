@@ -5,5 +5,114 @@
 {% block content %}
 <div class="container mt-4">
     <h2>Finanse</h2>
+
+    <!-- Add Payment Form -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Dodaj nową płatność</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">{{ form.amount.label }}</label>
+                        {{ form.amount }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">{{ form.payment_type.label }}</label>
+                        {{ form.payment_type }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">{{ form.related_user.label }}</label>
+                        {{ form.related_user }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">{{ form.related_order.label }}</label>
+                        {{ form.related_order }}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.description.label }}</label>
+                    {{ form.description }}
+                </div>
+                <button type="submit" class="btn btn-primary">Dodaj płatność</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Payments List -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Historia płatności</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Typ</th>
+                            <th>Kwota</th>
+                            <th>Użytkownik</th>
+                            <th>Opis</th>
+                            <th>Dodane przez</th>
+                            <th>Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr>
+                            <td>{{ payment.created_at|date:"d.m.Y H:i" }}</td>
+                            <td>{{ payment.get_payment_type_display }}</td>
+                            <td class="{% if payment.payment_type in 'contribution,order_payment' %}text-success{% else %}text-danger{% endif %}">
+                                {% if payment.payment_type in 'contribution,order_payment' %}+{% else %}-{% endif %}
+                                {{ payment.amount }} zł
+                            </td>
+                            <td>{{ payment.related_user|default:"-" }}</td>
+                            <td>{{ payment.description }}</td>
+                            <td>{{ payment.created_by.username }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" 
+                                        onclick="deletePayment({{ payment.id }})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center">Brak płatności</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
+
+{% block extra_js %}
+<script>
+function deletePayment(paymentId) {
+    if (confirm('Czy na pewno chcesz usunąć tę płatność?')) {
+        fetch(`{% url 'finance:delete_payment' 0 %}`.replace('0', paymentId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas usuwania płatności');
+        });
+    }
+}
+</script>
+{% endblock %}
 {% endblock %} 
