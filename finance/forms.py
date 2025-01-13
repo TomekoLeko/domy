@@ -19,9 +19,15 @@ class PaymentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['related_user'].queryset = User.objects.filter(is_active=True)
+        self.fields['related_user'].queryset = User.objects.filter(is_active=True).select_related('profile')
         self.fields['related_order'].queryset = Order.objects.all().order_by('-created_at')
         
-        # Make all fields optional except amount, type and description
+        # Make fields optional
         self.fields['related_user'].required = False
-        self.fields['related_order'].required = False 
+        self.fields['related_order'].required = False
+        self.fields['description'].required = False  # Make description optional
+
+        # Override the label_from_instance method to show name or username
+        self.fields['related_user'].label_from_instance = lambda user: (
+            user.profile.name if hasattr(user, 'profile') and user.profile.name else user.username
+        )
