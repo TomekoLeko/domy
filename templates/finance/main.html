@@ -6,6 +6,12 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Finanse</h2>
+        <a href="{% url 'finance:add_multiple_transfers' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-right-circle me-2"></i>Dodaj wiele przelewów
+        </a>
+    </div>
+
+    <div class="mb-4">
         <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#addPaymentForm">
             <i class="bi bi-plus-circle me-2"></i>
             <span class="button-text">Dodaj płatność</span>
@@ -61,7 +67,7 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Data</th>
+                            <th>Data płatności</th>
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
@@ -73,7 +79,7 @@
                     <tbody>
                         {% for payment in payments %}
                         <tr>
-                            <td>{{ payment.created_at|date:"d.m.Y H:i" }}</td>
+                            <td>{{ payment.payment_date|date:"d.m.Y" }}</td>
                             <td>{{ payment.get_payment_type_display }}</td>
                             <td class="{% if payment.payment_type in 'contribution,order_payment' %}text-success{% else %}text-danger{% endif %}">
                                 {% if payment.payment_type in 'contribution,order_payment' %}+{% else %}-{% endif %}

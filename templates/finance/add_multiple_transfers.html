@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Dodaj wiele przelewów{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Dodaj wiele przelewów</h2>
+        <a href="{% url 'finance:main' %}" class="btn btn-secondary">
+            <i class="bi bi-list me-2"></i>Lista płatności
+        </a>
+    </div>
+
+    <!-- File upload section -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <input type="file" id="bankStatement" accept=".html" class="form-control mb-3">
+            <button onclick="loadBankStatement()" class="btn btn-primary">
+                <i class="bi bi-upload me-2"></i>Załaduj zestawienie
+            </button>
+        </div>
+    </div>
+
+    <!-- Temporary payments table -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Znalezione przelewy</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Data płatności</th>
+                            <th>Typ</th>
+                            <th>Kwota</th>
+                            <th>Użytkownik</th>
+                            <th>Opis</th>
+                            <th>Dodane przez</th>
+                            <th>Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tempPaymentsTable">
+                        <tr>
+                            <td colspan="7" class="text-center">Brak przelewów do wyświetlenia</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+function loadBankStatement() {
+    const fileInput = document.getElementById('bankStatement');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert('Proszę wybrać plik');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const content = e.target.result;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, 'text/html');
+        
+        // Find all transaction rows
+        const rows = doc.querySelectorAll('table tr');
+        const payments = [];
+        
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 4) {  // Check if it's a transaction row
+                const dateCell = cells[0];  // Data księgowania column
+                const descriptionCell = cells[2];  // Opis operacji column
+                const amountCell = cells[3];  // Kwota column
+                
+                if (dateCell && amountCell && descriptionCell) {
+                    const date = dateCell.textContent.trim();
+                    const description = descriptionCell.textContent.trim();
+                    const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
+                    
+                    if (!isNaN(parseFloat(amount))) {
+                        payments.push({
+                            amount: parseFloat(amount),
+                            date: date,
+                            type: '-',
+                            user: '-',
+                            description: description,
+                            created_by: '-'
+                        });
+                    }
+                }
+            }
+        });
+
+        displayTemporaryPayments(payments);
+    };
+    
+    reader.readAsText(file);
+}
+
+function displayTemporaryPayments(payments) {
+    const tbody = document.getElementById('tempPaymentsTable');
+    if (payments.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">Brak przelewów do wyświetlenia</td>
+            </tr>`;
+        return;
+    }
+
+    tbody.innerHTML = payments.map(payment => `
+        <tr>
+            <td>${payment.date}</td>
+            <td>${payment.type}</td>
+            <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
+                ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
+            </td>
+            <td>${payment.user}</td>
+            <td>${payment.description}</td>
+            <td>${payment.created_by}</td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="removeTemporaryPayment(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function removeTemporaryPayment(button) {
+    const row = button.closest('tr');
+    row.remove();
+    
+    // Check if there are any rows left
+    const tbody = document.getElementById('tempPaymentsTable');
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">Brak przelewów do wyświetlenia</td>
+            </tr>`;
+    }
+}
+</script>
+{% endblock %}
+{% endblock %} 

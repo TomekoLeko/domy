@@ -49,6 +49,11 @@ class Payment(models.Model):
         auto_now_add=True,
         verbose_name="Data utworzenia"
     )
+    payment_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Data płatności"
+    )
 
     class Meta:
         ordering = ['-created_at']

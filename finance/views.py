@@ -33,3 +33,7 @@ def delete_payment(request, payment_id):
     payment = get_object_or_404(Payment, id=payment_id)
     payment.delete()
     return JsonResponse({'status': 'success'})
+
+@staff_member_required
+def add_multiple_transfers(request):
+    return render(request, 'finance/add_multiple_transfers.html')
