@@ -267,11 +267,40 @@ function updateAcceptedPaymentsTable() {
 }
 
 function saveAllPayments() {
-    // Here you would add the code to save all accepted payments to the database
-    console.log('Saving payments:', acceptedPayments);
-    // After saving, clear the accepted payments
-    acceptedPayments = [];
-    updateAcceptedPaymentsTable();
+    if (!acceptedPayments.length) {
+        alert('Brak płatności do zapisania');
+        return;
+    }
+
+    if (!confirm('Czy na pewno chcesz zapisać wszystkie płatności?')) {
+        return;
+    }
+
+    fetch('{% url "finance:save_multiple_payments" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            payments: acceptedPayments
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Płatności zostały zapisane pomyślnie');
+            acceptedPayments = [];
+            updateAcceptedPaymentsTable();
+            location.href = '{% url "finance:main" %}';  // Redirect to main finance page
+        } else {
+            alert('Wystąpił błąd: ' + (data.message || 'Nieznany błąd'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas zapisywania płatności');
+    });
 }
 
 function removeTemporaryPayment(button) {
@@ -292,11 +321,11 @@ function checkTemporaryTable() {
 
 function cancelAcceptedPayment(index) {
     const payment = acceptedPayments[index];
-    
+
     // Remove from accepted payments
     acceptedPayments.splice(index, 1);
     updateAcceptedPaymentsTable();
-    
+ 
     // Add back to temporary payments
     const tempPayments = [{
         date: payment.date,
@@ -306,7 +335,7 @@ function cancelAcceptedPayment(index) {
         description: payment.description,
         created_by: '-'
     }];
-    
+
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
     if (tbody.querySelector('td[colspan="7"]')) {
@@ -319,4 +348,4 @@ function cancelAcceptedPayment(index) {
 }
 </script>
 {% endblock %}
-{% endblock %} 
+{% endblock %}

@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
+import json
 
 User = get_user_model()
 
@@ -15,7 +16,7 @@ User = get_user_model()
 def finance_main(request):
     payments = Payment.objects.all().select_related('related_user', 'created_by')[:50]
     form = PaymentForm()
-    
+
     if request.method == 'POST':
         form = PaymentForm(request.POST)
         if form.is_valid():
@@ -79,3 +80,24 @@ def get_filtered_orders(request):
             for order in orders
         ]
     })
+
+@require_POST
+@staff_member_required
+def save_multiple_payments(request):
+    try:
+        data = json.loads(request.body)
+        payments = data.get('payments', [])
+
+        for payment_data in payments:
+            Payment.objects.create(
+                payment_date=payment_data['date'],
+                payment_type=payment_data['type'] or 'other',  # Default to 'other' if type is empty
+                amount=payment_data['amount'],
+                description=payment_data['description'],
+                related_user=None,  # For now, we're not handling user relations
+                created_by=request.user
+            )
+
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
