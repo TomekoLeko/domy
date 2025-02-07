@@ -18,7 +18,6 @@
         </button>
     </div>
 
-    <!-- Add Payment Form -->
     <div class="collapse mb-4" id="addPaymentForm">
         <div class="card">
             <div class="card-header">
@@ -28,10 +27,6 @@
                 <form method="post">
                     {% csrf_token %}
                     <div class="row">
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">{{ form.amount.label }}</label>
-                            {{ form.amount }}
-                        </div>
                         <div class="col-md-3 mb-3">
                             <label class="form-label">{{ form.payment_type.label }}</label>
                             {{ form.payment_type }}
@@ -44,10 +39,20 @@
                             <label class="form-label">{{ form.related_order.label }}</label>
                             {{ form.related_order }}
                         </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.amount.label }}</label>
+                            {{ form.amount }}
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">{{ form.description.label }}</label>
-                        {{ form.description }}
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.payment_date.label }}</label>
+                            {{ form.payment_date }}
+                        </div>
+                        <div class="col-md-9 mb-3">
+                            <label class="form-label">{{ form.description.label }}</label>
+                            {{ form.description }}
+                        </div>
                     </div>
                     <div class="text-end">
                         <button type="submit" class="btn btn-success">Zapisz</button>
@@ -57,7 +62,6 @@
         </div>
     </div>
 
-    <!-- Payments List -->
     <div class="card">
         <div class="card-header">
             <h5 class="mb-0">Historia płatności</h5>
@@ -124,23 +128,67 @@
 </div>
 
 {% block extra_js %}
+{{ block.super }}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const addButton = document.querySelector('[data-bs-toggle="collapse"]');
-    const buttonText = addButton.querySelector('.button-text');
-    const icon = addButton.querySelector('.bi');
+function handlePaymentTypeChange(paymentType) {
+    const userSelect = document.querySelector('#id_related_user');
+    const orderField = document.querySelector('#id_related_order').closest('.col-md-3');
 
-    addButton.addEventListener('click', function() {
-        if (addButton.getAttribute('aria-expanded') === 'true') {
-            buttonText.textContent = 'Zamknij';
-            icon.classList.remove('bi-plus-circle');
-            icon.classList.add('bi-dash-circle');
-        } else {
-            buttonText.textContent = 'Dodaj płatność';
-            icon.classList.remove('bi-dash-circle');
-            icon.classList.add('bi-plus-circle');
-        }
+    if (paymentType === 'contribution') {
+        orderField.style.display = 'none';
+    } else {
+        orderField.style.display = 'block';
+    }
+
+    fetch(`{% url 'finance:get_filtered_users' %}?payment_type=${paymentType}`)
+        .then(response => response.json())
+        .then(data => {
+            userSelect.innerHTML = '<option value="">---------</option>';
+
+            data.users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.name;
+                userSelect.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function handleUserChange(userId) {
+    const orderSelect = document.querySelector('#id_related_order');
+
+    fetch(`{% url 'finance:get_filtered_orders' %}?user_id=${userId}`)
+        .then(response => response.json())
+        .then(data => {
+
+            orderSelect.innerHTML = '<option value="">---------</option>';
+
+            data.orders.forEach(order => {
+                const option = document.createElement('option');
+                option.value = order.id;
+                option.textContent = order.display;
+                orderSelect.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const paymentTypeSelect = document.querySelector('#id_payment_type');
+    const userSelect = document.querySelector('#id_related_user');
+
+    if (paymentTypeSelect.value) {
+        handlePaymentTypeChange(paymentTypeSelect.value);
+    }
+
+    userSelect.addEventListener('change', function() {
+        handleUserChange(this.value);
     });
+
+    if (userSelect.value) {
+        handleUserChange(userSelect.value);
+    }
 });
 
 function deletePayment(paymentId) {
@@ -165,4 +213,4 @@ function deletePayment(paymentId) {
 }
 </script>
 {% endblock %}
-{% endblock %} 
+{% endblock %}

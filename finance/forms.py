@@ -8,24 +8,35 @@ User = get_user_model()
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
-        fields = ['amount', 'payment_type', 'description', 'related_user', 'related_order']
+        fields = ['payment_type', 'related_user', 'related_order', 'amount', 'payment_date', 'description']
         widgets = {
-            'amount': forms.NumberInput(attrs={'class': 'form-control'}),
-            'payment_type': forms.Select(attrs={'class': 'form-select'}),
-            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'related_user': forms.Select(attrs={'class': 'form-select'}),
+            'payment_type': forms.Select(attrs={
+                'class': 'form-select',
+                'onchange': 'handlePaymentTypeChange(this.value)'
+            }),
+            'related_user': forms.Select(attrs={
+                'class': 'form-select',
+                'onchange': 'handleUserChange(this.value)'
+            }),
             'related_order': forms.Select(attrs={'class': 'form-select'}),
+            'amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'payment_date': forms.DateInput(attrs={
+                'class': 'form-control',
+                'type': 'date',
+                'required': 'required'
+            }),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['related_user'].queryset = User.objects.filter(is_active=True).select_related('profile')
         self.fields['related_order'].queryset = Order.objects.all().order_by('-created_at')
-        
-        # Make fields optional
+
         self.fields['related_user'].required = False
         self.fields['related_order'].required = False
-        self.fields['description'].required = False  # Make description optional
+        self.fields['description'].required = False
+        self.fields['payment_date'].required = True
 
         # Override the label_from_instance method to show name or username
         self.fields['related_user'].label_from_instance = lambda user: (
