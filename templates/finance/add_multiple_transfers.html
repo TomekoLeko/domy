@@ -11,7 +11,6 @@
         </a>
     </div>
 
-    <!-- File upload section -->
     <div class="card mb-4">
         <div class="card-body">
             <input type="file" id="bankStatement" accept=".html" class="form-control mb-3">
@@ -21,8 +20,7 @@
         </div>
     </div>
 
-    <!-- Temporary payments table -->
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-header">
             <h5 class="mb-0">Znalezione przelewy</h5>
         </div>
@@ -49,14 +47,46 @@
             </div>
         </div>
     </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Zaakceptowane przelewy</h5>
+            <button onclick="saveAllPayments()" class="btn btn-success" id="saveAllButton" style="display: none;">
+                <i class="bi bi-save me-2"></i>Zapisz wszystkie
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Data płatności</th>
+                            <th>Typ</th>
+                            <th>Kwota</th>
+                            <th>Użytkownik</th>
+                            <th>Opis</th>
+                            <th>Dodane przez</th>
+                        </tr>
+                    </thead>
+                    <tbody id="acceptedPaymentsTable">
+                        <tr>
+                            <td colspan="6" class="text-center">Brak zaakceptowanych przelewów</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% block extra_js %}
 <script>
+let acceptedPayments = [];
+
 function loadBankStatement() {
     const fileInput = document.getElementById('bankStatement');
     const file = fileInput.files[0];
-    
+
     if (!file) {
         alert('Proszę wybrać plik');
         return;
@@ -67,23 +97,22 @@ function loadBankStatement() {
         const content = e.target.result;
         const parser = new DOMParser();
         const doc = parser.parseFromString(content, 'text/html');
-        
-        // Find all transaction rows
+
         const rows = doc.querySelectorAll('table tr');
         const payments = [];
-        
+
         rows.forEach(row => {
             const cells = row.querySelectorAll('td');
             if (cells.length >= 4) {  // Check if it's a transaction row
                 const dateCell = cells[0];  // Data księgowania column
                 const descriptionCell = cells[2];  // Opis operacji column
                 const amountCell = cells[3];  // Kwota column
-                
+
                 if (dateCell && amountCell && descriptionCell) {
                     const date = dateCell.textContent.trim();
                     const description = descriptionCell.textContent.trim();
                     const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
-                    
+
                     if (!isNaN(parseFloat(amount))) {
                         payments.push({
                             amount: parseFloat(amount),
@@ -116,6 +145,106 @@ function displayTemporaryPayments(payments) {
 
     tbody.innerHTML = payments.map(payment => `
         <tr>
+            <td class="payment-field">${payment.date}</td>
+            <td class="payment-field">-</td>
+            <td class="payment-field ${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
+                ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
+            </td>
+            <td class="payment-field">-</td>
+            <td class="payment-field">${payment.description}</td>
+            <td>-</td>
+            <td>
+                <div class="btn-group" role="group" style="gap: 5px;">
+                    <button class="btn btn-sm btn-primary" onclick="editPayment(this)">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="savePayment(this)" style="display: none;">
+                        <i class="bi bi-check"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="acceptPayment(this)">
+                        <i class="bi bi-check-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="removeTemporaryPayment(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function editPayment(button) {
+    const row = button.closest('tr');
+    const fields = row.querySelectorAll('.payment-field');
+
+    fields.forEach(field => {
+        const currentValue = field.textContent.trim();
+        if (field.classList.contains('text-success') || field.classList.contains('text-danger')) {
+            // Handle amount field
+            const amount = currentValue.replace(/[+zł\s]/g, '');
+            field.innerHTML = `<input type="number" step="0.01" class="form-control form-control-sm" value="${amount}">`;
+        } else {
+            field.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentValue}">`;
+        }
+    });
+
+    button.style.display = 'none';
+    button.nextElementSibling.style.display = 'inline-block';
+}
+
+function savePayment(button) {
+    const row = button.closest('tr');
+    const fields = row.querySelectorAll('.payment-field');
+    
+    fields.forEach(field => {
+        const input = field.querySelector('input');
+        const value = input.value;
+        
+        if (field.classList.contains('text-success') || field.classList.contains('text-danger')) {
+            // Handle amount field
+            const amount = parseFloat(value);
+            field.innerHTML = `${amount >= 0 ? '+' : ''}${amount.toFixed(2)} zł`;
+            field.className = `payment-field ${amount >= 0 ? 'text-success' : 'text-danger'}`;
+        } else {
+            field.textContent = value;
+        }
+    });
+
+    button.style.display = 'none';
+    button.previousElementSibling.style.display = 'inline-block';
+}
+
+function acceptPayment(button) {
+    const row = button.closest('tr');
+    const paymentData = {
+        date: row.cells[0].textContent.trim(),
+        type: row.cells[1].textContent.trim(),
+        amount: parseFloat(row.cells[2].textContent.replace(/[+zł\s]/g, '')),
+        user: row.cells[3].textContent.trim(),
+        description: row.cells[4].textContent.trim()
+    };
+    
+    acceptedPayments.push(paymentData);
+    updateAcceptedPaymentsTable();
+    row.remove();
+    
+    // Check if temporary table is empty
+    checkTemporaryTable();
+}
+
+function updateAcceptedPaymentsTable() {
+    const tbody = document.getElementById('acceptedPaymentsTable');
+    if (acceptedPayments.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
+            </tr>`;
+        document.getElementById('saveAllButton').style.display = 'none';
+        return;
+    }
+
+    tbody.innerHTML = acceptedPayments.map((payment, index) => `
+        <tr>
             <td>${payment.date}</td>
             <td>${payment.type}</td>
             <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
@@ -123,27 +252,69 @@ function displayTemporaryPayments(payments) {
             </td>
             <td>${payment.user}</td>
             <td>${payment.description}</td>
-            <td>${payment.created_by}</td>
             <td>
-                <button class="btn btn-sm btn-danger" onclick="removeTemporaryPayment(this)">
-                    <i class="bi bi-trash"></i>
-                </button>
+                <div class="d-flex align-items-center justify-content-between">
+                    <span>-</span>
+                    <button class="btn btn-sm btn-warning" onclick="cancelAcceptedPayment(${index})">
+                        <i class="bi bi-arrow-return-left"></i>
+                    </button>
+                </div>
             </td>
         </tr>
     `).join('');
+    
+    document.getElementById('saveAllButton').style.display = 'block';
+}
+
+function saveAllPayments() {
+    // Here you would add the code to save all accepted payments to the database
+    console.log('Saving payments:', acceptedPayments);
+    // After saving, clear the accepted payments
+    acceptedPayments = [];
+    updateAcceptedPaymentsTable();
 }
 
 function removeTemporaryPayment(button) {
     const row = button.closest('tr');
     row.remove();
-    
-    // Check if there are any rows left
+    checkTemporaryTable();
+}
+
+function checkTemporaryTable() {
     const tbody = document.getElementById('tempPaymentsTable');
     if (tbody.children.length === 0) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="7" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
+    }
+}
+
+function cancelAcceptedPayment(index) {
+    const payment = acceptedPayments[index];
+    
+    // Remove from accepted payments
+    acceptedPayments.splice(index, 1);
+    updateAcceptedPaymentsTable();
+    
+    // Add back to temporary payments
+    const tempPayments = [{
+        date: payment.date,
+        amount: payment.amount,
+        type: payment.type,
+        user: payment.user,
+        description: payment.description,
+        created_by: '-'
+    }];
+    
+    // Clear "no payments" message if it exists
+    const tbody = document.getElementById('tempPaymentsTable');
+    if (tbody.querySelector('td[colspan="7"]')) {
+        displayTemporaryPayments(tempPayments);
+    } else {
+        // Append to existing payments
+        const currentHtml = tbody.innerHTML;
+        tbody.innerHTML = displayTemporaryPayments(tempPayments) + currentHtml;
     }
 }
 </script>
