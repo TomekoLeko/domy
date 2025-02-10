@@ -85,8 +85,7 @@
                         <tr>
                             <td>{{ payment.payment_date|date:"d.m.Y" }}</td>
                             <td>{{ payment.get_payment_type_display }}</td>
-                            <td class="{% if payment.payment_type in 'contribution,order_payment' %}text-success{% else %}text-danger{% endif %}">
-                                {% if payment.payment_type in 'contribution,order_payment' %}+{% else %}-{% endif %}
+                            <td class="{% if payment.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
                                 {{ payment.amount }} zł
                             </td>
                             <td>
