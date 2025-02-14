@@ -68,16 +68,27 @@
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table">
+                <table 
+                    class="table"
+                    id="paymentsTable"
+                    data-toggle="table"
+                    data-sort-name="payment_date"
+                    data-sort-order="desc"
+                    data-pagination="true"
+                    data-page-size="50"
+                    data-show-columns="false"
+                    data-icons-prefix="bi"
+                    data-icons="customIcons"
+                >
                     <thead>
                         <tr>
-                            <th>Data płatności</th>
-                            <th>Typ</th>
-                            <th>Kwota</th>
-                            <th>Użytkownik</th>
-                            <th>Opis</th>
-                            <th>Dodane przez</th>
-                            <th>Akcje</th>
+                            <th data-field="payment_date" data-sortable="true" data-sorter="dateSorter">Data płatności</th>
+                            <th data-field="type" data-sortable="true">Typ</th>
+                            <th data-field="amount" data-sortable="true" data-sorter="amountSorter">Kwota</th>
+                            <th data-field="user" data-sortable="true">Użytkownik</th>
+                            <th data-field="description" data-sortable="true">Opis</th>
+                            <th data-field="created_by" data-sortable="true">Dodane przez</th>
+                            <th data-field="actions" data-sortable="false">Akcje</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -210,6 +221,31 @@ function deletePayment(paymentId) {
         });
     }
 }
+
+// Custom sorters for date and amount
+function dateSorter(a, b) {
+    let dateA = new Date(a.split('.').reverse().join('-'));
+    let dateB = new Date(b.split('.').reverse().join('-'));
+    return dateA - dateB;
+}
+
+function amountSorter(a, b) {
+    let amountA = parseFloat(a.replace(/[^\d.-]/g, ''));
+    let amountB = parseFloat(b.replace(/[^\d.-]/g, ''));
+    return amountA - amountB;
+}
+
+// Initialize the table
+$(function() {
+    $('#paymentsTable').bootstrapTable({
+        locale: 'pl-PL',
+        sortable: true,
+        sortName: 'payment_date',
+        sortOrder: 'desc',
+        pagination: true,
+        pageSize: 50
+    });
+});
 </script>
 {% endblock %}
 {% endblock %}
