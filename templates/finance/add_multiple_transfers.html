@@ -109,7 +109,7 @@ function loadBankStatement() {
         const doc = parser.parseFromString(content, 'text/html');
 
         const rows = doc.querySelectorAll('table tr');
-        const payments = [];
+        let payments = [];
 
         rows.forEach(row => {
             const cells = row.querySelectorAll('td');
@@ -120,7 +120,7 @@ function loadBankStatement() {
 
                 if (dateCell && amountCell && descriptionCell) {
                     const date = dateCell.textContent.trim();
-                    const description = descriptionCell.textContent.trim();
+                    let description = descriptionCell.innerHTML.replace(/<br\s*\/?>/gi, ' ').trim();
                     const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
 
                     if (!isNaN(parseFloat(amount))) {
@@ -137,10 +137,20 @@ function loadBankStatement() {
             }
         });
 
-        displayTemporaryPayments(payments);
+        displayTemporaryPayments(sanitizePayments(payments));
     };
-    
+
     reader.readAsText(file);
+}
+
+function sanitizePayments(payments) {
+    return payments.map(payment => ({
+        amount: parseFloat(payment.amount),
+        date: payment.date,
+        type: payment.type,
+        user: payment.user,
+        description: payment.description.replace(/\s+/g, ' ').trim()
+    }));
 }
 
 function displayTemporaryPayments(payments) {
@@ -189,6 +199,9 @@ function editPayment(button) {
     const row = button.closest('tr');
     const fields = row.querySelectorAll('.payment-field');
 
+    const acceptButton = row.querySelector('td:first-child button');
+    acceptButton.disabled = true;
+
     fields.forEach(field => {
         const currentValue = field.textContent.trim();
         if (field.classList.contains('amount-field')) {
@@ -214,6 +227,10 @@ function editPayment(button) {
 function savePayment(button) {
     const row = button.closest('tr');
     const fields = row.querySelectorAll('.payment-field');
+    
+
+    const acceptButton = row.querySelector('td:first-child button');
+    acceptButton.disabled = false;
     
     fields.forEach(field => {
         const input = field.querySelector('input');
