@@ -41,7 +41,8 @@ def delete_payment(request, payment_id):
 
 @staff_member_required
 def add_multiple_transfers(request):
-    return render(request, 'finance/add_multiple_transfers.html')
+    payment_types = Payment.PAYMENT_TYPES
+    return render(request, 'finance/add_multiple_transfers.html', {'payment_types': payment_types})
 
 @staff_member_required
 def get_filtered_users(request):

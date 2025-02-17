@@ -12,12 +12,12 @@ class Payment(models.Model):
     ]
 
     amount = models.DecimalField(
-        max_digits=10, 
+        max_digits=10,
         decimal_places=2,
         verbose_name="Kwota"
     )
     payment_type = models.CharField(
-        max_length=20, 
+        max_length=20,
         choices=PAYMENT_TYPES,
         verbose_name="Typ płatności"
     )
