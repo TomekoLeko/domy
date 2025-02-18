@@ -91,18 +91,15 @@
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table 
+                <table
                     class="table"
                     id="paymentsTable"
                     data-toggle="table"
-                    data-sort-name="payment_date"
-                    data-sort-order="desc"
                     data-pagination="true"
+                    data-icons-prefix="bi"
                     data-page-size="50"
                     data-page-list="[10, 20, 50]"
-                    data-show-columns="false"
-                    data-icons-prefix="bi"
-                    data-icons="customIcons"
+
                 >
                     <thead>
                         <tr>
@@ -263,12 +260,8 @@ function amountSorter(a, b) {
 $(function() {
     $('#paymentsTable').bootstrapTable({
         locale: 'pl-PL',
-        sortable: true,
         sortName: 'payment_date',
-        sortOrder: 'desc',
-        pagination: true,
-        showColumns: false,
-        search: false
+        sortOrder: 'desc'
     });
 });
 
