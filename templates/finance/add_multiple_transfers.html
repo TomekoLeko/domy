@@ -91,6 +91,11 @@
 
 {% block extra_js %}
 <script>
+{% autoescape off %}
+const PAYMENT_TYPES = {{ payment_types|safe }};
+{% endautoescape %}
+const paymentTypes = PAYMENT_TYPES;
+
 let acceptedPayments = [];
 
 function loadBankStatement() {
@@ -113,10 +118,10 @@ function loadBankStatement() {
 
         rows.forEach(row => {
             const cells = row.querySelectorAll('td');
-            if (cells.length >= 4) {  // Check if it's a transaction row
-                const dateCell = cells[0];  // Data księgowania column
-                const descriptionCell = cells[2];  // Opis operacji column
-                const amountCell = cells[3];  // Kwota column
+            if (cells.length >= 4) {
+                const dateCell = cells[0];
+                const descriptionCell = cells[2];
+                const amountCell = cells[3];
 
                 if (dateCell && amountCell && descriptionCell) {
                     const date = dateCell.textContent.trim();
@@ -176,14 +181,18 @@ function determinePaymentType(description) {
         upperDescription.includes(beneficiary.toUpperCase())
     );
 
+    const paymentsMap = Object.fromEntries(
+        paymentTypes.map(({ value, label }) => [value, label])
+    );
+
     if (isContributorPayment) {
-        return {key: 'contribution', label: 'Wpłata od wspierającego'};
+        return {value: 'contribution', label: paymentsMap['contribution']};
     } else if (isInvoicePayment) {
-        return {key: 'invoice', label: 'Faktura'};
+        return {value: 'invoice', label: paymentsMap['invoice']};
     } else if (isBeneficiaryPayment) {
-        return {key: 'beneficiary', label: 'Zamówienie beneficjenta'};
+        return {value: 'beneficiary', label: paymentsMap['beneficiary']};
     } else {
-        return {key: 'order', label: 'Inne'};
+        return {value: 'order', label: paymentsMap['order']};
     }
 }
 
@@ -205,7 +214,7 @@ function displayTemporaryPayments(payments) {
                 </button>
             </td>
             <td class="payment-field date-field">${payment.date}</td>
-            <td class="payment-field payment-type-field" data-type-key="${payment.type.key}">
+            <td class="payment-field payment-type-field" data-type-key="${payment.type.value}">
                 ${payment.type.label}
             </td>
             <td class="payment-field amount-field ${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
@@ -241,21 +250,22 @@ function editPayment(button) {
     fields.forEach(field => {
         const currentValue = field.textContent.trim();
         if (field.classList.contains('amount-field')) {
-            // Handle amount field
             const amount = currentValue.replace(/[+zł\s]/g, '');
             field.innerHTML = `<input type="number" step="0.01" class="form-control form-control-sm" value="${amount}">`;
         } else if (field.classList.contains('payment-type-field')) {
-            // Get the current payment type key from the data
             const typeKey = field.dataset.typeKey || '';
+            
+            const options = paymentTypes.map(type => 
+                `<option value="${type.value}" ${typeKey === type.value ? 'selected' : ''}>
+                    ${type.label}
+                </option>`
+            ).join('');
 
-            field.innerHTML = `<select class="form-control form-control-sm">
-                <option value="">-</option>
-                {% for value, label in payment_types %}
-                    <option value="{{ value }}" ${typeKey === "{{ value }}" ? 'selected' : ''}>
-                        {{ label }}
-                    </option>
-                {% endfor %}
-            </select>`;
+            field.innerHTML = `
+                <select class="form-control form-control-sm">
+                    <option value="">-</option>
+                    ${options}
+                </select>`;
         } else {
             field.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentValue}">`;
         }

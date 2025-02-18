@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
+from django.core.serializers.json import DjangoJSONEncoder
 import json
 
 User = get_user_model()
@@ -41,8 +42,9 @@ def delete_payment(request, payment_id):
 
 @staff_member_required
 def add_multiple_transfers(request):
-    payment_types = Payment.PAYMENT_TYPES
-    return render(request, 'finance/add_multiple_transfers.html', {'payment_types': payment_types})
+    payment_types = [{'value': value, 'label': label} for value, label in Payment.PAYMENT_TYPES]
+    payment_types_json = json.dumps(payment_types)
+    return render(request, 'finance/add_multiple_transfers.html', {'payment_types': payment_types_json})
 
 @staff_member_required
 def get_filtered_users(request):
