@@ -62,6 +62,29 @@
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="dateFilterForm" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="dateFrom" class="form-label">Data od</label>
+                    <input type="date" class="form-control" id="dateFrom" name="date_from">
+                </div>
+                <div class="col-md-4">
+                    <label for="dateTo" class="form-label">Data do</label>
+                    <input type="date" class="form-control" id="dateTo" name="date_to">
+                </div>
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-primary" onclick="filterPayments()">
+                        <i class="bi bi-funnel me-2"></i>Filtruj
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="clearFilters()">
+                        <i class="bi bi-x-circle me-2"></i>Wyczyść
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="card">
         <div class="card-header">
             <h5 class="mb-0">Historia płatności</h5>
@@ -245,6 +268,57 @@ $(function() {
         pagination: true,
         pageSize: 50
     });
+});
+
+function filterPayments() {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+
+    const table = $('#paymentsTable');
+
+    table.bootstrapTable('filterBy', {}, {
+        'filterAlgorithm': function(row) {
+            if (!dateFrom && !dateTo) return true;
+
+            const [day, month, year] = row.payment_date.split('.');
+            const paymentDate = new Date(year, month - 1, day);
+
+            const fromDate = dateFrom ? new Date(dateFrom) : null;
+            const toDate = dateTo ? new Date(dateTo) : null;
+
+            paymentDate.setHours(0, 0, 0, 0);
+            if (fromDate) fromDate.setHours(0, 0, 0, 0);
+            if (toDate) toDate.setHours(23, 59, 59, 999);
+
+            if (fromDate && toDate) {
+                return paymentDate >= fromDate && paymentDate <= toDate;
+            } else if (fromDate) {
+                return paymentDate >= fromDate;
+            } else if (toDate) {
+                return paymentDate <= toDate;
+            }
+
+            return true;
+        }
+    });
+}
+
+function clearFilters() {
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    $('#paymentsTable').bootstrapTable('filterBy', {});
+}
+
+// Initialize with current date range if any
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const dateFrom = urlParams.get('date_from');
+    const dateTo = urlParams.get('date_to');
+
+    if (dateFrom) document.getElementById('dateFrom').value = dateFrom;
+    if (dateTo) document.getElementById('dateTo').value = dateTo;
+
+    if (dateFrom || dateTo) filterPayments();
 });
 </script>
 {% endblock %}
