@@ -5,10 +5,12 @@ from decimal import Decimal
 class Payment(models.Model):
     PAYMENT_TYPES = [
         ('contribution', 'Wpłata od wspierającego'),
-        ('order_payment', 'Płatność za zamówienie'),
+        ('order', 'Płatność za zamówienie'),
+        ('beneficiary', 'Zamówienie beneficjenta'),
         ('refund', 'Zwrot środków'),
         ('expense', 'Wydatek'),
         ('other', 'Inne'),
+        ('invoice', 'Faktura'),
     ]
 
     amount = models.DecimalField(
