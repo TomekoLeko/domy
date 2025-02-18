@@ -205,7 +205,9 @@ function displayTemporaryPayments(payments) {
                 </button>
             </td>
             <td class="payment-field date-field">${payment.date}</td>
-            <td class="payment-field payment-type-field">${payment.type.label}</td>
+            <td class="payment-field payment-type-field" data-type-key="${payment.type.key}">
+                ${payment.type.label}
+            </td>
             <td class="payment-field amount-field ${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
@@ -243,10 +245,15 @@ function editPayment(button) {
             const amount = currentValue.replace(/[+zł\s]/g, '');
             field.innerHTML = `<input type="number" step="0.01" class="form-control form-control-sm" value="${amount}">`;
         } else if (field.classList.contains('payment-type-field')) {
+            // Get the current payment type key from the data
+            const typeKey = field.dataset.typeKey || '';
+
             field.innerHTML = `<select class="form-control form-control-sm">
                 <option value="">-</option>
                 {% for value, label in payment_types %}
-                    <option value="{{ value }}">{{ label }}</option>
+                    <option value="{{ value }}" ${typeKey === "{{ value }}" ? 'selected' : ''}>
+                        {{ label }}
+                    </option>
                 {% endfor %}
             </select>`;
         } else {
@@ -261,15 +268,15 @@ function editPayment(button) {
 function savePayment(button) {
     const row = button.closest('tr');
     const fields = row.querySelectorAll('.payment-field');
-    
+
 
     const acceptButton = row.querySelector('td:first-child button');
     acceptButton.disabled = false;
-    
+
     fields.forEach(field => {
         const input = field.querySelector('input');
         const select = field.querySelector('select');
-        
+
         if (field.classList.contains('amount-field')) {
             // Handle amount field
             const amount = parseFloat(input.value);
