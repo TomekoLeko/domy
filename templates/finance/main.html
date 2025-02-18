@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Finanse{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Finanse</h2>
+        <a href="{% url 'finance:add_multiple_transfers' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-right-circle me-2"></i>Dodaj wiele przelewów
+        </a>
+    </div>
+
+    <div class="mb-4">
+        <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#addPaymentForm">
+            <i class="bi bi-plus-circle me-2"></i>
+            <span class="button-text">Dodaj płatność</span>
+        </button>
+    </div>
+
+    <div class="collapse mb-4" id="addPaymentForm">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Nowa płatność</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.payment_type.label }}</label>
+                            {{ form.payment_type }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.related_user.label }}</label>
+                            {{ form.related_user }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.related_order.label }}</label>
+                            {{ form.related_order }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.amount.label }}</label>
+                            {{ form.amount }}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">{{ form.payment_date.label }}</label>
+                            {{ form.payment_date }}
+                        </div>
+                        <div class="col-md-9 mb-3">
+                            <label class="form-label">{{ form.description.label }}</label>
+                            {{ form.description }}
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-success">Zapisz</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Historia płatności</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table 
+                    class="table"
+                    id="paymentsTable"
+                    data-toggle="table"
+                    data-sort-name="payment_date"
+                    data-sort-order="desc"
+                    data-pagination="true"
+                    data-page-size="50"
+                    data-show-columns="false"
+                    data-icons-prefix="bi"
+                    data-icons="customIcons"
+                >
+                    <thead>
+                        <tr>
+                            <th data-field="payment_date" data-sortable="true" data-sorter="dateSorter">Data płatności</th>
+                            <th data-field="type" data-sortable="true">Typ</th>
+                            <th data-field="amount" data-sortable="true" data-sorter="amountSorter">Kwota</th>
+                            <th data-field="user" data-sortable="true">Użytkownik</th>
+                            <th data-field="description" data-sortable="true">Opis</th>
+                            <th data-field="created_by" data-sortable="true">Dodane przez</th>
+                            <th data-field="actions" data-sortable="false">Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr>
+                            <td>{{ payment.payment_date|date:"d.m.Y" }}</td>
+                            <td>{{ payment.get_payment_type_display }}</td>
+                            <td class="{% if payment.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {{ payment.amount }} zł
+                            </td>
+                            <td>
+                                {% if payment.related_user %}
+                                    {% if payment.related_user.profile.name %}
+                                        {{ payment.related_user.profile.name }}
+                                    {% else %}
+                                        {{ payment.related_user.username }}
+                                    {% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ payment.description }}</td>
+                            <td>
+                                {% if payment.created_by.profile.name %}
+                                    {{ payment.created_by.profile.name }}
+                                {% else %}
+                                    {{ payment.created_by.username }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" 
+                                        onclick="deletePayment({{ payment.id }})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center">Brak płatności</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+function handlePaymentTypeChange(paymentType) {
+    const userSelect = document.querySelector('#id_related_user');
+    const orderField = document.querySelector('#id_related_order').closest('.col-md-3');
+
+    if (paymentType === 'contribution') {
+        orderField.style.display = 'none';
+    } else {
+        orderField.style.display = 'block';
+    }
+
+    fetch(`{% url 'finance:get_filtered_users' %}?payment_type=${paymentType}`)
+        .then(response => response.json())
+        .then(data => {
+            userSelect.innerHTML = '<option value="">---------</option>';
+
+            data.users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.name;
+                userSelect.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function handleUserChange(userId) {
+    const orderSelect = document.querySelector('#id_related_order');
+
+    fetch(`{% url 'finance:get_filtered_orders' %}?user_id=${userId}`)
+        .then(response => response.json())
+        .then(data => {
+
+            orderSelect.innerHTML = '<option value="">---------</option>';
+
+            data.orders.forEach(order => {
+                const option = document.createElement('option');
+                option.value = order.id;
+                option.textContent = order.display;
+                orderSelect.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const paymentTypeSelect = document.querySelector('#id_payment_type');
+    const userSelect = document.querySelector('#id_related_user');
+
+    if (paymentTypeSelect.value) {
+        handlePaymentTypeChange(paymentTypeSelect.value);
+    }
+
+    userSelect.addEventListener('change', function() {
+        handleUserChange(this.value);
+    });
+
+    if (userSelect.value) {
+        handleUserChange(userSelect.value);
+    }
+});
+
+function deletePayment(paymentId) {
+    if (confirm('Czy na pewno chcesz usunąć tę płatność?')) {
+        fetch(`{% url 'finance:delete_payment' 0 %}`.replace('0', paymentId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas usuwania płatności');
+        });
+    }
+}
+
+// Custom sorters for date and amount
+function dateSorter(a, b) {
+    let dateA = new Date(a.split('.').reverse().join('-'));
+    let dateB = new Date(b.split('.').reverse().join('-'));
+    return dateA - dateB;
+}
+
+function amountSorter(a, b) {
+    let amountA = parseFloat(a.replace(/[^\d.-]/g, ''));
+    let amountB = parseFloat(b.replace(/[^\d.-]/g, ''));
+    return amountA - amountB;
+}
+
+// Initialize the table
+$(function() {
+    $('#paymentsTable').bootstrapTable({
+        locale: 'pl-PL',
+        sortable: true,
+        sortName: 'payment_date',
+        sortOrder: 'desc',
+        pagination: true,
+        pageSize: 50
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+
+{% block title %}Dodaj wiele przelewów{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Dodaj wiele przelewów</h2>
+        <a href="{% url 'finance:main' %}" class="btn btn-secondary">
+            <i class="bi bi-list me-2"></i>Lista płatności
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <input type="file" id="bankStatement" accept=".html" class="form-control mb-3">
+            <button onclick="loadBankStatement()" class="btn btn-primary">
+                <i class="bi bi-upload me-2"></i>Załaduj zestawienie
+            </button>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Znalezione przelewy</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Zatwierdź</th>
+                            <th>Data płatności</th>
+                            <th>Typ</th>
+                            <th>Kwota</th>
+                            <th>Użytkownik</th>
+                            <th>Opis</th>
+                            <th>Dodane przez</th>
+                            <th>Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tempPaymentsTable">
+                        <tr>
+                            <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Zaakceptowane przelewy</h5>
+            <button onclick="saveAllPayments()" class="btn btn-success" id="saveAllButton" style="display: none;">
+                <i class="bi bi-save me-2"></i>Zapisz wszystkie
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Data płatności</th>
+                            <th>Typ</th>
+                            <th>Kwota</th>
+                            <th>Użytkownik</th>
+                            <th>Opis</th>
+                            <th>Dodane przez</th>
+                        </tr>
+                    </thead>
+                    <tbody id="acceptedPaymentsTable">
+                        <tr>
+                            <td colspan="6" class="text-center">Brak zaakceptowanych przelewów</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .description-field, .description-cell {
+        max-width: 30rem;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        white-space: normal;
+    }
+</style>
+
+{% block extra_js %}
+<script>
+{% autoescape off %}
+const PAYMENT_TYPES = {{ payment_types|safe }};
+{% endautoescape %}
+const paymentTypes = PAYMENT_TYPES;
+
+let acceptedPayments = [];
+
+function loadBankStatement() {
+    const fileInput = document.getElementById('bankStatement');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert('Proszę wybrać plik');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const content = e.target.result;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, 'text/html');
+
+        const rows = doc.querySelectorAll('table tr');
+        let payments = [];
+
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 4) {
+                const dateCell = cells[0];
+                const descriptionCell = cells[2];
+                const amountCell = cells[3];
+
+                if (dateCell && amountCell && descriptionCell) {
+                    const date = dateCell.textContent.trim();
+                    let description = descriptionCell.innerHTML.replace(/<br\s*\/?>/gi, ' ').trim();
+                    const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
+
+                    if (!isNaN(parseFloat(amount))) {
+                        payments.push({
+                            amount: parseFloat(amount),
+                            date: date,
+                            type: '-',
+                            user: '-',
+                            description: description,
+                            created_by: '-'
+                        });
+                    }
+                }
+            }
+        });
+
+        payments = sanitizePayments(payments);
+        displayTemporaryPayments(payments);
+    };
+
+    reader.readAsText(file);
+}
+
+function sanitizePayments(payments) {
+    return payments.map(payment => ({
+        amount: parseFloat(payment.amount),
+        date: payment.date,
+        type: determinePaymentType(payment.description),
+        user: payment.user,
+        description: payment.description
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/PRZELEW ZEWNĘTRZNY PRZYCHODZĄCY/g, '')
+            .replace(/PRZELEW WEWNĘTRZNY PRZYCHODZĄCY/g, '')
+    }));
+}
+
+function determinePaymentType(description) {
+    // TODO: retrieve beneficiaries and contributors from the database
+    const tempContributors = ['PAWEŁ FERENC', 'MAREK SOSNOWSKI', 'ALEKSANDRA LISEK'];
+    const tempBeneficiaries = ['LUBIEJEWSKA ANNA'];
+    const tempInvoices = ['XFAANG'];
+
+    const upperDescription = description.toUpperCase();
+
+    const isContributorPayment = tempContributors.some(contributor =>
+        upperDescription.includes(contributor.toUpperCase())
+    );
+    const isInvoicePayment = tempInvoices.some(invoice =>
+        upperDescription.includes(invoice.toUpperCase())
+    );
+    const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary =>
+        upperDescription.includes(beneficiary.toUpperCase())
+    );
+
+    const paymentsMap = Object.fromEntries(
+        paymentTypes.map(({ value, label }) => [value, label])
+    );
+
+    if (isContributorPayment) {
+        return {value: 'contribution', label: paymentsMap['contribution']};
+    } else if (isInvoicePayment) {
+        return {value: 'invoice', label: paymentsMap['invoice']};
+    } else if (isBeneficiaryPayment) {
+        return {value: 'beneficiary', label: paymentsMap['beneficiary']};
+    } else {
+        return {value: 'order', label: paymentsMap['order']};
+    }
+}
+
+function displayTemporaryPayments(payments) {
+    const tbody = document.getElementById('tempPaymentsTable');
+    if (payments.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+            </tr>`;
+        return;
+    }
+
+    tbody.innerHTML = payments.map(payment => `
+        <tr>
+            <td>
+                <button class="btn btn-sm btn-success" onclick="acceptPayment(this)">
+                    <i class="bi bi-check-circle"></i>
+                </button>
+            </td>
+            <td class="payment-field date-field">${payment.date}</td>
+            <td class="payment-field payment-type-field" data-type-key="${payment.type.value}">
+                ${payment.type.label}
+            </td>
+            <td class="payment-field amount-field ${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
+                ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
+            </td>
+            <td class="payment-field user-field"></td>
+            <td class="payment-field description-field">${payment.description}</td>
+            <td>-</td>
+            <td>
+                <div class="btn-group" role="group" style="gap: 5px;">
+                    <button class="btn btn-sm btn-primary" onclick="editPayment(this)">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="savePayment(this)" style="display: none;">
+                        <i class="bi bi-check"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="removeTemporaryPayment(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function editPayment(button) {
+    const row = button.closest('tr');
+    const fields = row.querySelectorAll('.payment-field');
+
+    const acceptButton = row.querySelector('td:first-child button');
+    acceptButton.disabled = true;
+
+    fields.forEach(field => {
+        const currentValue = field.textContent.trim();
+        if (field.classList.contains('amount-field')) {
+            const amount = currentValue.replace(/[+zł\s]/g, '');
+            field.innerHTML = `<input type="number" step="0.01" class="form-control form-control-sm" value="${amount}">`;
+        } else if (field.classList.contains('payment-type-field')) {
+            const typeKey = field.dataset.typeKey || '';
+            
+            const options = paymentTypes.map(type => 
+                `<option value="${type.value}" ${typeKey === type.value ? 'selected' : ''}>
+                    ${type.label}
+                </option>`
+            ).join('');
+
+            field.innerHTML = `
+                <select class="form-control form-control-sm">
+                    <option value="">-</option>
+                    ${options}
+                </select>`;
+        } else {
+            field.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentValue}">`;
+        }
+    });
+
+    button.style.display = 'none';
+    button.nextElementSibling.style.display = 'inline-block';
+}
+
+function savePayment(button) {
+    const row = button.closest('tr');
+    const fields = row.querySelectorAll('.payment-field');
+
+
+    const acceptButton = row.querySelector('td:first-child button');
+    acceptButton.disabled = false;
+
+    fields.forEach(field => {
+        const input = field.querySelector('input');
+        const select = field.querySelector('select');
+
+        if (field.classList.contains('amount-field')) {
+            // Handle amount field
+            const amount = parseFloat(input.value);
+            field.innerHTML = `${amount >= 0 ? '+' : ''}${amount.toFixed(2)} zł`;
+            field.className = `payment-field amount-field ${amount >= 0 ? 'text-success' : 'text-danger'}`;
+        } else if (field.classList.contains('payment-type-field')) {
+            // Handle payment type field
+            field.textContent = select.options[select.selectedIndex].text;
+        } else {
+            // Handle other fields
+            field.textContent = input.value;
+        }
+    });
+
+    button.style.display = 'none';
+    button.previousElementSibling.style.display = 'inline-block';
+}
+
+function acceptPayment(button) {
+    const row = button.closest('tr');
+    const dateField = row.querySelector('.date-field');
+    const typeField = row.querySelector('.payment-type-field');
+    const typeSelect = typeField.querySelector('select');
+    const amountField = row.querySelector('.amount-field');
+    const userField = row.querySelector('.user-field');
+    const descriptionField = row.querySelector('.description-field');
+ 
+    const paymentData = {
+        date: dateField.textContent.trim(),
+        type: typeSelect ? typeSelect.value : typeField.textContent.trim(),
+        amount: parseFloat(amountField.textContent.replace(/[+zł\s]/g, '')),
+        user: userField.textContent.trim(),
+        description: descriptionField.textContent.trim()
+    };
+
+    acceptedPayments.push(paymentData);
+    updateAcceptedPaymentsTable();
+    row.remove();
+    checkTemporaryTable();
+}
+
+function updateAcceptedPaymentsTable() {
+    const tbody = document.getElementById('acceptedPaymentsTable');
+    if (acceptedPayments.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
+            </tr>`;
+        document.getElementById('saveAllButton').style.display = 'none';
+        return;
+    }
+
+    tbody.innerHTML = acceptedPayments.map((payment, index) => `
+        <tr>
+            <td>${payment.date}</td>
+            <td>${payment.type}</td>
+            <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
+                ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
+            </td>
+            <td>${payment.user}</td>
+            <td class="description-cell">${payment.description}</td>
+            <td>
+                <div class="d-flex align-items-center justify-content-between">
+                    <span>-</span>
+                    <button class="btn btn-sm btn-warning" onclick="cancelAcceptedPayment(${index})">
+                        <i class="bi bi-arrow-return-left"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+    
+    document.getElementById('saveAllButton').style.display = 'block';
+}
+
+function saveAllPayments() {
+    if (!acceptedPayments.length) {
+        alert('Brak płatności do zapisania');
+        return;
+    }
+
+    if (!confirm('Czy na pewno chcesz zapisać wszystkie płatności?')) {
+        return;
+    }
+
+    fetch('{% url "finance:save_multiple_payments" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            payments: acceptedPayments
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Płatności zostały zapisane pomyślnie');
+            acceptedPayments = [];
+            updateAcceptedPaymentsTable();
+            location.href = '{% url "finance:main" %}';  // Redirect to main finance page
+        } else {
+            alert('Wystąpił błąd: ' + (data.message || 'Nieznany błąd'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas zapisywania płatności');
+    });
+}
+
+function removeTemporaryPayment(button) {
+    const row = button.closest('tr');
+    row.remove();
+    checkTemporaryTable();
+}
+
+function checkTemporaryTable() {
+    const tbody = document.getElementById('tempPaymentsTable');
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+            </tr>`;
+    }
+}
+
+function cancelAcceptedPayment(index) {
+    const payment = acceptedPayments[index];
+
+    // Remove from accepted payments
+    acceptedPayments.splice(index, 1);
+    updateAcceptedPaymentsTable();
+ 
+    // Add back to temporary payments
+    const tempPayments = [{
+        date: payment.date,
+        amount: payment.amount,
+        type: payment.type,
+        user: payment.user,
+        description: payment.description,
+        created_by: '-'
+    }];
+
+    // Clear "no payments" message if it exists
+    const tbody = document.getElementById('tempPaymentsTable');
+    if (tbody.querySelector('td[colspan="8"]')) {
+        displayTemporaryPayments(tempPayments);
+    } else {
+        // Append to existing payments
+        const currentHtml = tbody.innerHTML;
+        tbody.innerHTML = displayTemporaryPayments(tempPayments) + currentHtml;
+    }
+}
+</script>
+{% endblock %}
+{% endblock %}

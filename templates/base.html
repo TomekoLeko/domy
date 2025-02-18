@@ -78,6 +78,9 @@
                                 <li class="nav-item">
                                     <a class="nav-link" href="/users/">Użytkownicy</a>
                                 </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{% url 'finance:main' %}">Finanse</a>
+                                </li>
                             {% endif %}
                         {% endif %}
                     </ul>
@@ -170,8 +173,9 @@
         <p>&copy; 2024 My Django Site</p>
     </footer>
 
-    <!-- Add any shared JavaScript files here -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/bootstrap-table@1.22.3/dist/bootstrap-table.min.js"></script>
     <script>
         function toggleCart() {
             const sidebar = document.getElementById('cartSidebar');
