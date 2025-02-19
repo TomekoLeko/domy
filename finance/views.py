@@ -96,6 +96,7 @@ def save_multiple_payments(request):
                 payment_date=payment_data['date'],
                 payment_type=payment_data['type'] or 'other',  # Default to 'other' if type is empty
                 amount=payment_data['amount'],
+                sender=payment_data['sender'],
                 description=payment_data['description'],
                 related_user=None,  # For now, we're not handling user relations
                 created_by=request.user

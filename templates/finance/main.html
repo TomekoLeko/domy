@@ -104,7 +104,6 @@
                     data-icons-prefix="bi"
                     data-page-size="50"
                     data-page-list="[10, 20, 50]"
-
                 >
                     <thead>
                         <tr>
@@ -112,6 +111,7 @@
                             <th data-field="type" data-sortable="true">Typ</th>
                             <th data-field="amount" data-sortable="true" data-sorter="amountSorter">Kwota</th>
                             <th data-field="user" data-sortable="true">Użytkownik</th>
+                            <th data-field="sender" data-sortable="true">Nadawca</th>
                             <th data-field="description" data-sortable="true">Opis</th>
                             <th data-field="created_by" data-sortable="true">Dodane przez</th>
                             <th data-field="actions" data-sortable="false">Akcje</th>
@@ -136,6 +136,7 @@
                                     -
                                 {% endif %}
                             </td>
+                            <td>{{ payment.sender|default:"-" }}</td>
                             <td>{{ payment.description }}</td>
                             <td>
                                 {% if payment.created_by.profile.name %}
@@ -153,7 +154,7 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="7" class="text-center">Brak płatności</td>
+                            <td colspan="8" class="text-center">Brak płatności</td>
                         </tr>
                         {% endfor %}
                     </tbody>
