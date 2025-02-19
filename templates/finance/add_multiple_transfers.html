@@ -134,7 +134,7 @@ function loadBankStatement() {
                         payments.push({
                             amount: parseFloat(amount),
                             date: date,
-                            type: '-',
+                            type: determinePaymentType(sender, description),
                             user: '-',
                             description: description,
                             created_by: '-',
@@ -169,21 +169,27 @@ function getSenderAndDescription(fullDescription) {
     };
 }
 
-function determinePaymentType(description) {
+function determinePaymentType(sender, description) {
     // TODO: retrieve beneficiaries and contributors from the database
     const tempContributors = ['PAWEŁ FERENC', 'MAREK SOSNOWSKI', 'ALEKSANDRA LISEK'];
     const tempBeneficiaries = ['LUBIEJEWSKA ANNA'];
     const tempInvoices = ['XFAANG'];
 
+    const upperSender = sender.toUpperCase();
     const upperDescription = description.toUpperCase();
 
-    const isContributorPayment = tempContributors.some(contributor =>
+    const isContributorPayment = tempContributors.some(contributor => 
+        upperSender.includes(contributor.toUpperCase()) || 
         upperDescription.includes(contributor.toUpperCase())
     );
-    const isInvoicePayment = tempInvoices.some(invoice =>
+
+    const isInvoicePayment = tempInvoices.some(invoice => 
+        upperSender.includes(invoice.toUpperCase()) || 
         upperDescription.includes(invoice.toUpperCase())
     );
-    const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary =>
+
+    const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary => 
+        upperSender.includes(beneficiary.toUpperCase()) || 
         upperDescription.includes(beneficiary.toUpperCase())
     );
 
@@ -261,7 +267,6 @@ function editPayment(button) {
             field.innerHTML = `<input type="number" step="0.01" class="form-control form-control-sm" value="${amount}">`;
         } else if (field.classList.contains('payment-type-field')) {
             const typeKey = field.dataset.typeKey || '';
-            
             const options = paymentTypes.map(type => 
                 `<option value="${type.value}" ${typeKey === type.value ? 'selected' : ''}>
                     ${type.label}
@@ -368,7 +373,7 @@ function updateAcceptedPaymentsTable() {
             </td>
         </tr>
     `).join('');
-    
+
     document.getElementById('saveAllButton').style.display = 'block';
 }
 
