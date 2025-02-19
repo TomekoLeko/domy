@@ -91,8 +91,13 @@
     </div>
 
     <div class="card">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Historia płatności</h5>
+            {% if payments %}
+            <button class="btn btn-danger" onclick="deleteAllPayments()">
+                <i class="bi bi-trash me-2"></i>Usuń wszystkie
+            </button>
+            {% endif %}
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -321,6 +326,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (dateFrom || dateTo) filterPayments();
 });
+
+function deleteAllPayments() {
+    if (!confirm('Czy na pewno chcesz usunąć wszystkie płatności? Tej operacji nie można cofnąć.')) {
+        return;
+    }
+
+    fetch('{% url "finance:delete_all_payments" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Wystąpił błąd podczas usuwania płatności');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas usuwania płatności');
+    });
+}
 </script>
 {% endblock %}
 {% endblock %}

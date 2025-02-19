@@ -109,3 +109,12 @@ def save_multiple_payments(request):
 @staff_member_required
 def finance_report(request):
     return render(request, 'finance/report.html')
+
+@require_POST
+@staff_member_required
+def delete_all_payments(request):
+    try:
+        Payment.objects.all().delete()
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
