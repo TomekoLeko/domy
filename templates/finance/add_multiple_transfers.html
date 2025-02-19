@@ -125,7 +125,7 @@ function loadBankStatement() {
 
                 if (dateCell && amountCell && descriptionCell) {
                     const date = dateCell.textContent.trim();
-                    let description = descriptionCell.innerHTML.replace(/<br\s*\/?>/gi, ' ').trim();
+                    const { description, sender } = getSenderAndDescription(descriptionCell.innerHTML);
                     const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
 
                     if (!isNaN(parseFloat(amount))) {
@@ -147,6 +147,24 @@ function loadBankStatement() {
     };
 
     reader.readAsText(file);
+}
+
+function getSenderAndDescription(fullDescription) {
+    let tempArray = fullDescription
+        .replace(/<br\s*\/?>/gi, '||BR||')
+        .split('||BR||')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+    tempArray.shift();
+    const description = tempArray.pop();
+    tempArray.pop();
+    const sender = tempArray.join(' ').trim();
+    
+    return {
+        description: description || '',
+        sender: sender || ''
+    };
 }
 
 function sanitizePayments(payments) {

@@ -104,3 +104,7 @@ def save_multiple_payments(request):
         return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
+
+@staff_member_required
+def finance_report(request):
+    return render(request, 'finance/report.html')

@@ -26,6 +26,11 @@ class Payment(models.Model):
     description = models.TextField(
         verbose_name="Opis"
     )
+    sender = models.TextField(
+        verbose_name="Nadawca",
+        blank=True,
+        null=True
+    )
     related_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
