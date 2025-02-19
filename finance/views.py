@@ -10,6 +10,8 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.core.serializers.json import DjangoJSONEncoder
 import json
+from datetime import datetime, date
+import calendar
 
 User = get_user_model()
 
@@ -108,7 +110,10 @@ def save_multiple_payments(request):
 
 @staff_member_required
 def finance_report(request):
-    return render(request, 'finance/report.html')
+    current_year = date.today().year
+    years = range(current_year - 4, current_year + 1)
+    
+    return render(request, 'finance/report.html', {'years': years})
 
 @require_POST
 @staff_member_required
@@ -118,3 +123,26 @@ def delete_all_payments(request):
         return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
+
+@staff_member_required
+def get_report_data(request):
+    month = int(request.GET.get('month', date.today().month))
+    year = int(request.GET.get('year', date.today().year))
+
+    # Get the first and last day of the selected month
+    first_day = date(year, month, 1)
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+    payments = Payment.objects.filter(
+        payment_date__gte=first_day,
+        payment_date__lte=last_day
+    ).order_by('payment_date')
+
+    return JsonResponse({
+        'payments': [{
+            'payment_date': payment.payment_date.strftime('%d.%m.%Y'),
+            'description': payment.description,
+            'sender': payment.sender,
+            'amount': float(payment.amount)
+        } for payment in payments]
+    })
