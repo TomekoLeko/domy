@@ -34,6 +34,7 @@
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
+                            <th>Nadawca</th>
                             <th>Opis</th>
                             <th>Dodane przez</th>
                             <th>Akcje</th>
@@ -41,7 +42,7 @@
                     </thead>
                     <tbody id="tempPaymentsTable">
                         <tr>
-                            <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                            <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
                         </tr>
                     </tbody>
                 </table>
@@ -65,13 +66,14 @@
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
+                            <th>Nadawca</th>
                             <th>Opis</th>
                             <th>Dodane przez</th>
                         </tr>
                     </thead>
                     <tbody id="acceptedPaymentsTable">
                         <tr>
-                            <td colspan="6" class="text-center">Brak zaakceptowanych przelewów</td>
+                            <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
                         </tr>
                     </tbody>
                 </table>
@@ -135,14 +137,14 @@ function loadBankStatement() {
                             type: '-',
                             user: '-',
                             description: description,
-                            created_by: '-'
+                            created_by: '-',
+                            sender: sender || ''
                         });
                     }
                 }
             }
         });
 
-        payments = sanitizePayments(payments);
         displayTemporaryPayments(payments);
     };
 
@@ -165,20 +167,6 @@ function getSenderAndDescription(fullDescription) {
         description: description || '',
         sender: sender || ''
     };
-}
-
-function sanitizePayments(payments) {
-    return payments.map(payment => ({
-        amount: parseFloat(payment.amount),
-        date: payment.date,
-        type: determinePaymentType(payment.description),
-        user: payment.user,
-        description: payment.description
-            .replace(/\s+/g, ' ')
-            .trim()
-            .replace(/PRZELEW ZEWNĘTRZNY PRZYCHODZĄCY/g, '')
-            .replace(/PRZELEW WEWNĘTRZNY PRZYCHODZĄCY/g, '')
-    }));
 }
 
 function determinePaymentType(description) {
@@ -219,7 +207,7 @@ function displayTemporaryPayments(payments) {
     if (payments.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
         return;
     }
@@ -239,6 +227,7 @@ function displayTemporaryPayments(payments) {
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td class="payment-field user-field"></td>
+            <td class="payment-field sender-field">${payment.sender}</td>
             <td class="payment-field description-field">${payment.description}</td>
             <td>-</td>
             <td>
@@ -331,13 +320,15 @@ function acceptPayment(button) {
     const amountField = row.querySelector('.amount-field');
     const userField = row.querySelector('.user-field');
     const descriptionField = row.querySelector('.description-field');
+    const senderField = row.querySelector('.sender-field');
  
     const paymentData = {
         date: dateField.textContent.trim(),
         type: typeSelect ? typeSelect.value : typeField.textContent.trim(),
         amount: parseFloat(amountField.textContent.replace(/[+zł\s]/g, '')),
         user: userField.textContent.trim(),
-        description: descriptionField.textContent.trim()
+        description: descriptionField.textContent.trim(),
+        sender: senderField.textContent.trim()
     };
 
     acceptedPayments.push(paymentData);
@@ -365,6 +356,7 @@ function updateAcceptedPaymentsTable() {
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td>${payment.user}</td>
+            <td>${payment.sender}</td>
             <td class="description-cell">${payment.description}</td>
             <td>
                 <div class="d-flex align-items-center justify-content-between">
@@ -428,7 +420,7 @@ function checkTemporaryTable() {
     if (tbody.children.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
     }
 }
@@ -447,12 +439,13 @@ function cancelAcceptedPayment(index) {
         type: payment.type,
         user: payment.user,
         description: payment.description,
-        created_by: '-'
+        created_by: '-',
+        sender: payment.sender
     }];
 
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
-    if (tbody.querySelector('td[colspan="8"]')) {
+    if (tbody.querySelector('td[colspan="9"]')) {
         displayTemporaryPayments(tempPayments);
     } else {
         // Append to existing payments
