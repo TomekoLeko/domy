@@ -75,6 +75,11 @@
                         </tfoot>
                     </table>
                 </div>
+                <div class="text-end mt-3">
+                    <button type="button" class="btn btn-success" onclick="generatePDF()">
+                        <i class="bi bi-file-pdf me-2"></i>Generuj raport
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -83,19 +88,18 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Set default month (last month)
-    const date = new Date();
-    let currentMonth = date.getMonth() + 1; // JavaScript months are 0-based
-    const currentYear = date.getFullYear();
-    
-    document.getElementById('monthSelect').value = currentMonth;
-    document.getElementById('yearSelect').value = currentYear;
+        const date = new Date();
+        let currentMonth = date.getMonth() + 1;
+        const currentYear = date.getFullYear();
+
+        document.getElementById('monthSelect').value = currentMonth;
+        document.getElementById('yearSelect').value = currentYear;
 });
 
 function loadReport() {
     const month = document.getElementById('monthSelect').value;
     const year = document.getElementById('yearSelect').value;
-    
+
     fetch(`/finance/get-report-data/?month=${month}&year=${year}`)
         .then(response => response.json())
         .then(data => {
@@ -112,13 +116,13 @@ function displayReport(data, month, year) {
         'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
         'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
     ];
-    
+
     document.getElementById('reportTitle').textContent = 
         `Zestawienie pozarachunkowej sprzedaży brutto - ${monthNames[month-1]} ${year}r.`;
-    
+
     const tbody = document.getElementById('reportTableBody');
     let total = 0;
-    
+
     tbody.innerHTML = data.payments.map(payment => {
         total += parseFloat(payment.amount);
         return `
@@ -138,6 +142,89 @@ function displayReport(data, month, year) {
 
     document.getElementById('reportContent').style.display = 'block';
 }
+
+function generatePDF() {
+    // Define the font
+    pdfMake.fonts = {
+        Roboto: {
+            normal: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Regular.ttf',
+            bold: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Medium.ttf'
+        }
+    };
+
+    // Get data from table
+    const tableData = [];
+    document.querySelectorAll('#reportTableBody tr').forEach(row => {
+        const cells = row.querySelectorAll('td');
+        tableData.push([
+            cells[0].textContent.trim(),  // Data
+            cells[1].textContent.trim(),  // Tytuł
+            cells[2].textContent.trim(),  // Nadawca
+            { 
+                text: cells[3].textContent.trim(),
+                noWrap: true  // Prevent line breaks in Kwota column
+            }
+        ]);
+    });
+
+    const total = document.getElementById('totalAmount').textContent.trim();
+    const title = document.getElementById('reportTitle').textContent;
+
+    const docDefinition = {
+        pageSize: 'A4',
+        pageOrientation: 'portrait',
+        defaultStyle: {
+            font: 'Roboto',
+            fontSize: 8
+        },
+        content: [
+            { text: title, style: 'header' },
+            {
+                table: {
+                    headerRows: 1,
+                    widths: ['auto', '*', 'auto', 'auto'],
+                    body: [
+                        [
+                            { text: 'Data', style: 'tableHeader' },
+                            { text: 'Tytuł', style: 'tableHeader' },
+                            { text: 'Nadawca', style: 'tableHeader' },
+                            { text: 'Kwota', style: 'tableHeader', noWrap: true }
+                        ],
+                        ...tableData
+                    ]
+                },
+                layout: 'lightHorizontalLines'
+            },
+            { text: `Razem: ${total}`, style: 'total' }
+        ],
+        styles: {
+            header: {
+                fontSize: 12,
+                bold: true,
+                margin: [0, 0, 0, 20]
+            },
+            tableHeader: {
+                fontSize: 9,
+                bold: true
+            },
+            total: {
+                fontSize: 10,
+                bold: true,
+                alignment: 'right',
+                margin: [0, 10, 0, 0]
+            }
+        }
+    };
+
+    pdfMake.createPdf(docDefinition).download(
+        title.toLowerCase()
+            .replace(/\s+/g, '_')
+            .replace(/[ąćęłńóśźż]/g, c => ({
+                'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n',
+                'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'
+            }[c])) + '.pdf'
+    );
+}
 </script>
 {% endblock %}
-{% endblock %} 
+{% endblock %}
