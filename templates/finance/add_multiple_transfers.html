@@ -169,7 +169,9 @@ function getSenderAndDescription(fullDescription) {
     tempArray.shift();
     const description = tempArray.pop();
     tempArray.pop();
-    const sender = tempArray.join(' ').trim();
+    const sender = tempArray.join(' ')
+        .trim()
+        .replace(/\s+/g, ' ');
     
     return {
         description: description || '',
