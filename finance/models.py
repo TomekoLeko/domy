@@ -19,12 +19,17 @@ class Payment(models.Model):
         verbose_name="Kwota"
     )
     payment_type = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=PAYMENT_TYPES,
         verbose_name="Typ płatności"
     )
     description = models.TextField(
         verbose_name="Opis"
+    )
+    sender = models.TextField(
+        verbose_name="Nadawca",
+        blank=True,
+        null=True
     )
     related_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

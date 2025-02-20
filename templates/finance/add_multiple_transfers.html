@@ -34,6 +34,7 @@
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
+                            <th>Nadawca</th>
                             <th>Opis</th>
                             <th>Dodane przez</th>
                             <th>Akcje</th>
@@ -41,7 +42,7 @@
                     </thead>
                     <tbody id="tempPaymentsTable">
                         <tr>
-                            <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                            <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
                         </tr>
                     </tbody>
                 </table>
@@ -65,13 +66,14 @@
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
+                            <th>Nadawca</th>
                             <th>Opis</th>
                             <th>Dodane przez</th>
                         </tr>
                     </thead>
                     <tbody id="acceptedPaymentsTable">
                         <tr>
-                            <td colspan="6" class="text-center">Brak zaakceptowanych przelewów</td>
+                            <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
                         </tr>
                     </tbody>
                 </table>
@@ -97,6 +99,14 @@ const PAYMENT_TYPES = {{ payment_types|safe }};
 const paymentTypes = PAYMENT_TYPES;
 
 let acceptedPayments = [];
+
+const paymentsMap = Object.fromEntries(
+    paymentTypes.map(({ value, label }) => [value, label])
+);
+
+function getPaymentKey(value) {
+    return Object.entries(paymentsMap).find(([key, val]) => val === value)?.[0] || null;
+}
 
 function loadBankStatement() {
     const fileInput = document.getElementById('bankStatement');
@@ -125,64 +135,72 @@ function loadBankStatement() {
 
                 if (dateCell && amountCell && descriptionCell) {
                     const date = dateCell.textContent.trim();
-                    let description = descriptionCell.innerHTML.replace(/<br\s*\/?>/gi, ' ').trim();
+                    const { description, sender } = getSenderAndDescription(descriptionCell.innerHTML);
                     const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
 
                     if (!isNaN(parseFloat(amount))) {
                         payments.push({
                             amount: parseFloat(amount),
                             date: date,
-                            type: '-',
+                            type: determinePaymentType(sender, description),
                             user: '-',
                             description: description,
-                            created_by: '-'
+                            created_by: '-',
+                            sender: sender || ''
                         });
                     }
                 }
             }
         });
 
-        payments = sanitizePayments(payments);
         displayTemporaryPayments(payments);
     };
 
     reader.readAsText(file);
 }
 
-function sanitizePayments(payments) {
-    return payments.map(payment => ({
-        amount: parseFloat(payment.amount),
-        date: payment.date,
-        type: determinePaymentType(payment.description),
-        user: payment.user,
-        description: payment.description
-            .replace(/\s+/g, ' ')
-            .trim()
-            .replace(/PRZELEW ZEWNĘTRZNY PRZYCHODZĄCY/g, '')
-            .replace(/PRZELEW WEWNĘTRZNY PRZYCHODZĄCY/g, '')
-    }));
+function getSenderAndDescription(fullDescription) {
+    let tempArray = fullDescription
+        .replace(/<br\s*\/?>/gi, '||BR||')
+        .split('||BR||')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+    tempArray.shift();
+    const description = tempArray.pop();
+    tempArray.pop();
+    const sender = tempArray.join(' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+    
+    return {
+        description: description || '',
+        sender: sender || ''
+    };
 }
 
-function determinePaymentType(description) {
+function determinePaymentType(sender, description) {
     // TODO: retrieve beneficiaries and contributors from the database
     const tempContributors = ['PAWEŁ FERENC', 'MAREK SOSNOWSKI', 'ALEKSANDRA LISEK'];
     const tempBeneficiaries = ['LUBIEJEWSKA ANNA'];
-    const tempInvoices = ['XFAANG'];
+    const tempInvoices = ['XFAANG', 'FAKTURA'];
 
+    const upperSender = sender.toUpperCase();
     const upperDescription = description.toUpperCase();
 
-    const isContributorPayment = tempContributors.some(contributor =>
+    const isContributorPayment = tempContributors.some(contributor => 
+        upperSender.includes(contributor.toUpperCase()) || 
         upperDescription.includes(contributor.toUpperCase())
     );
-    const isInvoicePayment = tempInvoices.some(invoice =>
+
+    const isInvoicePayment = tempInvoices.some(invoice => 
+        upperSender.includes(invoice.toUpperCase()) || 
         upperDescription.includes(invoice.toUpperCase())
     );
-    const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary =>
-        upperDescription.includes(beneficiary.toUpperCase())
-    );
 
-    const paymentsMap = Object.fromEntries(
-        paymentTypes.map(({ value, label }) => [value, label])
+    const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary => 
+        upperSender.includes(beneficiary.toUpperCase()) || 
+        upperDescription.includes(beneficiary.toUpperCase())
     );
 
     if (isContributorPayment) {
@@ -201,7 +219,7 @@ function displayTemporaryPayments(payments) {
     if (payments.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
         return;
     }
@@ -221,6 +239,7 @@ function displayTemporaryPayments(payments) {
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td class="payment-field user-field"></td>
+            <td class="payment-field sender-field">${payment.sender}</td>
             <td class="payment-field description-field">${payment.description}</td>
             <td>-</td>
             <td>
@@ -254,7 +273,6 @@ function editPayment(button) {
             field.innerHTML = `<input type="number" step="0.01" class="form-control form-control-sm" value="${amount}">`;
         } else if (field.classList.contains('payment-type-field')) {
             const typeKey = field.dataset.typeKey || '';
-            
             const options = paymentTypes.map(type => 
                 `<option value="${type.value}" ${typeKey === type.value ? 'selected' : ''}>
                     ${type.label}
@@ -309,17 +327,18 @@ function acceptPayment(button) {
     const row = button.closest('tr');
     const dateField = row.querySelector('.date-field');
     const typeField = row.querySelector('.payment-type-field');
-    const typeSelect = typeField.querySelector('select');
     const amountField = row.querySelector('.amount-field');
     const userField = row.querySelector('.user-field');
     const descriptionField = row.querySelector('.description-field');
- 
+    const senderField = row.querySelector('.sender-field');
+
     const paymentData = {
         date: dateField.textContent.trim(),
-        type: typeSelect ? typeSelect.value : typeField.textContent.trim(),
+        type: getPaymentKey(typeField.textContent.trim()),
         amount: parseFloat(amountField.textContent.replace(/[+zł\s]/g, '')),
         user: userField.textContent.trim(),
-        description: descriptionField.textContent.trim()
+        description: descriptionField.textContent.trim(),
+        sender: senderField.textContent.trim()
     };
 
     acceptedPayments.push(paymentData);
@@ -342,11 +361,12 @@ function updateAcceptedPaymentsTable() {
     tbody.innerHTML = acceptedPayments.map((payment, index) => `
         <tr>
             <td>${payment.date}</td>
-            <td>${payment.type}</td>
+            <td>${paymentsMap[payment.type]}</td>
             <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td>${payment.user}</td>
+            <td>${payment.sender}</td>
             <td class="description-cell">${payment.description}</td>
             <td>
                 <div class="d-flex align-items-center justify-content-between">
@@ -358,7 +378,7 @@ function updateAcceptedPaymentsTable() {
             </td>
         </tr>
     `).join('');
-    
+
     document.getElementById('saveAllButton').style.display = 'block';
 }
 
@@ -410,7 +430,7 @@ function checkTemporaryTable() {
     if (tbody.children.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
+                <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
     }
 }
@@ -421,7 +441,6 @@ function cancelAcceptedPayment(index) {
     // Remove from accepted payments
     acceptedPayments.splice(index, 1);
     updateAcceptedPaymentsTable();
- 
     // Add back to temporary payments
     const tempPayments = [{
         date: payment.date,
@@ -429,12 +448,13 @@ function cancelAcceptedPayment(index) {
         type: payment.type,
         user: payment.user,
         description: payment.description,
-        created_by: '-'
+        created_by: '-',
+        sender: payment.sender
     }];
 
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
-    if (tbody.querySelector('td[colspan="8"]')) {
+    if (tbody.querySelector('td[colspan="9"]')) {
         displayTemporaryPayments(tempPayments);
     } else {
         // Append to existing payments

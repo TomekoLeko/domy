@@ -10,6 +10,8 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.core.serializers.json import DjangoJSONEncoder
 import json
+from datetime import datetime, date
+import calendar
 
 User = get_user_model()
 
@@ -94,13 +96,55 @@ def save_multiple_payments(request):
         for payment_data in payments:
             Payment.objects.create(
                 payment_date=payment_data['date'],
-                payment_type=payment_data['type'] or 'other',  # Default to 'other' if type is empty
+                payment_type=payment_data['type'] or 'other',
                 amount=payment_data['amount'],
+                sender=payment_data['sender'],
                 description=payment_data['description'],
-                related_user=None,  # For now, we're not handling user relations
+                related_user=None,
                 created_by=request.user
             )
 
         return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
+
+@staff_member_required
+def finance_report(request):
+    current_year = date.today().year
+    years = range(current_year - 4, current_year + 1)
+    
+    return render(request, 'finance/report.html', {'years': years})
+
+@require_POST
+@staff_member_required
+def delete_all_payments(request):
+    try:
+        Payment.objects.all().delete()
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+@staff_member_required
+def get_report_data(request):
+    month = int(request.GET.get('month', date.today().month))
+    year = int(request.GET.get('year', date.today().year))
+
+    # Get the first and last day of the selected month
+    first_day = date(year, month, 1)
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+    payments = Payment.objects.filter(
+        payment_date__gte=first_day,
+        payment_date__lte=last_day
+    ).exclude(
+        payment_type='invoice'
+    ).order_by('payment_date')
+
+    return JsonResponse({
+        'payments': [{
+            'payment_date': payment.payment_date.strftime('%d.%m.%Y'),
+            'description': payment.description,
+            'sender': payment.sender,
+            'amount': float(payment.amount)
+        } for payment in payments]
+    })
