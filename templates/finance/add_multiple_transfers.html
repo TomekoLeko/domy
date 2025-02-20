@@ -104,6 +104,10 @@ const paymentsMap = Object.fromEntries(
     paymentTypes.map(({ value, label }) => [value, label])
 );
 
+function getPaymentKey(value) {
+    return Object.entries(paymentsMap).find(([key, val]) => val === value)?.[0] || null;
+}
+
 function loadBankStatement() {
     const fileInput = document.getElementById('bankStatement');
     const file = fileInput.files[0];
@@ -321,20 +325,14 @@ function acceptPayment(button) {
     const row = button.closest('tr');
     const dateField = row.querySelector('.date-field');
     const typeField = row.querySelector('.payment-type-field');
-    const typeSelect = typeField.querySelector('select');
     const amountField = row.querySelector('.amount-field');
     const userField = row.querySelector('.user-field');
     const descriptionField = row.querySelector('.description-field');
     const senderField = row.querySelector('.sender-field');
-    
-    const paymentType = {
-        value: typeField.dataset.typeKey || typeField.textContent.trim(),
-        label: typeField.textContent.trim()
-    };
 
     const paymentData = {
         date: dateField.textContent.trim(),
-        type: typeSelect ? typeSelect.value : paymentType.value,
+        type: getPaymentKey(typeField.textContent.trim()),
         amount: parseFloat(amountField.textContent.replace(/[+zł\s]/g, '')),
         user: userField.textContent.trim(),
         description: descriptionField.textContent.trim(),
@@ -441,7 +439,6 @@ function cancelAcceptedPayment(index) {
     // Remove from accepted payments
     acceptedPayments.splice(index, 1);
     updateAcceptedPaymentsTable();
- 
     // Add back to temporary payments
     const tempPayments = [{
         date: payment.date,
