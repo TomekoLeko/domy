@@ -96,11 +96,11 @@ def save_multiple_payments(request):
         for payment_data in payments:
             Payment.objects.create(
                 payment_date=payment_data['date'],
-                payment_type=payment_data['type'] or 'other',  # Default to 'other' if type is empty
+                payment_type=payment_data['type'] or 'other',
                 amount=payment_data['amount'],
                 sender=payment_data['sender'],
                 description=payment_data['description'],
-                related_user=None,  # For now, we're not handling user relations
+                related_user=None,
                 created_by=request.user
             )
 
@@ -136,6 +136,8 @@ def get_report_data(request):
     payments = Payment.objects.filter(
         payment_date__gte=first_day,
         payment_date__lte=last_day
+    ).exclude(
+        payment_type='invoice'
     ).order_by('payment_date')
 
     return JsonResponse({

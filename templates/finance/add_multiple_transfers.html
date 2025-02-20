@@ -100,6 +100,10 @@ const paymentTypes = PAYMENT_TYPES;
 
 let acceptedPayments = [];
 
+const paymentsMap = Object.fromEntries(
+    paymentTypes.map(({ value, label }) => [value, label])
+);
+
 function loadBankStatement() {
     const fileInput = document.getElementById('bankStatement');
     const file = fileInput.files[0];
@@ -173,7 +177,7 @@ function determinePaymentType(sender, description) {
     // TODO: retrieve beneficiaries and contributors from the database
     const tempContributors = ['PAWEŁ FERENC', 'MAREK SOSNOWSKI', 'ALEKSANDRA LISEK'];
     const tempBeneficiaries = ['LUBIEJEWSKA ANNA'];
-    const tempInvoices = ['XFAANG'];
+    const tempInvoices = ['XFAANG', 'FAKTURA'];
 
     const upperSender = sender.toUpperCase();
     const upperDescription = description.toUpperCase();
@@ -191,10 +195,6 @@ function determinePaymentType(sender, description) {
     const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary => 
         upperSender.includes(beneficiary.toUpperCase()) || 
         upperDescription.includes(beneficiary.toUpperCase())
-    );
-
-    const paymentsMap = Object.fromEntries(
-        paymentTypes.map(({ value, label }) => [value, label])
     );
 
     if (isContributorPayment) {
@@ -326,10 +326,15 @@ function acceptPayment(button) {
     const userField = row.querySelector('.user-field');
     const descriptionField = row.querySelector('.description-field');
     const senderField = row.querySelector('.sender-field');
- 
+    
+    const paymentType = {
+        value: typeField.dataset.typeKey || typeField.textContent.trim(),
+        label: typeField.textContent.trim()
+    };
+
     const paymentData = {
         date: dateField.textContent.trim(),
-        type: typeSelect ? typeSelect.value : typeField.textContent.trim(),
+        type: typeSelect ? typeSelect.value : paymentType.value,
         amount: parseFloat(amountField.textContent.replace(/[+zł\s]/g, '')),
         user: userField.textContent.trim(),
         description: descriptionField.textContent.trim(),
@@ -356,7 +361,7 @@ function updateAcceptedPaymentsTable() {
     tbody.innerHTML = acceptedPayments.map((payment, index) => `
         <tr>
             <td>${payment.date}</td>
-            <td>${payment.type}</td>
+            <td>${paymentsMap[payment.type]}</td>
             <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>

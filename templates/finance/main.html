@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load finance_tags %}
 
 {% block title %}Finanse{% endblock %}
 
@@ -126,7 +127,7 @@
                         {% for payment in payments %}
                         <tr>
                             <td>{{ payment.payment_date|date:"d.m.Y" }}</td>
-                            <td>{{ payment.get_payment_type_display }}</td>
+                            <td>{{ payment.payment_type|payment_type_label }}</td>
                             <td class="{% if payment.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
                                 {{ payment.amount }} zł
                             </td>
