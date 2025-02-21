@@ -44,9 +44,16 @@ def delete_payment(request, payment_id):
 
 @staff_member_required
 def add_multiple_transfers(request):
+    all_payments = Payment.objects.all().values('payment_date', 'amount', 'description')
+    
     payment_types = [{'value': value, 'label': label} for value, label in Payment.PAYMENT_TYPES]
     payment_types_json = json.dumps(payment_types)
-    return render(request, 'finance/add_multiple_transfers.html', {'payment_types': payment_types_json})
+
+    context = {
+        'payment_types': payment_types_json,
+        'all_payments': json.dumps(list(all_payments), cls=DjangoJSONEncoder)
+    }
+    return render(request, 'finance/add_multiple_transfers.html', context)
 
 @staff_member_required
 def get_filtered_users(request):
@@ -112,7 +119,7 @@ def save_multiple_payments(request):
 def finance_report(request):
     current_year = date.today().year
     years = range(current_year - 4, current_year + 1)
-    
+
     return render(request, 'finance/report.html', {'years': years})
 
 @require_POST

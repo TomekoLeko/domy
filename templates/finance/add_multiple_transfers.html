@@ -95,6 +95,7 @@
 <script>
 {% autoescape off %}
 const PAYMENT_TYPES = {{ payment_types|safe }};
+const ALL_PAYMENTS = {{ all_payments|safe }};
 {% endautoescape %}
 const paymentTypes = PAYMENT_TYPES;
 
@@ -139,15 +140,24 @@ function loadBankStatement() {
                     const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
 
                     if (!isNaN(parseFloat(amount))) {
-                        payments.push({
+                        const payment = {
                             amount: parseFloat(amount),
                             date: date,
                             type: determinePaymentType(sender, description),
                             user: '-',
                             description: description,
                             created_by: '-',
-                            sender: sender || ''
-                        });
+                            sender: sender || '',
+                            duplicate: false
+                        };
+                        
+                        payment.duplicate = ALL_PAYMENTS.some(existingPayment => 
+                            existingPayment.payment_date === date &&
+                            parseFloat(existingPayment.amount) === parseFloat(amount) &&
+                            existingPayment.description === description
+                        );
+
+                        payments.push(payment);
                     }
                 }
             }
@@ -172,7 +182,7 @@ function getSenderAndDescription(fullDescription) {
     const sender = tempArray.join(' ')
         .trim()
         .replace(/\s+/g, ' ');
-    
+
     return {
         description: description || '',
         sender: sender || ''
@@ -225,11 +235,12 @@ function displayTemporaryPayments(payments) {
     }
 
     tbody.innerHTML = payments.map(payment => `
-        <tr>
+        <tr style="${payment.duplicate ? 'background-color: #fff3cd;' : ''}" class="payment-row">
             <td>
-                <button class="btn btn-sm btn-success" onclick="acceptPayment(this)">
-                    <i class="bi bi-check-circle"></i>
-                </button>
+                ${payment.duplicate ? 
+                    '<span class="badge bg-warning">Duplikat</span>' : 
+                    '<button class="btn btn-sm btn-success" onclick="acceptPayment(this)"><i class="bi bi-check-circle"></i></button>'
+                }
             </td>
             <td class="payment-field date-field">${payment.date}</td>
             <td class="payment-field payment-type-field" data-type-key="${payment.type.value}">
