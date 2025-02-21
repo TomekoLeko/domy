@@ -30,13 +30,13 @@
                     <thead>
                         <tr>
                             <th>Zatwierdź</th>
-                            <th>Data płatności</th>
+                            <th>Data</th>
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
                             <th>Nadawca</th>
                             <th>Opis</th>
-                            <th>Dodane przez</th>
+                            <th>Dodał</th>
                             <th>Akcje</th>
                         </tr>
                     </thead>
@@ -239,7 +239,7 @@ function displayTemporaryPayments(payments) {
             <td>
                 ${payment.duplicate ? 
                     '<span class="badge bg-warning">Duplikat</span>' : 
-                    '<button class="btn btn-sm btn-success" onclick="acceptPayment(this)"><i class="bi bi-check-circle"></i></button>'
+                    '<button class="btn btn-sm btn-success" onclick="acceptPayment(this)"><i class="bi bi-arrow-down-circle"></i></button>'
                 }
             </td>
             <td class="payment-field date-field">${payment.date}</td>
