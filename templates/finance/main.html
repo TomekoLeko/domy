@@ -73,16 +73,13 @@
             <form id="dateFilterForm" class="row g-3 align-items-end">
                 <div class="col-md-4">
                     <label for="dateFrom" class="form-label">Data od</label>
-                    <input type="date" class="form-control" id="dateFrom" name="date_from">
+                    <input type="date" class="form-control" id="dateFrom" name="date_from" onchange="filterPayments()">
                 </div>
                 <div class="col-md-4">
                     <label for="dateTo" class="form-label">Data do</label>
-                    <input type="date" class="form-control" id="dateTo" name="date_to">
+                    <input type="date" class="form-control" id="dateTo" name="date_to" onchange="filterPayments()">
                 </div>
                 <div class="col-md-4">
-                    <button type="button" class="btn btn-primary" onclick="filterPayments()">
-                        <i class="bi bi-funnel me-2"></i>Filtruj
-                    </button>
                     <button type="button" class="btn btn-secondary" onclick="clearFilters()">
                         <i class="bi bi-x-circle me-2"></i>Wyczyść
                     </button>
@@ -313,7 +310,7 @@ function filterPayments() {
 function clearFilters() {
     document.getElementById('dateFrom').value = '';
     document.getElementById('dateTo').value = '';
-    $('#paymentsTable').bootstrapTable('filterBy', {});
+    filterPayments();
 }
 
 // Initialize with current date range if any
