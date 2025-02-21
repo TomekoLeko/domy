@@ -462,17 +462,54 @@ function cancelAcceptedPayment(index) {
         duplicate: false
     }];
 
-    console.log(tempPayments);
-
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
     if (tbody.querySelector('td[colspan="9"]')) {
-        displayTemporaryPayments(tempPayments);
-    } else {
-        // Append to existing payments
-        const currentHtml = tbody.innerHTML;
-        tbody.innerHTML = displayTemporaryPayments(tempPayments) + currentHtml;
+        tbody.innerHTML = '';  // Clear the "no payments" message
     }
+
+    // Add the new row at the beginning
+    const currentRows = Array.from(tbody.children);
+    const newRow = displayTemporaryPayment(tempPayments[0]);
+    tbody.innerHTML = newRow + (currentRows.length ? tbody.innerHTML : '');
+}
+
+// New helper function to display a single payment
+function displayTemporaryPayment(payment) {
+    return `
+        <tr style="${payment.duplicate ? 'background-color: #fff3cd;' : ''}" class="payment-row">
+            <td>
+                ${payment.duplicate ? 
+                    '<span class="badge bg-warning">Duplikat</span>' : 
+                    '<button class="btn btn-sm btn-success" onclick="acceptPayment(this)"><i class="bi bi-arrow-down-circle"></i></button>'
+                }
+            </td>
+            <td class="payment-field date-field">${payment.date}</td>
+            <td class="payment-field payment-type-field" data-type-key="${payment.type.value}">
+                ${payment.type.label}
+            </td>
+            <td class="payment-field amount-field ${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
+                ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
+            </td>
+            <td class="payment-field user-field">${payment.user}</td>
+            <td class="payment-field sender-field">${payment.sender}</td>
+            <td class="payment-field description-field">${payment.description}</td>
+            <td>-</td>
+            <td>
+                <div class="btn-group" role="group" style="gap: 5px;">
+                    <button class="btn btn-sm btn-primary" onclick="editPayment(this)">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="savePayment(this)" style="display: none;">
+                        <i class="bi bi-check"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="removeTemporaryPayment(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
 }
 </script>
 {% endblock %}
