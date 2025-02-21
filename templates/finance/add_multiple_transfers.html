@@ -62,18 +62,19 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Data płatności</th>
+                            <th>Cofnij</th>
+                            <th>Data</th>
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
                             <th>Nadawca</th>
                             <th>Opis</th>
-                            <th>Dodane przez</th>
+                            <th>Dodał</th>
                         </tr>
                     </thead>
                     <tbody id="acceptedPaymentsTable">
                         <tr>
-                            <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
+                            <td colspan="8" class="text-center">Brak zaakceptowanych przelewów</td>
                         </tr>
                     </tbody>
                 </table>
@@ -150,7 +151,7 @@ function loadBankStatement() {
                             sender: sender || '',
                             duplicate: false
                         };
-                        
+
                         payment.duplicate = ALL_PAYMENTS.some(existingPayment => 
                             existingPayment.payment_date === date &&
                             parseFloat(existingPayment.amount) === parseFloat(amount) &&
@@ -371,6 +372,11 @@ function updateAcceptedPaymentsTable() {
 
     tbody.innerHTML = acceptedPayments.map((payment, index) => `
         <tr>
+            <td>
+                <button class="btn btn-sm btn-warning" onclick="cancelAcceptedPayment(${index})">
+                    <i class="bi bi-arrow-up-circle-fill text-white"></i>
+                </button>
+            </td>
             <td>${payment.date}</td>
             <td>${paymentsMap[payment.type]}</td>
             <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
@@ -379,14 +385,6 @@ function updateAcceptedPaymentsTable() {
             <td>${payment.user}</td>
             <td>${payment.sender}</td>
             <td class="description-cell">${payment.description}</td>
-            <td>
-                <div class="d-flex align-items-center justify-content-between">
-                    <span>-</span>
-                    <button class="btn btn-sm btn-warning" onclick="cancelAcceptedPayment(${index})">
-                        <i class="bi bi-arrow-return-left"></i>
-                    </button>
-                </div>
-            </td>
         </tr>
     `).join('');
 
@@ -455,13 +453,16 @@ function cancelAcceptedPayment(index) {
     // Add back to temporary payments
     const tempPayments = [{
         date: payment.date,
-        amount: payment.amount,
-        type: payment.type,
+        type: {value: payment.type, label: paymentsMap[payment.type]},
         user: payment.user,
         description: payment.description,
         created_by: '-',
-        sender: payment.sender
+        sender: payment.sender,
+        amount: payment.amount,
+        duplicate: false
     }];
+
+    console.log(tempPayments);
 
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
