@@ -30,13 +30,13 @@
                     <thead>
                         <tr>
                             <th>Zatwierdź</th>
-                            <th>Data płatności</th>
+                            <th>Data</th>
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
                             <th>Nadawca</th>
                             <th>Opis</th>
-                            <th>Dodane przez</th>
+                            <th>Dodał</th>
                             <th>Akcje</th>
                         </tr>
                     </thead>
@@ -62,18 +62,19 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Data płatności</th>
+                            <th>Cofnij</th>
+                            <th>Data</th>
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
                             <th>Nadawca</th>
                             <th>Opis</th>
-                            <th>Dodane przez</th>
+                            <th>Dodał</th>
                         </tr>
                     </thead>
                     <tbody id="acceptedPaymentsTable">
                         <tr>
-                            <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
+                            <td colspan="8" class="text-center">Brak zaakceptowanych przelewów</td>
                         </tr>
                     </tbody>
                 </table>
@@ -95,6 +96,7 @@
 <script>
 {% autoescape off %}
 const PAYMENT_TYPES = {{ payment_types|safe }};
+const ALL_PAYMENTS = {{ all_payments|safe }};
 {% endautoescape %}
 const paymentTypes = PAYMENT_TYPES;
 
@@ -139,15 +141,24 @@ function loadBankStatement() {
                     const amount = amountCell.textContent.trim().replace(/\s+/g, '').replace(',', '.');
 
                     if (!isNaN(parseFloat(amount))) {
-                        payments.push({
+                        const payment = {
                             amount: parseFloat(amount),
                             date: date,
                             type: determinePaymentType(sender, description),
                             user: '-',
                             description: description,
                             created_by: '-',
-                            sender: sender || ''
-                        });
+                            sender: sender || '',
+                            duplicate: false
+                        };
+
+                        payment.duplicate = ALL_PAYMENTS.some(existingPayment => 
+                            existingPayment.payment_date === date &&
+                            parseFloat(existingPayment.amount) === parseFloat(amount) &&
+                            existingPayment.description === description
+                        );
+
+                        payments.push(payment);
                     }
                 }
             }
@@ -172,7 +183,7 @@ function getSenderAndDescription(fullDescription) {
     const sender = tempArray.join(' ')
         .trim()
         .replace(/\s+/g, ' ');
-    
+
     return {
         description: description || '',
         sender: sender || ''
@@ -225,11 +236,12 @@ function displayTemporaryPayments(payments) {
     }
 
     tbody.innerHTML = payments.map(payment => `
-        <tr>
+        <tr style="${payment.duplicate ? 'background-color: #fff3cd;' : ''}" class="payment-row">
             <td>
-                <button class="btn btn-sm btn-success" onclick="acceptPayment(this)">
-                    <i class="bi bi-check-circle"></i>
-                </button>
+                ${payment.duplicate ? 
+                    '<span class="badge bg-warning">Duplikat</span>' : 
+                    '<button class="btn btn-sm btn-success" onclick="acceptPayment(this)"><i class="bi bi-arrow-down-circle"></i></button>'
+                }
             </td>
             <td class="payment-field date-field">${payment.date}</td>
             <td class="payment-field payment-type-field" data-type-key="${payment.type.value}">
@@ -360,6 +372,11 @@ function updateAcceptedPaymentsTable() {
 
     tbody.innerHTML = acceptedPayments.map((payment, index) => `
         <tr>
+            <td>
+                <button class="btn btn-sm btn-warning" onclick="cancelAcceptedPayment(${index})">
+                    <i class="bi bi-arrow-up-circle-fill text-white"></i>
+                </button>
+            </td>
             <td>${payment.date}</td>
             <td>${paymentsMap[payment.type]}</td>
             <td class="${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
@@ -368,14 +385,6 @@ function updateAcceptedPaymentsTable() {
             <td>${payment.user}</td>
             <td>${payment.sender}</td>
             <td class="description-cell">${payment.description}</td>
-            <td>
-                <div class="d-flex align-items-center justify-content-between">
-                    <span>-</span>
-                    <button class="btn btn-sm btn-warning" onclick="cancelAcceptedPayment(${index})">
-                        <i class="bi bi-arrow-return-left"></i>
-                    </button>
-                </div>
-            </td>
         </tr>
     `).join('');
 
@@ -444,23 +453,63 @@ function cancelAcceptedPayment(index) {
     // Add back to temporary payments
     const tempPayments = [{
         date: payment.date,
-        amount: payment.amount,
-        type: payment.type,
+        type: {value: payment.type, label: paymentsMap[payment.type]},
         user: payment.user,
         description: payment.description,
         created_by: '-',
-        sender: payment.sender
+        sender: payment.sender,
+        amount: payment.amount,
+        duplicate: false
     }];
 
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
     if (tbody.querySelector('td[colspan="9"]')) {
-        displayTemporaryPayments(tempPayments);
-    } else {
-        // Append to existing payments
-        const currentHtml = tbody.innerHTML;
-        tbody.innerHTML = displayTemporaryPayments(tempPayments) + currentHtml;
+        tbody.innerHTML = '';  // Clear the "no payments" message
     }
+
+    // Add the new row at the beginning
+    const currentRows = Array.from(tbody.children);
+    const newRow = displayTemporaryPayment(tempPayments[0]);
+    tbody.innerHTML = newRow + (currentRows.length ? tbody.innerHTML : '');
+}
+
+// New helper function to display a single payment
+function displayTemporaryPayment(payment) {
+    return `
+        <tr style="${payment.duplicate ? 'background-color: #fff3cd;' : ''}" class="payment-row">
+            <td>
+                ${payment.duplicate ? 
+                    '<span class="badge bg-warning">Duplikat</span>' : 
+                    '<button class="btn btn-sm btn-success" onclick="acceptPayment(this)"><i class="bi bi-arrow-down-circle"></i></button>'
+                }
+            </td>
+            <td class="payment-field date-field">${payment.date}</td>
+            <td class="payment-field payment-type-field" data-type-key="${payment.type.value}">
+                ${payment.type.label}
+            </td>
+            <td class="payment-field amount-field ${payment.amount >= 0 ? 'text-success' : 'text-danger'}">
+                ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
+            </td>
+            <td class="payment-field user-field">${payment.user}</td>
+            <td class="payment-field sender-field">${payment.sender}</td>
+            <td class="payment-field description-field">${payment.description}</td>
+            <td>-</td>
+            <td>
+                <div class="btn-group" role="group" style="gap: 5px;">
+                    <button class="btn btn-sm btn-primary" onclick="editPayment(this)">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="savePayment(this)" style="display: none;">
+                        <i class="bi bi-check"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="removeTemporaryPayment(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
 }
 </script>
 {% endblock %}
