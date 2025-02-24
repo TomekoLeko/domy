@@ -72,6 +72,13 @@
                                                 </option>
                                             </select>
                                         </div>
+                                        <div class="col text-end">
+                                            <button type="button" 
+                                                    class="btn btn-danger btn-sm" 
+                                                    onclick="deleteOrder({{ order.id }})">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 {% endif %}
@@ -221,6 +228,31 @@ function changeBuyer(buyerId) {
     .catch(error => {
         console.error('Error:', error);
         alert('Wystąpił błąd podczas zmiany kupującego');
+    });
+}
+
+function deleteOrder(orderId) {
+    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
+        return;
+    }
+
+    fetch(`/orders/delete/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Błąd podczas usuwania zamówienia: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas usuwania zamówienia');
     });
 }
 </script>

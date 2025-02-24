@@ -444,3 +444,19 @@ def delete_product(request, product_id):
     product.delete()
     return JsonResponse({'status': 'success'})
 
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_order(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+        order.delete()
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Zamówienie zostało usunięte'
+        })
+    except Order.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Zamówienie nie zostało znalezione'
+        }, status=404)
+
