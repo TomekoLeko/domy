@@ -31,7 +31,11 @@
                 {% csrf_token %}
                 {% for product in products %}
                     <div class="col">
-                        <div class="card h-100 product-card">
+                        <div class="card h-100 product-card" 
+                             data-product-id="{{ product.id }}"
+                             {% for price in product.prices.all %}
+                                 data-price-list-{{ price.price_list.id }}="{{ price.gross_price }}"
+                             {% endfor %}>
                             {% if product.images.first %}
                                 <div class="card-img-container pt-3" style="height: 200px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
                                     <img src="{{ product.images.first.image.url }}" 
@@ -42,13 +46,27 @@
                             <div class="card-body">
                                 <h5 class="card-title">{{ product.name }}</h5>
                                 <p class="card-text">{{ product.description }}</p>
+                                <p class="card-text price-display">
+                                    <strong>Cena: <span class="price-value">
+                                        {% with buyer_price_list=selected_buyer.profile.price_list %}
+                                        {% if buyer_price_list %}
+                                            {% with product_price=product.prices.all|dictsort:"price_list.id"|first %}
+                                                {% if product_price %}
+                                                    {{ product_price.gross_price }}
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                        {% endwith %}
+                                    </span> zł</strong>
+                                </p>
                                 {% with buyer_price_list=selected_buyer.profile.price_list %}
                                 {% if buyer_price_list %}
                                     {% with product_price=product.prices.all|dictsort:"price_list.id"|first %}
                                     {% if product_price %}
-                                        <p class="card-text">
-                                            <strong>Cena: {{ product_price.gross_price }} zł</strong>
-                                        </p>
                                         <div class="add-to-cart-overlay">
                                             <div class="input-group">
                                                 <input type="number" 
@@ -128,12 +146,39 @@
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                location.reload();
+                if (data.price_list_id) {
+                    updatePrices(data.price_list_id);
+                } else {
+                    clearPrices();
+                }
             }
         })
         .catch(error => {
             console.error('Error:', error);
             alert('Wystąpił błąd podczas zmiany kupującego');
+        });
+    }
+
+    function updatePrices(priceListId) {
+        document.querySelectorAll('.product-card').forEach(card => {
+            const priceValue = card.getAttribute(`data-price-list-${priceListId}`);
+            const priceDisplay = card.querySelector('.price-value');
+            
+            if (priceValue) {
+                priceDisplay.textContent = priceValue;
+                card.querySelector('.add-to-cart-overlay').style.display = 'block';
+            } else {
+                priceDisplay.textContent = '-';
+                card.querySelector('.add-to-cart-overlay').style.display = 'none';
+            }
+        });
+    }
+
+    function clearPrices() {
+        document.querySelectorAll('.product-card').forEach(card => {
+            const priceDisplay = card.querySelector('.price-value');
+            priceDisplay.textContent = '-';
+            card.querySelector('.add-to-cart-overlay').style.display = 'none';
         });
     }
 

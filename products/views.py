@@ -314,12 +314,23 @@ def create_order(request):
 def change_buyer(request):
     data = json.loads(request.body)
     buyer_id = data.get('buyer_id')
-
+    
     if buyer_id:
         request.session['selected_buyer_id'] = buyer_id
+        # Get buyer's price list ID
+        User = get_user_model()
+        try:
+            buyer = User.objects.get(id=buyer_id)
+            price_list_id = buyer.profile.price_list_id if buyer.profile.price_list else None
+            return JsonResponse({
+                'status': 'success',
+                'price_list_id': price_list_id
+            })
+        except User.DoesNotExist:
+            pass
     else:
         request.session.pop('selected_buyer_id', None)
-
+    
     return JsonResponse({'status': 'success'})
 
 def orders(request):
