@@ -18,7 +18,6 @@ def add_product(request):
     if request.method == 'POST':
         name = request.POST.get('name')
         description = request.POST.get('description')
-
         image = request.FILES.get('image')
 
         if not name:
@@ -31,6 +30,15 @@ def add_product(request):
 
         if image:
             product.images.create(image=image)
+
+        price_lists = PriceList.objects.all()
+        for price_list in price_lists:
+            Price.objects.create(
+                price_list=price_list,
+                product=product,
+                net_price=0,
+                gross_price=0
+            )
 
         return HttpResponseRedirect(reverse('products'))
 
@@ -371,4 +379,11 @@ def update_order_status(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_product(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    product.delete()
+    return JsonResponse({'status': 'success'})
 

@@ -80,11 +80,18 @@
                 <form method="POST" enctype="multipart/form-data">
                     {% csrf_token %}
                     <div class="row">
-                        <!-- Form Fields -->
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="edit_name" class="form-label">Product Name</label>
-                                <input type="text" class="form-control" id="edit_name" name="name" required>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="mb-3">
+                                    <label for="edit_name" class="form-label">Product Name</label>
+                                    <input type="text" class="form-control" id="edit_name" name="name" required>
+                                </div>
+                                <button type="button" 
+                                        class="btn btn-danger" 
+                                        onclick="deleteProduct(this)" 
+                                        data-product-id="">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </div>
                             <div class="mb-3">
                                 <label for="edit_description" class="form-label">Description</label>
@@ -135,6 +142,32 @@
         </div>
     </div>
     <script>
+        function deleteProduct(button) {
+            const productId = button.getAttribute('data-product-id');
+            if (!confirm('Are you sure you want to delete this product?')) {
+                return;
+            }
+
+            fetch(`/products/delete/${productId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error deleting product');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting product');
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const toggleFormButton = document.getElementById('toggleFormButton');
             const toggleFormIcon = document.getElementById('toggleFormIcon');
@@ -241,6 +274,9 @@
                     document.getElementById('edit_description').value = productDescription;
                     document.getElementById('edit_image_preview').src = productImage; 
                     document.querySelector('#editProductForm form').action = `/edit/${productId}/`;
+                    // Add product ID to delete button
+                    document.querySelector('#editProductForm button[onclick="deleteProduct(this)"]')
+                        .setAttribute('data-product-id', productId);
                 });
             });
         });
