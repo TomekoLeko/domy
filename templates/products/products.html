@@ -76,22 +76,23 @@
         </div>
         <!-- Edit Product Form -->
         <div id="editOverlay" class="overlay d-none">
-            <div id="editProductForm" class="edit-form ">
+            <div id="editProductForm" class="edit-form">
+                <!-- Add a header div for the delete button -->
+                <div class="d-flex justify-content-end mb-3">
+                    <button type="button" 
+                            class="btn btn-danger" 
+                            onclick="deleteProduct(this)" 
+                            data-product-id="">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
                 <form method="POST" enctype="multipart/form-data">
                     {% csrf_token %}
                     <div class="row">
                         <div class="col-md-6">
-                            <div class="d-flex justify-content-between align-items-start mb-3">
-                                <div class="mb-3">
-                                    <label for="edit_name" class="form-label">Product Name</label>
-                                    <input type="text" class="form-control" id="edit_name" name="name" required>
-                                </div>
-                                <button type="button" 
-                                        class="btn btn-danger" 
-                                        onclick="deleteProduct(this)" 
-                                        data-product-id="">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                            <div class="mb-3">
+                                <label for="edit_name" class="form-label">Product Name</label>
+                                <input type="text" class="form-control" id="edit_name" name="name" required>
                             </div>
                             <div class="mb-3">
                                 <label for="edit_description" class="form-label">Description</label>
