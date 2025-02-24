@@ -288,8 +288,19 @@ def update_cart(request):
 @require_POST
 def create_order(request):
     try:
-        # Get the cart for the current user
-        cart = Cart.objects.get(user=request.user)
+        # Get the selected buyer's ID from session
+        selected_buyer_id = request.session.get('selected_buyer_id')
+        if not selected_buyer_id:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'No buyer selected'
+            }, status=400)
+
+        # Get the specific cart for the current user and selected buyer
+        cart = Cart.objects.get(
+            user=request.user,
+            buyer_id=selected_buyer_id
+        )
 
         # Create order
         order = Order.objects.create(
@@ -317,9 +328,15 @@ def create_order(request):
         })
 
     except Cart.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'No active cart found'}, status=404)
+        return JsonResponse({
+            'status': 'error', 
+            'message': 'No active cart found'
+        }, status=404)
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        return JsonResponse({
+            'status': 'error', 
+            'message': str(e)
+        }, status=500)
 
 @require_POST
 @require_authenticated_staff_or_superuser
