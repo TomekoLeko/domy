@@ -195,12 +195,17 @@ def add_to_cart(request):
     try:
         product = Product.objects.get(id=product_id)
         buyer = get_user_model().objects.get(id=buyer_id)
+        
+        # Verify this is the currently selected buyer
+        if str(buyer_id) != str(request.session.get('selected_buyer_id')):
+            return JsonResponse({'error': 'Invalid buyer selected'}, status=400)
 
-        # Get or create cart
+        # Get or create cart for this specific buyer
         cart, created = Cart.objects.get_or_create(
             user=request.user,
             buyer=buyer
         )
+
         # Get price for the buyer
         price_list = buyer.profile.price_list
         if not price_list:
@@ -209,15 +214,21 @@ def add_to_cart(request):
         price = Price.objects.get(price_list=price_list, product=product)
 
         # Add or update cart item
-        cart_item, created = CartItem.objects.get_or_create(
+        cart_item = CartItem.objects.filter(
             cart=cart,
-            product=product,
-            defaults={'price': price.gross_price}
-        )
+            product=product
+        ).first()
 
-        if not created:
+        if cart_item:
             cart_item.quantity += quantity
             cart_item.save()
+        else:
+            cart_item = CartItem.objects.create(
+                cart=cart,
+                product=product,
+                quantity=quantity,
+                price=price.gross_price
+            )
 
         # Prepare cart data for response
         cart_data = {
@@ -242,6 +253,7 @@ def add_to_cart(request):
     except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist) as e:
         return JsonResponse({'error': str(e)}, status=404)
     except Exception as e:
+        print(f"Error in add_to_cart: {str(e)}")  # Add debugging
         return JsonResponse({'error': str(e)}, status=500)
 
 @require_POST
@@ -317,14 +329,31 @@ def change_buyer(request):
     
     if buyer_id:
         request.session['selected_buyer_id'] = buyer_id
-        # Get buyer's price list ID
         User = get_user_model()
         try:
             buyer = User.objects.get(id=buyer_id)
             price_list_id = buyer.profile.price_list_id if buyer.profile.price_list else None
+            
+            # Get cart data for the selected buyer
+            cart = Cart.objects.filter(user=request.user, buyer=buyer).first()
+            cart_data = None
+            if cart:
+                cart_data = {
+                    'items': [{
+                        'id': item.id,
+                        'name': item.product.name,
+                        'quantity': item.quantity,
+                        'price': str(item.price),
+                        'subtotal': str(item.subtotal),
+                        'image_url': item.product.images.first().image.url if item.product.images.exists() else None
+                    } for item in cart.items.all()],
+                    'total_cost': str(cart.total_cost)
+                }
+            
             return JsonResponse({
                 'status': 'success',
-                'price_list_id': price_list_id
+                'price_list_id': price_list_id,
+                'cart_data': cart_data
             })
         except User.DoesNotExist:
             pass

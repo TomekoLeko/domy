@@ -151,6 +151,7 @@
                 } else {
                     clearPrices();
                 }
+                updateCartDisplay(data.cart_data);
             }
         })
         .catch(error => {
@@ -163,7 +164,6 @@
         document.querySelectorAll('.product-card').forEach(card => {
             const priceValue = card.getAttribute(`data-price-list-${priceListId}`);
             const priceDisplay = card.querySelector('.price-value');
-            
             if (priceValue) {
                 priceDisplay.textContent = priceValue;
                 card.querySelector('.add-to-cart-overlay').style.display = 'block';
@@ -209,6 +209,20 @@
             }
         })
         .catch(error => console.error('Error:', error));
+    }
+
+    function updateCartDisplay(cartData) {
+        updateCartIcon(cartData ? cartData.items.length : 0);
+
+        if (cartData) {
+            updateCartContent(cartData);
+        } else {
+            // Clear cart if no data
+            const cartContent = document.querySelector('#cartContent');
+            if (cartContent) {
+                cartContent.innerHTML = '<p class="text-center">Koszyk jest pusty</p>';
+            }
+        }
     }
 </script>
 {% endblock %}
