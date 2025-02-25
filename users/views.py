@@ -61,24 +61,43 @@ def users_list(request):
 def update_user_profile(request):
     data = json.loads(request.body)
     user_id = data.get('user_id')
+    
     try:
         user = User.objects.get(id=user_id)
         profile = user.profile
 
-        profile.name = data.get('name', profile.name)
-        profile.address = data.get('address', profile.address)
-        profile.city = data.get('city', profile.city)
-        profile.postal = data.get('postal', profile.postal)
-        profile.phone = data.get('phone', profile.phone)
+        # Update User model fields
+        user.first_name = data.get('first_name', '')
+        user.last_name = data.get('last_name', '')
+        user.email = data.get('email', '')
+        user.save()
+
+        # Update Profile model fields
+        profile.name = data.get('name', '')
+        profile.phone = data.get('phone', '')
+        profile.address = data.get('address', '')
+        profile.city = data.get('city', '')
+        profile.postal = data.get('postal', '')
         profile.is_beneficiary = data.get('is_beneficiary', False)
-
-        if price_list_id := data.get('price_list'):
-            profile.price_list_id = price_list_id
-
+        
+        if data.get('price_list'):
+            profile.price_list_id = data.get('price_list')
+        else:
+            profile.price_list = None
+            
         profile.save()
 
-        return JsonResponse({'status': 'success'})
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Profile updated successfully'
+        })
     except User.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'User not found'}, status=404)
+        return JsonResponse({
+            'status': 'error',
+            'message': 'User not found'
+        }, status=404)
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
