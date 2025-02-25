@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
+{% load product_tags %}
 
 {% block content %}
 <div class="container">
@@ -22,7 +23,8 @@
         <div class="row">
             <div class="col">
                 <h1>Hello</h1>
-                {{ selected_buyer }}
+                <p>Selected buyer: {{ selected_buyer }}</p>
+                <p>Session buyer ID: {{ request.session.selected_buyer_id }}</p>
             </div>
         </div>
 
@@ -48,11 +50,10 @@
                                 <p class="card-text">{{ product.description }}</p>
                                 <p class="card-text price-display">
                                     <strong>Cena: <span class="price-value">
-                                        {% with buyer_price_list=selected_buyer.profile.price_list %}
-                                        {% if buyer_price_list %}
-                                            {% with product_price=product.prices.all|dictsort:"price_list.id"|first %}
-                                                {% if product_price %}
-                                                    {{ product_price.gross_price }}
+                                        {% if product_prices %}
+                                            {% with price=product_prices|get_item:product.id %}
+                                                {% if price %}
+                                                    {{ price }}
                                                 {% else %}
                                                     -
                                                 {% endif %}
@@ -60,34 +61,25 @@
                                         {% else %}
                                             -
                                         {% endif %}
-                                        {% endwith %}
                                     </span> zł</strong>
                                 </p>
-                                {% with buyer_price_list=selected_buyer.profile.price_list %}
-                                {% if buyer_price_list %}
-                                    {% with product_price=product.prices.all|dictsort:"price_list.id"|first %}
-                                    {% if product_price %}
-                                        <div class="add-to-cart-overlay">
-                                            <div class="input-group">
-                                                <input type="number" 
-                                                       class="form-control" 
-                                                       value="1" 
-                                                       min="1"
-                                                       id="quantity-{{ product.id }}">
-                                                <button class="btn btn-success" 
-                                                        onclick="addToCart({{ product.id }}, {{ selected_buyer.id }})">
-                                                    <i class="bi bi-plus-lg"></i>
-                                                </button>
-                                            </div>
+                                {% if product_prices and product_prices|get_item:product.id %}
+                                    <div class="add-to-cart-overlay">
+                                        <div class="input-group">
+                                            <input type="number" 
+                                                   class="form-control" 
+                                                   value="1" 
+                                                   min="1"
+                                                   id="quantity-{{ product.id }}">
+                                            <button class="btn btn-success" 
+                                                    onclick="addToCart({{ product.id }}, {{ request.session.selected_buyer_id }})">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
                                         </div>
-                                    {% else %}
-                                        <p class="text-muted">Brak ceny dla tego produktu</p>
-                                    {% endif %}
-                                    {% endwith %}
+                                    </div>
                                 {% else %}
-                                    <p class="text-muted">Brak przypisanego cennika dla kupującego</p>
+                                    <p class="text-muted">Brak ceny dla tego produktu</p>
                                 {% endif %}
-                                {% endwith %}
                             </div>
                         </div>
                     </div>

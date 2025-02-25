@@ -136,10 +136,8 @@ def save_price(request):
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
 
 def home(request):
-
     products = Product.objects.filter(is_active=True).prefetch_related('images', 'prices')
     User = get_user_model()
-
     context = {
         'products': products,
     }
@@ -147,9 +145,6 @@ def home(request):
     if request.user.is_authenticated:
         if request.user.is_staff or request.user.is_superuser:
             beneficiaries = User.objects.filter(profile__is_beneficiary=True)
-            print("Beneficiaries count:", beneficiaries.count())
-            for b in beneficiaries:
-                print(f"User: {b.username}, is_beneficiary: {b.profile.is_beneficiary}")
             context['beneficiaries'] = beneficiaries
 
             selected_buyer_id = request.session.get('selected_buyer_id')
@@ -157,28 +152,32 @@ def home(request):
                 try:
                     selected_buyer = User.objects.get(id=selected_buyer_id)
                     context['selected_buyer'] = selected_buyer
-                    print(f"Selected buyer: {selected_buyer.username}")
-                    print(f"Buyer's price list: {selected_buyer.profile.price_list}")
+                    
+                    # Get the buyer's price list
+                    buyer_price_list = selected_buyer.profile.price_list
+                    if buyer_price_list:
+                        # Get prices for all products from buyer's price list
+                        prices = Price.objects.filter(
+                            price_list=buyer_price_list,
+                            product__in=products
+                        ).select_related('product')
+                        
+                        # Create a dictionary of product prices
+                        product_prices = {price.product_id: price.gross_price for price in prices}
+                        context['product_prices'] = product_prices
                 except User.DoesNotExist:
                     pass
         else:
             # Regular user is their own buyer
             context['selected_buyer'] = request.user
-            print(f"Regular user as buyer: {request.user.username}")
-            print(f"User's price list: {request.user.profile.price_list}")
-
-        if 'selected_buyer' in context:
-            cart = Cart.objects.filter(
-                user=request.user,
-                buyer=context['selected_buyer']
-            ).first()
-            if cart:
-                context['cart'] = cart
-
-    # Debug print products and their prices
-    for product in products:
-        print(f"Product: {product.name}")
-        print(f"Prices: {[p for p in product.prices.all()]}")
+            buyer_price_list = request.user.profile.price_list
+            if buyer_price_list:
+                prices = Price.objects.filter(
+                    price_list=buyer_price_list,
+                    product__in=products
+                ).select_related('product')
+                product_prices = {price.product_id: price.gross_price for price in prices}
+                context['product_prices'] = product_prices
 
     return render(request, 'home.html', context)
 
