@@ -146,12 +146,8 @@
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                if (data.price_list_id) {
-                    updatePrices(data.price_list_id);
-                } else {
-                    clearPrices();
-                }
-                updateCartDisplay(data.cart_data);
+                // Reload the entire page to re-render with new buyer
+                location.reload();
             }
         })
         .catch(error => {
