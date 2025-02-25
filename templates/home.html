@@ -148,28 +148,6 @@
         });
     }
 
-    function updatePrices(priceListId) {
-        document.querySelectorAll('.product-card').forEach(card => {
-            const priceValue = card.getAttribute(`data-price-list-${priceListId}`);
-            const priceDisplay = card.querySelector('.price-value');
-            if (priceValue) {
-                priceDisplay.textContent = priceValue;
-                card.querySelector('.add-to-cart-overlay').style.display = 'block';
-            } else {
-                priceDisplay.textContent = '-';
-                card.querySelector('.add-to-cart-overlay').style.display = 'none';
-            }
-        });
-    }
-
-    function clearPrices() {
-        document.querySelectorAll('.product-card').forEach(card => {
-            const priceDisplay = card.querySelector('.price-value');
-            priceDisplay.textContent = '-';
-            card.querySelector('.add-to-cart-overlay').style.display = 'none';
-        });
-    }
-
     function addToCart(productId, buyerId) {
         const quantity = parseInt(document.getElementById(`quantity-${productId}`).value);
 
@@ -197,20 +175,6 @@
             }
         })
         .catch(error => console.error('Error:', error));
-    }
-
-    function updateCartDisplay(cartData) {
-        updateCartIcon(cartData ? cartData.items.length : 0);
-
-        if (cartData) {
-            updateCartContent(cartData);
-        } else {
-            // Clear cart if no data
-            const cartContent = document.querySelector('#cartContent');
-            if (cartContent) {
-                cartContent.innerHTML = '<p class="text-center">Koszyk jest pusty</p>';
-            }
-        }
     }
 </script>
 {% endblock %}
