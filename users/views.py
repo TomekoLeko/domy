@@ -79,12 +79,10 @@ def update_user_profile(request):
         profile.city = data.get('city', '')
         profile.postal = data.get('postal', '')
         profile.is_beneficiary = data.get('is_beneficiary', False)
-        
         if data.get('price_list'):
             profile.price_list_id = data.get('price_list')
         else:
             profile.price_list = None
-            
         profile.save()
 
         return JsonResponse({

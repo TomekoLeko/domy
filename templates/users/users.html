@@ -33,8 +33,10 @@
                                 aria-controls="collapse{{ forloop.counter }}">
                             {% if user.profile.name %}
                                 {{ user.profile.name }}
+                            {% elif user.first_name and user.last_name %}
+                                {{ user.first_name }} {{ user.last_name }}
                             {% else %}
-                                {{ user.username }}
+                                {{ user.username }} (login)
                             {% endif %}
                         </button>
                     </h2>
