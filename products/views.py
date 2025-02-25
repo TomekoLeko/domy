@@ -156,13 +156,11 @@ def home(request):
                     # Get the buyer's price list
                     buyer_price_list = selected_buyer.profile.price_list
                     if buyer_price_list:
-                        # Get prices for all products from buyer's price list
                         prices = Price.objects.filter(
                             price_list=buyer_price_list,
                             product__in=products
                         ).select_related('product')
                         
-                        # Create a dictionary of product prices
                         product_prices = {price.product_id: price.gross_price for price in prices}
                         context['product_prices'] = product_prices
                 except User.DoesNotExist:
@@ -342,14 +340,14 @@ def create_order(request):
 def change_buyer(request):
     data = json.loads(request.body)
     buyer_id = data.get('buyer_id')
-    
+
     if buyer_id:
         request.session['selected_buyer_id'] = buyer_id
         User = get_user_model()
         try:
             buyer = User.objects.get(id=buyer_id)
             price_list_id = buyer.profile.price_list_id if buyer.profile.price_list else None
-            
+
             # Get cart data for the selected buyer
             cart = Cart.objects.filter(user=request.user, buyer=buyer).first()
             cart_data = None
