@@ -1,4 +1,4 @@
-from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem
+from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -11,7 +11,20 @@ from django.db.models import Q
 @require_authenticated_staff_or_superuser
 def products(request):
     products = Product.objects.filter(is_active=True)
-    return render(request, 'products/products.html', {'products': products})
+    categories = ProductCategory.objects.all()
+    return render(request, 'products/products.html', {
+        'products': products,
+        'categories': categories
+    })
+
+@require_authenticated_staff_or_superuser
+def add_category(request):
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        if name:
+            ProductCategory.objects.create(name=name)
+            return HttpResponseRedirect(reverse('products'))
+    return HttpResponseBadRequest("Invalid request")
 
 @require_authenticated_staff_or_superuser
 def add_product(request):
@@ -19,30 +32,40 @@ def add_product(request):
         name = request.POST.get('name')
         description = request.POST.get('description')
         image = request.FILES.get('image')
+        vat = request.POST.get('vat')
+        ean = request.POST.get('ean')
+        volume_value = request.POST.get('volume_value')
+        volume_unit = request.POST.get('volume_unit')
+        categories = request.POST.getlist('categories')
 
-        if not name:
-            return HttpResponseBadRequest("Missing required fields.")
-
-        product = Product.objects.create(
-            name=name,
-            description=description,
-        )
-
-        if image:
-            product.images.create(image=image)
-
-        price_lists = PriceList.objects.all()
-        for price_list in price_lists:
-            Price.objects.create(
-                price_list=price_list,
-                product=product,
-                net_price=0,
-                gross_price=0
+        if name:
+            product = Product.objects.create(
+                name=name,
+                description=description,
+                vat=vat,
+                ean=ean,
+                volume_value=volume_value,
+                volume_unit=volume_unit
             )
 
-        return HttpResponseRedirect(reverse('products'))
+            if categories:
+                product.categories.set(categories)
 
-    return HttpResponseBadRequest("Invalid request method.")
+            if image:
+                product.images.create(image=image)
+
+            price_lists = PriceList.objects.all()
+            for price_list in price_lists:
+                Price.objects.create(
+                    price_list=price_list,
+                    product=product,
+                    net_price=0,
+                    gross_price=0
+                )
+
+            return HttpResponseRedirect(reverse('products'))
+
+    return HttpResponseBadRequest("Invalid request")
 
 @require_authenticated_staff_or_superuser
 def edit_product(request, product_id):

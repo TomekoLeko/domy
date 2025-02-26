@@ -1,10 +1,39 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+class ProductCategory(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Kategoria produktu"
+        verbose_name_plural = "Kategorie produktów"
+
 class Product(models.Model):
-    name = models.CharField(max_length=255)
+    UNIT_CHOICES = [
+        ("l", "Litry"),
+        ("kg", "Kilogramy"),
+        ("pcs", "Sztuki"),
+    ]
+
+    name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    categories = models.ManyToManyField(ProductCategory, related_name='products', blank=True)
+    vat = models.DecimalField(max_digits=4, decimal_places=2, default=23.00)
+    ean = models.CharField(max_length=13, blank=True, null=True)
+    volume_value = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        default=1.00
+    )
+    volume_unit = models.CharField(
+        max_length=10, 
+        choices=UNIT_CHOICES,
+        default='pcs'
+    )
 
     def __str__(self):
         return self.name
@@ -73,17 +102,21 @@ class CartItem(models.Model):
 
 class Order(models.Model):
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
+        ('accepted', 'Przyjęte'),
+        ('shipped', 'Nadane'),
+        ('delivered', 'Dostarczone'),
+        ('cancelled', 'Anulowane'),
     ]
 
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
-    buyer = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='orders')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    total_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    buyer = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='buyer_orders')
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='accepted'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    total_cost = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
         return f"Order {self.id} by {self.buyer.profile.name or self.buyer.username}"
