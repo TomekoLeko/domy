@@ -33,11 +33,9 @@
             gap: 0.5rem;
             background-color: #f8f9fa;
         }
-        
         .category-checkboxes .form-check {
             margin: 0.25rem 0.5rem;
         }
-        
         .category-checkboxes .form-check-input:checked + .form-check-label {
             font-weight: 500;
             color: #198754;  /* Bootstrap success color */
@@ -64,29 +62,65 @@
                 <div class="row">
                     <div class="col-md-6">
                         <div class="mb-3">
-                            <label for="name" class="form-label">Product Name</label>
-                            <input type="text" class="form-control" id="name" name="name" required>
+                            <label class="form-label">Nazwa</label>
+                            <input type="text" class="form-control" name="name" required>
                         </div>
                         <div class="mb-3">
-                            <label for="description" class="form-label">Description</label>
-                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                            <label class="form-label">Opis</label>
+                            <textarea class="form-control" name="description" rows="3"></textarea>
                         </div>
                         <div class="mb-3">
-                            <input type="file" class="form-control" id="new_product_image" name="image">
+                            <label class="form-label">VAT (%)</label>
+                            <input type="number" class="form-control" name="vat" value="23" step="0.01" required>
                         </div>
-
+                        <div class="mb-3">
+                            <label class="form-label">EAN</label>
+                            <input type="text" class="form-control" name="ean" maxlength="13">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label">Ilość</label>
+                                <input type="number" class="form-control" name="volume_value" value="1" step="0.01" required>
+                            </div>
+                            <div class="col">
+                                <label class="form-label">Jednostka</label>
+                                <select class="form-select" name="volume_unit" required>
+                                    <option value="l">Litry</option>
+                                    <option value="kg">Kilogramy</option>
+                                    <option value="pcs">Sztuki</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Kategorie</label>
+                            <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                                {% for category in categories %}
+                                <div class="form-check">
+                                    <input type="checkbox" 
+                                           class="form-check-input" 
+                                           name="categories" 
+                                           value="{{ category.id }}" 
+                                           id="add_category_{{ category.id }}">
+                                    <label class="form-check-label" for="add_category_{{ category.id }}">
+                                        {{ category.name }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <!-- Add a wrapper div for the Submit button -->
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-success">Zapisz</button>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <div class="mb-3">
-                          <img id="new_product_image_preview" src="#" alt="Product Image Preview" class="img-fluid mt-3 d-none" style="max-height: 200px; object-fit: contain;">
-                          <p id="new_product_image_error" class="text-danger d-none mt-2">Invalid file type. Please select an image.</p>  
+                            <img id="new_product_image_preview" src="#" alt="Product Image Preview" 
+                                 class="img-fluid mt-3 d-none" style="max-height: 200px; object-fit: contain;">
+                            <input type="file" class="form-control" id="new_product_image" name="image">
+                            <p id="new_product_image_error" class="text-danger d-none mt-2">Invalid file type. Please select an image.</p>
                         </div>
                     </div>
-                </div>
-
-                <!-- Add a wrapper div for the Submit button -->
-                <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-success">Submit</button>
                 </div>
             </form>
         </div>
@@ -196,6 +230,35 @@
                     </div>
                 </div>
             {% endfor %}
+        </div>
+
+        <div class="modal fade" id="addCategoryModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Dodaj kategorię</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form method="POST" action="{% url 'add_category' %}">
+                        {% csrf_token %}
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Nazwa kategorii</label>
+                                <input type="text" class="form-control" name="name" required>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                            <button type="submit" class="btn btn-primary">Dodaj</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div
+        <div class="mt-4">
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                <i class="bi bi-plus-lg"></i> Dodaj kategorię
+            </button>
         </div>
     </div>
     <script>
@@ -351,207 +414,8 @@
                 });
             });
 
-            function editProduct(productId) {
-                const product = products.find(p => p.id === productId);
-                if (!product) return;
-
-                const form = document.querySelector('#editProductModal form');
-                form.action = `/products/edit/${productId}/`;
-                
-                form.querySelector('[name="name"]').value = product.name;
-                form.querySelector('[name="description"]').value = product.description || '';
-                form.querySelector('[name="vat"]').value = product.vat;
-                form.querySelector('[name="ean"]').value = product.ean || '';
-                form.querySelector('[name="volume_value"]').value = product.volume_value;
-                form.querySelector('[name="volume_unit"]').value = product.volume_unit;
-
-                // Handle categories
-                const categoryCheckboxes = form.querySelectorAll('[name="categories"]');
-                categoryCheckboxes.forEach(checkbox => {
-                    checkbox.checked = product.categories.includes(parseInt(checkbox.value));
-                });
-
-                const modal = new bootstrap.Modal(document.getElementById('editProductModal'));
-                modal.show();
-            }
         });
     </script>
-    <!-- Add this after the existing add product form -->
-    <div class="modal fade" id="addCategoryModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Dodaj kategorię</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="{% url 'add_category' %}">
-                    {% csrf_token %}
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Nazwa kategorii</label>
-                            <input type="text" class="form-control" name="name" required>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-                        <button type="submit" class="btn btn-primary">Dodaj</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Product Modal -->
-    <div class="modal fade" id="addProductModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Dodaj produkt</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" enctype="multipart/form-data">
-                    {% csrf_token %}
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Nazwa</label>
-                            <input type="text" class="form-control" name="name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Opis</label>
-                            <textarea class="form-control" name="description"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">VAT (%)</label>
-                            <input type="number" class="form-control" name="vat" value="23" step="0.01" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">EAN</label>
-                            <input type="text" class="form-control" name="ean" maxlength="13">
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col">
-                                <label class="form-label">Ilość</label>
-                                <input type="number" class="form-control" name="volume_value" value="1" step="0.01" required>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Jednostka</label>
-                                <select class="form-select" name="volume_unit" required>
-                                    <option value="l">Litry</option>
-                                    <option value="kg">Kilogramy</option>
-                                    <option value="pcs">Sztuki</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Kategorie</label>
-                            <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">
-                                {% for category in categories %}
-                                <div class="form-check">
-                                    <input type="checkbox" 
-                                           class="form-check-input" 
-                                           name="categories" 
-                                           value="{{ category.id }}" 
-                                           id="add_category_{{ category.id }}">
-                                    <label class="form-check-label" for="add_category_{{ category.id }}">
-                                        {{ category.name }}
-                                    </label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Zdjęcie</label>
-                            <input type="file" class="form-control" name="image">
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-                        <button type="submit" class="btn btn-primary">Dodaj</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Product Modal -->
-    <div class="modal fade" id="editProductModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edytuj produkt</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" enctype="multipart/form-data" action="{% url 'edit_product' 0 %}">
-                    {% csrf_token %}
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Nazwa</label>
-                            <input type="text" class="form-control" name="name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Opis</label>
-                            <textarea class="form-control" name="description"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">VAT (%)</label>
-                            <input type="number" class="form-control" name="vat" step="0.01" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">EAN</label>
-                            <input type="text" class="form-control" name="ean" maxlength="13">
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col">
-                                <label class="form-label">Ilość</label>
-                                <input type="number" class="form-control" name="volume_value" step="0.01" required>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Jednostka</label>
-                                <select class="form-select" name="volume_unit" required>
-                                    <option value="l">Litry</option>
-                                    <option value="kg">Kilogramy</option>
-                                    <option value="pcs">Sztuki</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Kategorie</label>
-                            <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">
-                                {% for category in categories %}
-                                <div class="form-check">
-                                    <input type="checkbox" 
-                                           class="form-check-input" 
-                                           name="categories" 
-                                           value="{{ category.id }}" 
-                                           id="edit_category_{{ category.id }}">
-                                    <label class="form-check-label" for="edit_category_{{ category.id }}">
-                                        {{ category.name }}
-                                    </label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Zdjęcie</label>
-                            <input type="file" class="form-control" name="image">
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-                        <button type="submit" class="btn btn-primary">Zapisz</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add category button at the bottom -->
-    <div class="mt-4">
-        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-            <i class="bi bi-plus-lg"></i> Dodaj kategorię
-        </button>
-    </div>
 </body>
 </html>
-
 {% endblock %}
