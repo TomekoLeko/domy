@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load product_tags %}
 {% block title %}Produkty{% endblock %}
 {% block content %}
 <!DOCTYPE html>
@@ -26,6 +27,19 @@
             opacity: 1;
             transform: scale(3.1);
         }
+        .category-checkboxes {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            background-color: #f8f9fa;
+        }
+        .category-checkboxes .form-check {
+            margin: 0.25rem 0.5rem;
+        }
+        .category-checkboxes .form-check-input:checked + .form-check-label {
+            font-weight: 500;
+            color: #198754;  /* Bootstrap success color */
+        }
     </style>
 </head>
 <body>
@@ -48,54 +62,135 @@
                 <div class="row">
                     <div class="col-md-6">
                         <div class="mb-3">
-                            <label for="name" class="form-label">Product Name</label>
-                            <input type="text" class="form-control" id="name" name="name" required>
+                            <label class="form-label">Nazwa</label>
+                            <input type="text" class="form-control" name="name" required>
                         </div>
                         <div class="mb-3">
-                            <label for="description" class="form-label">Description</label>
-                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                            <label class="form-label">Opis</label>
+                            <textarea class="form-control" name="description" rows="3"></textarea>
                         </div>
                         <div class="mb-3">
-                            <input type="file" class="form-control" id="new_product_image" name="image">
+                            <label class="form-label">VAT (%)</label>
+                            <input type="number" class="form-control" name="vat" value="23" step="0.01" required>
                         </div>
-
+                        <div class="mb-3">
+                            <label class="form-label">EAN</label>
+                            <input type="text" class="form-control" name="ean" maxlength="13">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label">Ilość</label>
+                                <input type="number" class="form-control" name="volume_value" value="1" step="0.01" required>
+                            </div>
+                            <div class="col">
+                                <label class="form-label">Jednostka</label>
+                                <select class="form-select" name="volume_unit" required>
+                                    <option value="l">Litry</option>
+                                    <option value="kg">Kilogramy</option>
+                                    <option value="pcs">Sztuki</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Kategorie</label>
+                            <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                                {% for category in categories %}
+                                <div class="form-check">
+                                    <input type="checkbox" 
+                                           class="form-check-input" 
+                                           name="categories" 
+                                           value="{{ category.id }}" 
+                                           id="add_category_{{ category.id }}">
+                                    <label class="form-check-label" for="add_category_{{ category.id }}">
+                                        {{ category.name }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <!-- Add a wrapper div for the Submit button -->
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-success">Zapisz</button>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <div class="mb-3">
-                          <img id="new_product_image_preview" src="#" alt="Product Image Preview" class="img-fluid mt-3 d-none" style="max-height: 200px; object-fit: contain;">
-                          <p id="new_product_image_error" class="text-danger d-none mt-2">Invalid file type. Please select an image.</p>  
+                            <img id="new_product_image_preview" src="#" alt="Product Image Preview" 
+                                 class="img-fluid mt-3 d-none" style="max-height: 200px; object-fit: contain;">
+                            <input type="file" class="form-control" id="new_product_image" name="image">
+                            <p id="new_product_image_error" class="text-danger d-none mt-2">Invalid file type. Please select an image.</p>
                         </div>
                     </div>
-                </div>
-
-                <!-- Add a wrapper div for the Submit button -->
-                <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-success">Submit</button>
                 </div>
             </form>
         </div>
         <!-- Edit Product Form -->
         <div id="editOverlay" class="overlay d-none">
-            <div id="editProductForm" class="edit-form ">
-                <form method="POST" enctype="multipart/form-data">
+            <div id="editProductForm" class="edit-form">
+                <div class="d-flex justify-content-end mb-3">
+                    <button type="button" 
+                            class="btn btn-danger" 
+                            onclick="deleteProduct(this)" 
+                            data-product-id="">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+                <form method="POST" enctype="multipart/form-data" action="{% url 'edit_product' 0 %}">
                     {% csrf_token %}
                     <div class="row">
-                        <!-- Form Fields -->
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="edit_name" class="form-label">Product Name</label>
+                                <label class="form-label">Nazwa</label>
                                 <input type="text" class="form-control" id="edit_name" name="name" required>
                             </div>
                             <div class="mb-3">
-                                <label for="edit_description" class="form-label">Description</label>
+                                <label class="form-label">Opis</label>
                                 <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
                             </div>
+                            <div class="mb-3">
+                                <label class="form-label">VAT (%)</label>
+                                <input type="number" class="form-control" id="edit_vat" name="vat" step="0.01" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">EAN</label>
+                                <input type="text" class="form-control" id="edit_ean" name="ean" maxlength="13">
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label class="form-label">Ilość</label>
+                                    <input type="number" class="form-control" id="edit_volume_value" name="volume_value" step="0.01" required>
+                                </div>
+                                <div class="col">
+                                    <label class="form-label">Jednostka</label>
+                                    <select class="form-select" id="edit_volume_unit" name="volume_unit" required>
+                                        <option value="l">Litry</option>
+                                        <option value="kg">Kilogramy</option>
+                                        <option value="pcs">Sztuki</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Kategorie</label>
+                                <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                                    {% for category in categories %}
+                                    <div class="form-check">
+                                        <input type="checkbox" 
+                                               class="form-check-input" 
+                                               name="categories" 
+                                               value="{{ category.id }}" 
+                                               id="edit_category_{{ category.id }}">
+                                        <label class="form-check-label" for="edit_category_{{ category.id }}">
+                                            {{ category.name }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
                             <div class="d-flex justify-content-end">
-                                <button type="submit" class="btn btn-success me-2">Save</button>
-                                <button type="button" class="btn btn-secondary" id="cancelEditButton">Cancel</button>
+                                <button type="submit" class="btn btn-success me-2">Zapisz</button>
+                                <button type="button" class="btn btn-secondary" id="cancelEditButton">Anuluj</button>
                             </div>
                         </div>
-                        <!-- Image Preview -->
                         <div class="col-md-6 d-flex flex-column align-items-center">
                             <img id="edit_image_preview" src="#" alt="Product Image"
                                 class="img-fluid mb-3" style="max-height: 200px; object-fit: contain;">
@@ -115,14 +210,17 @@
                             <div class="product-image" style="background-image: url('{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}');">
                             </div>
                             <button
-                                class="edit-button btn btn-light btn-sm "
+                                class="edit-button btn btn-light btn-sm"
                                 data-product-id="{{ product.id }}"
-                                    data-product-name="{{ product.name }}"
-                                    data-product-description="{{ product.description }}"
-                                    data-product-image="{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}"
-                            >
-                                <i class="bi bi-pencil-square">
-                                </i>
+                                data-product-name="{{ product.name }}"
+                                data-product-description="{{ product.description }}"
+                                data-product-image="{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}"
+                                data-product-vat="{{ product.vat }}"
+                                data-product-ean="{{ product.ean|default:'' }}"
+                                data-product-volume-value="{{ product.volume_value }}"
+                                data-product-volume-unit="{{ product.volume_unit }}"
+                                data-product-categories="{{ product.categories.all|category_ids_as_json|safe }}">
+                                <i class="bi bi-pencil-square"></i>
                             </button>
                         </div>
                         <div class="card-body">
@@ -133,8 +231,63 @@
                 </div>
             {% endfor %}
         </div>
+
+        <div class="modal fade" id="addCategoryModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Dodaj kategorię</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form method="POST" action="{% url 'add_category' %}">
+                        {% csrf_token %}
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Nazwa kategorii</label>
+                                <input type="text" class="form-control" name="name" required>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                            <button type="submit" class="btn btn-primary">Dodaj</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div
+        <div class="mt-4">
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                <i class="bi bi-plus-lg"></i> Dodaj kategorię
+            </button>
+        </div>
     </div>
     <script>
+        function deleteProduct(button) {
+            const productId = button.getAttribute('data-product-id');
+            if (!confirm('Are you sure you want to delete this product?')) {
+                return;
+            }
+
+            fetch(`/products/delete/${productId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error deleting product');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting product');
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const toggleFormButton = document.getElementById('toggleFormButton');
             const toggleFormIcon = document.getElementById('toggleFormIcon');
@@ -236,16 +389,33 @@
                     const productName = button.getAttribute('data-product-name');
                     const productDescription = button.getAttribute('data-product-description');
                     const productImage = button.getAttribute('data-product-image');
+                    const productVat = button.getAttribute('data-product-vat');
+                    const productEan = button.getAttribute('data-product-ean');
+                    const productVolumeValue = button.getAttribute('data-product-volume-value');
+                    const productVolumeUnit = button.getAttribute('data-product-volume-unit');
+                    const productCategories = JSON.parse(button.getAttribute('data-product-categories') || '[]');
 
                     document.getElementById('edit_name').value = productName;
-                    document.getElementById('edit_description').value = productDescription;
-                    document.getElementById('edit_image_preview').src = productImage; 
-                    document.querySelector('#editProductForm form').action = `/edit/${productId}/`;
+                    document.getElementById('edit_description').value = productDescription || '';
+                    document.getElementById('edit_image_preview').src = productImage;
+                    document.getElementById('edit_vat').value = productVat;
+                    document.getElementById('edit_ean').value = productEan || '';
+                    document.getElementById('edit_volume_value').value = productVolumeValue;
+                    document.getElementById('edit_volume_unit').value = productVolumeUnit;
+
+                    // Check/uncheck category checkboxes based on product's categories
+                    document.querySelectorAll('input[name="categories"]').forEach(checkbox => {
+                        checkbox.checked = productCategories.includes(parseInt(checkbox.value));
+                    });
+
+                    document.querySelector('#editProductForm form').action = "{% url 'edit_product' 0 %}".replace('0', productId);
+                    document.querySelector('#editProductForm button[onclick="deleteProduct(this)"]')
+                        .setAttribute('data-product-id', productId);
                 });
             });
+
         });
     </script>
 </body>
 </html>
-
 {% endblock %}

@@ -27,8 +27,9 @@
                 {% for order in orders %}
                     <div class="accordion-item border border-2 mb-3 rounded">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed {% if order.status == 'completed' %}bg-success-subtle border-success
+                            <button class="accordion-button collapsed {% if order.status == 'delivered' %}bg-success-subtle border-success
                                         {% elif order.status == 'cancelled' %}bg-danger-subtle border-danger
+                                        {% elif order.status == 'shipped' %}bg-info-subtle border-info
                                         {% else %}bg-primary-subtle border-primary{% endif %}" 
                                     type="button" 
                                     data-bs-toggle="collapse" 
@@ -36,11 +37,13 @@
                                     aria-expanded="false">
                                 <div class="d-flex justify-content-between align-items-center w-100">
                                     <span>{{ order.created_at|date:"d.m.Y H:i" }}</span>
-                                    <span class="badge {% if order.status == 'completed' %}bg-success
+                                    <span class="badge {% if order.status == 'delivered' %}bg-success
                                               {% elif order.status == 'cancelled' %}bg-danger
+                                              {% elif order.status == 'shipped' %}bg-info
                                               {% else %}bg-primary{% endif %} me-3">
-                                        {% if order.status == 'pending' %}Oczekujące
-                                        {% elif order.status == 'completed' %}Zrealizowane
+                                        {% if order.status == 'accepted' %}Przyjęte
+                                        {% elif order.status == 'shipped' %}Nadane
+                                        {% elif order.status == 'delivered' %}Dostarczone
                                         {% else %}Anulowane{% endif %}
                                     </span>
                                     <strong>{{ order.total_cost }} zł</strong>
@@ -61,16 +64,26 @@
                                         <div class="col-auto">
                                             <select class="form-select form-select-sm order-status-select" 
                                                     data-order-id="{{ order.id }}">
-                                                <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>
-                                                    Oczekujące
+                                                <option value="accepted" {% if order.status == 'accepted' %}selected{% endif %}>
+                                                    Przyjęte
                                                 </option>
-                                                <option value="completed" {% if order.status == 'completed' %}selected{% endif %}>
-                                                    Zrealizowane
+                                                <option value="shipped" {% if order.status == 'shipped' %}selected{% endif %}>
+                                                    Nadane
+                                                </option>
+                                                <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>
+                                                    Dostarczone
                                                 </option>
                                                 <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>
                                                     Anulowane
                                                 </option>
                                             </select>
+                                        </div>
+                                        <div class="col text-end">
+                                            <button type="button" 
+                                                    class="btn btn-danger btn-sm" 
+                                                    onclick="deleteOrder({{ order.id }})">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -167,17 +180,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Update badge color and text
                 badge.className = 'badge me-3 ' + 
-                    (status === 'completed' ? 'bg-success' : 
+                    (status === 'delivered' ? 'bg-success' : 
                      status === 'cancelled' ? 'bg-danger' : 
+                     status === 'shipped' ? 'bg-info' : 
                      'bg-primary');
-                badge.textContent = status === 'pending' ? 'Oczekujące' :
-                                  status === 'completed' ? 'Zrealizowane' :
+                badge.textContent = status === 'accepted' ? 'Przyjęte' :
+                                  status === 'shipped' ? 'Nadane' :
+                                  status === 'delivered' ? 'Dostarczone' :
                                   'Anulowane';
 
                 const accordionButton = accordionItem.querySelector('.accordion-button');
                 accordionButton.className = 'accordion-button collapsed ' + 
-                    (status === 'completed' ? 'bg-success-subtle border-success' : 
+                    (status === 'delivered' ? 'bg-success-subtle border-success' : 
                      status === 'cancelled' ? 'bg-danger-subtle border-danger' : 
+                     status === 'shipped' ? 'bg-info-subtle border-info' : 
                      'bg-primary-subtle border-primary');
 
                 const accordionItemDiv = accordionItem.querySelector('.accordion-item');
@@ -221,6 +237,31 @@ function changeBuyer(buyerId) {
     .catch(error => {
         console.error('Error:', error);
         alert('Wystąpił błąd podczas zmiany kupującego');
+    });
+}
+
+function deleteOrder(orderId) {
+    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
+        return;
+    }
+
+    fetch(`/orders/delete/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Błąd podczas usuwania zamówienia: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas usuwania zamówienia');
     });
 }
 </script>

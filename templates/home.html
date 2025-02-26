@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
+{% load product_tags %}
 
 {% block content %}
 <div class="container">
@@ -22,7 +23,8 @@
         <div class="row">
             <div class="col">
                 <h1>Hello</h1>
-                {{ selected_buyer }}
+                <p>Selected buyer: {{ selected_buyer }}</p>
+                <p>Session buyer ID: {{ request.session.selected_buyer_id }}</p>
             </div>
         </div>
 
@@ -31,7 +33,44 @@
                 {% csrf_token %}
                 {% for product in products %}
                     <div class="col">
-                        <div class="card h-100 product-card">
+                        <div class="card h-100 product-card" 
+                             data-product-id="{{ product.id }}"
+                             {% for price in product.prices.all %}
+                                 data-price-list-{{ price.price_list.id }}="{{ price.gross_price }}"
+                             {% endfor %}>
+                            <!-- Price badge at top left -->
+                            <div class="position-absolute top-0 start-0 m-2">
+                                <span class="price-display">
+                                    {% if product_prices %}
+                                        {% with price=product_prices|get_item:product.id %}
+                                            {% if price %}
+                                                <strong>{{ price }} zł</strong>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        {% endwith %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </span>
+                            </div>
+
+                            {% if product_prices and product_prices|get_item:product.id %}
+                                <div class="add-to-cart-overlay">
+                                    <div class="add-to-cart-input-group">
+                                        <input type="number" 
+                                               class="form-control form-control-sm" 
+                                               value="1" 
+                                               min="1"
+                                               id="quantity-{{ product.id }}">
+                                        <button class="btn btn-success btn-sm" 
+                                                onclick="addToCart({{ product.id }}, {{ request.session.selected_buyer_id }})">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            {% endif %}
+
                             {% if product.images.first %}
                                 <div class="card-img-container pt-3" style="height: 200px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
                                     <img src="{{ product.images.first.image.url }}" 
@@ -42,34 +81,6 @@
                             <div class="card-body">
                                 <h5 class="card-title">{{ product.name }}</h5>
                                 <p class="card-text">{{ product.description }}</p>
-                                {% with buyer_price_list=selected_buyer.profile.price_list %}
-                                {% if buyer_price_list %}
-                                    {% with product_price=product.prices.all|dictsort:"price_list.id"|first %}
-                                    {% if product_price %}
-                                        <p class="card-text">
-                                            <strong>Cena: {{ product_price.gross_price }} zł</strong>
-                                        </p>
-                                        <div class="add-to-cart-overlay">
-                                            <div class="input-group">
-                                                <input type="number" 
-                                                       class="form-control" 
-                                                       value="1" 
-                                                       min="1"
-                                                       id="quantity-{{ product.id }}">
-                                                <button class="btn btn-success" 
-                                                        onclick="addToCart({{ product.id }}, {{ selected_buyer.id }})">
-                                                    <i class="bi bi-plus-lg"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {% else %}
-                                        <p class="text-muted">Brak ceny dla tego produktu</p>
-                                    {% endif %}
-                                    {% endwith %}
-                                {% else %}
-                                    <p class="text-muted">Brak przypisanego cennika dla kupującego</p>
-                                {% endif %}
-                                {% endwith %}
                             </div>
                         </div>
                     </div>
@@ -94,15 +105,41 @@
 
     .add-to-cart-overlay {
         position: absolute;
-        bottom: 1rem;
-        left: 1rem;
-        right: 1rem;
-        opacity: 0;
-        transition: opacity 0.3s ease;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: auto;
+        opacity: 0;  /* Hide by default */
+        transition: opacity 0.3s ease;  /* Smooth transition */
+        z-index: 10;
     }
 
     .product-card:hover .add-to-cart-overlay {
-        opacity: 1;
+        opacity: 1;  /* Show on hover */
+    }
+
+    .add-to-cart-input-group {
+        display: flex;
+        gap: 0.25rem;
+        background-color: rgba(255, 255, 255, 0.9);  /* Semi-transparent background */
+        padding: 0.25rem;
+        border-radius: 4px;
+    }
+
+    .add-to-cart-input-group input {
+        width: 60px;
+        height: 35px;
+    }
+
+    .add-to-cart-input-group button {
+        height: 35px;
+        padding: 0 0.75rem;
+    }
+
+    .price-display {
+        font-size: 1.25rem;
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
     }
 </style>
 
@@ -128,6 +165,7 @@
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
+                // Reload the entire page to re-render with new buyer
                 location.reload();
             }
         })

@@ -33,8 +33,10 @@
                                 aria-controls="collapse{{ forloop.counter }}">
                             {% if user.profile.name %}
                                 {{ user.profile.name }}
+                            {% elif user.first_name and user.last_name %}
+                                {{ user.first_name }} {{ user.last_name }}
                             {% else %}
-                                {{ user.username }}
+                                {{ user.username }} (login)
                             {% endif %}
                         </button>
                     </h2>
@@ -46,71 +48,102 @@
                             <div class="border p-4 rounded bg-white shadow-sm">
                                 <form class="user-edit-form">
                                     {% csrf_token %}
+                                    <!-- Single column layout -->
                                     <div class="row mb-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label">Nazwa</label>
-                                            <input type="text" class="form-control" name="name" 
-                                                   value="{{ user.profile.name }}" data-original-value="{{ user.profile.name }}">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Telefon</label>
-                                            <input type="text" class="form-control" name="phone" 
-                                                   value="{{ user.profile.phone }}" data-original-value="{{ user.profile.phone }}">
-                                        </div>
-                                    </div>
-                                    <div class="row mb-3">
-                                        <div class="col-12">
-                                            <label class="form-label">Adres</label>
-                                            <input type="text" class="form-control" name="address" 
-                                                   value="{{ user.profile.address }}" data-original-value="{{ user.profile.address }}">
-                                        </div>
-                                    </div>
-                                    <div class="row mb-3">
-                                        <div class="col-md-8">
-                                            <label class="form-label">Miasto</label>
-                                            <input type="text" class="form-control" name="city" 
-                                                   value="{{ user.profile.city }}" data-original-value="{{ user.profile.city }}">
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">Kod pocztowy</label>
-                                            <input type="text" class="form-control" name="postal" 
-                                                   value="{{ user.profile.postal }}" data-original-value="{{ user.profile.postal }}">
-                                        </div>
-                                    </div>
-                                    <div class="row mb-3">
-                                        <div class="col-12">
-                                            <label class="form-label">Cennik</label>
-                                            <select class="form-select" name="price_list" data-original-value="{{ user.profile.price_list_id|default:'' }}">
-                                                <option value="">-- Wybierz cennik --</option>
-                                                {% for price_list in price_lists %}
-                                                    <option value="{{ price_list.id }}" 
-                                                        {% if user.profile.price_list_id == price_list.id %}selected{% endif %}>
-                                                        {{ price_list.name }}
-                                                    </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="row mb-3">
-                                        <div class="col-12">
-                                            <div class="form-check">
-                                                <input type="checkbox" class="form-check-input" name="is_beneficiary" 
-                                                       id="is_beneficiary_{{ user.id }}"
-                                                       {% if user.profile.is_beneficiary %}checked{% endif %}
-                                                       data-original-value="{% if user.profile.is_beneficiary %}true{% else %}false{% endif %}">
-                                                <label class="form-check-label" for="is_beneficiary_{{ user.id }}">
-                                                    Beneficjent
-                                                </label>
+                                        <div class="col-md-6">  <!-- Using col-md-6 to make the form not too wide -->
+                                            <!-- Nazwa -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Nazwa</label>
+                                                <input type="text" class="form-control" name="name" 
+                                                       value="{{ user.profile.name }}" data-original-value="{{ user.profile.name }}">
+                                            </div>
+
+                                            <!-- Imię -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Imię</label>
+                                                <input type="text" class="form-control" name="first_name" 
+                                                       value="{{ user.first_name }}" data-original-value="{{ user.first_name }}">
+                                            </div>
+
+                                            <!-- Nazwisko -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Nazwisko</label>
+                                                <input type="text" class="form-control" name="last_name" 
+                                                       value="{{ user.last_name }}" data-original-value="{{ user.last_name }}">
+                                            </div>
+
+                                            <!-- Adres -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Adres</label>
+                                                <input type="text" class="form-control" name="address" 
+                                                       value="{{ user.profile.address }}" data-original-value="{{ user.profile.address }}">
+                                            </div>
+
+                                            <!-- Kod pocztowy -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Kod pocztowy</label>
+                                                <input type="text" class="form-control" name="postal" 
+                                                       value="{{ user.profile.postal }}" data-original-value="{{ user.profile.postal }}">
+                                            </div>
+
+                                            <!-- Miasto -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Miasto</label>
+                                                <input type="text" class="form-control" name="city" 
+                                                       value="{{ user.profile.city }}" data-original-value="{{ user.profile.city }}">
+                                            </div>
+
+                                            <!-- Email -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Email</label>
+                                                <input type="email" class="form-control" name="email" 
+                                                       value="{{ user.email }}" data-original-value="{{ user.email }}">
+                                            </div>
+
+                                            <!-- Telefon -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Telefon</label>
+                                                <input type="text" class="form-control" name="phone" 
+                                                       value="{{ user.profile.phone }}" data-original-value="{{ user.profile.phone }}">
+                                            </div>
+
+                                            <!-- Cennik -->
+                                            <div class="mb-3">
+                                                <label class="form-label">Cennik</label>
+                                                <select class="form-select" name="price_list" data-original-value="{{ user.profile.price_list_id|default:'' }}">
+                                                    <option value="">-- Wybierz cennik --</option>
+                                                    {% for price_list in price_lists %}
+                                                        <option value="{{ price_list.id }}" 
+                                                            {% if user.profile.price_list_id == price_list.id %}selected{% endif %}>
+                                                            {{ price_list.name }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+
+                                            <!-- Beneficjent -->
+                                            <div class="mb-4">
+                                                <div class="form-check">
+                                                    <input type="checkbox" class="form-check-input" name="is_beneficiary" 
+                                                           id="is_beneficiary_{{ user.id }}"
+                                                           {% if user.profile.is_beneficiary %}checked{% endif %}
+                                                           data-original-value="{% if user.profile.is_beneficiary %}true{% else %}false{% endif %}">
+                                                    <label class="form-check-label" for="is_beneficiary_{{ user.id }}">
+                                                        Beneficjent
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <!-- Action buttons -->
+                                            <div class="d-flex gap-2">
+                                                <button type="submit" class="btn btn-success save-user">
+                                                    Zapisz
+                                                </button>
+                                                <button type="button" class="btn btn-secondary cancel-user">
+                                                    Anuluj
+                                                </button>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button type="submit" class="btn btn-success save-user">
-                                            Zapisz
-                                        </button>
-                                        <button type="button" class="btn btn-secondary cancel-user">
-                                            Anuluj
-                                        </button>
                                     </div>
                                 </form>
                             </div>

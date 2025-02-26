@@ -1,4 +1,4 @@
-from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem
+from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -11,30 +11,61 @@ from django.db.models import Q
 @require_authenticated_staff_or_superuser
 def products(request):
     products = Product.objects.filter(is_active=True)
-    return render(request, 'products/products.html', {'products': products})
+    categories = ProductCategory.objects.all()
+    return render(request, 'products/products.html', {
+        'products': products,
+        'categories': categories
+    })
+
+@require_authenticated_staff_or_superuser
+def add_category(request):
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        if name:
+            ProductCategory.objects.create(name=name)
+            return HttpResponseRedirect(reverse('products'))
+    return HttpResponseBadRequest("Invalid request")
 
 @require_authenticated_staff_or_superuser
 def add_product(request):
     if request.method == 'POST':
         name = request.POST.get('name')
         description = request.POST.get('description')
-
         image = request.FILES.get('image')
+        vat = request.POST.get('vat')
+        ean = request.POST.get('ean')
+        volume_value = request.POST.get('volume_value')
+        volume_unit = request.POST.get('volume_unit')
+        categories = request.POST.getlist('categories')
 
-        if not name:
-            return HttpResponseBadRequest("Missing required fields.")
+        if name:
+            product = Product.objects.create(
+                name=name,
+                description=description,
+                vat=vat,
+                ean=ean,
+                volume_value=volume_value,
+                volume_unit=volume_unit
+            )
 
-        product = Product.objects.create(
-            name=name,
-            description=description,
-        )
+            if categories:
+                product.categories.set(categories)
 
-        if image:
-            product.images.create(image=image)
+            if image:
+                product.images.create(image=image)
 
-        return HttpResponseRedirect(reverse('products'))
+            price_lists = PriceList.objects.all()
+            for price_list in price_lists:
+                Price.objects.create(
+                    price_list=price_list,
+                    product=product,
+                    net_price=0,
+                    gross_price=0
+                )
 
-    return HttpResponseBadRequest("Invalid request method.")
+            return HttpResponseRedirect(reverse('products'))
+
+    return HttpResponseBadRequest("Invalid request")
 
 @require_authenticated_staff_or_superuser
 def edit_product(request, product_id):
@@ -43,10 +74,13 @@ def edit_product(request, product_id):
     if request.method == 'POST':
         product.name = request.POST.get('name', product.name)
         product.description = request.POST.get('description', product.description)
+        product.vat = request.POST.get('vat', product.vat)
+        product.ean = request.POST.get('ean', product.ean)
+        product.volume_value = request.POST.get('volume_value', product.volume_value)
+        product.volume_unit = request.POST.get('volume_unit', product.volume_unit)
 
         if 'image' in request.FILES:
             uploaded_image = request.FILES['image']
-
             existing_images = product.images.all()
             if existing_images.exists():
                 image_instance = existing_images.first()
@@ -55,8 +89,11 @@ def edit_product(request, product_id):
             else:
                 ProductImage.objects.create(product=product, image=uploaded_image)
 
-        product.save()
+        # Handle categories
+        categories = request.POST.getlist('categories')
+        product.categories.set(categories)
 
+        product.save()
         return HttpResponseRedirect(reverse('products'))
 
     return render(request, 'products/edit_product.html', {'product': product})
@@ -128,10 +165,8 @@ def save_price(request):
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
 
 def home(request):
-
     products = Product.objects.filter(is_active=True).prefetch_related('images', 'prices')
     User = get_user_model()
-
     context = {
         'products': products,
     }
@@ -139,9 +174,6 @@ def home(request):
     if request.user.is_authenticated:
         if request.user.is_staff or request.user.is_superuser:
             beneficiaries = User.objects.filter(profile__is_beneficiary=True)
-            print("Beneficiaries count:", beneficiaries.count())
-            for b in beneficiaries:
-                print(f"User: {b.username}, is_beneficiary: {b.profile.is_beneficiary}")
             context['beneficiaries'] = beneficiaries
 
             selected_buyer_id = request.session.get('selected_buyer_id')
@@ -149,28 +181,30 @@ def home(request):
                 try:
                     selected_buyer = User.objects.get(id=selected_buyer_id)
                     context['selected_buyer'] = selected_buyer
-                    print(f"Selected buyer: {selected_buyer.username}")
-                    print(f"Buyer's price list: {selected_buyer.profile.price_list}")
+                    
+                    # Get the buyer's price list
+                    buyer_price_list = selected_buyer.profile.price_list
+                    if buyer_price_list:
+                        prices = Price.objects.filter(
+                            price_list=buyer_price_list,
+                            product__in=products
+                        ).select_related('product')
+                        
+                        product_prices = {price.product_id: price.gross_price for price in prices}
+                        context['product_prices'] = product_prices
                 except User.DoesNotExist:
                     pass
         else:
             # Regular user is their own buyer
             context['selected_buyer'] = request.user
-            print(f"Regular user as buyer: {request.user.username}")
-            print(f"User's price list: {request.user.profile.price_list}")
-
-        if 'selected_buyer' in context:
-            cart = Cart.objects.filter(
-                user=request.user,
-                buyer=context['selected_buyer']
-            ).first()
-            if cart:
-                context['cart'] = cart
-
-    # Debug print products and their prices
-    for product in products:
-        print(f"Product: {product.name}")
-        print(f"Prices: {[p for p in product.prices.all()]}")
+            buyer_price_list = request.user.profile.price_list
+            if buyer_price_list:
+                prices = Price.objects.filter(
+                    price_list=buyer_price_list,
+                    product__in=products
+                ).select_related('product')
+                product_prices = {price.product_id: price.gross_price for price in prices}
+                context['product_prices'] = product_prices
 
     return render(request, 'home.html', context)
 
@@ -187,12 +221,17 @@ def add_to_cart(request):
     try:
         product = Product.objects.get(id=product_id)
         buyer = get_user_model().objects.get(id=buyer_id)
+        
+        # Verify this is the currently selected buyer
+        if str(buyer_id) != str(request.session.get('selected_buyer_id')):
+            return JsonResponse({'error': 'Invalid buyer selected'}, status=400)
 
-        # Get or create cart
+        # Get or create cart for this specific buyer
         cart, created = Cart.objects.get_or_create(
             user=request.user,
             buyer=buyer
         )
+
         # Get price for the buyer
         price_list = buyer.profile.price_list
         if not price_list:
@@ -201,15 +240,21 @@ def add_to_cart(request):
         price = Price.objects.get(price_list=price_list, product=product)
 
         # Add or update cart item
-        cart_item, created = CartItem.objects.get_or_create(
+        cart_item = CartItem.objects.filter(
             cart=cart,
-            product=product,
-            defaults={'price': price.gross_price}
-        )
+            product=product
+        ).first()
 
-        if not created:
+        if cart_item:
             cart_item.quantity += quantity
             cart_item.save()
+        else:
+            cart_item = CartItem.objects.create(
+                cart=cart,
+                product=product,
+                quantity=quantity,
+                price=price.gross_price
+            )
 
         # Prepare cart data for response
         cart_data = {
@@ -234,6 +279,7 @@ def add_to_cart(request):
     except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist) as e:
         return JsonResponse({'error': str(e)}, status=404)
     except Exception as e:
+        print(f"Error in add_to_cart: {str(e)}")  # Add debugging
         return JsonResponse({'error': str(e)}, status=500)
 
 @require_POST
@@ -268,8 +314,19 @@ def update_cart(request):
 @require_POST
 def create_order(request):
     try:
-        # Get the cart for the current user
-        cart = Cart.objects.get(user=request.user)
+        # Get the selected buyer's ID from session
+        selected_buyer_id = request.session.get('selected_buyer_id')
+        if not selected_buyer_id:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'No buyer selected'
+            }, status=400)
+
+        # Get the specific cart for the current user and selected buyer
+        cart = Cart.objects.get(
+            user=request.user,
+            buyer_id=selected_buyer_id
+        )
 
         # Create order
         order = Order.objects.create(
@@ -297,9 +354,15 @@ def create_order(request):
         })
 
     except Cart.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'No active cart found'}, status=404)
+        return JsonResponse({
+            'status': 'error', 
+            'message': 'No active cart found'
+        }, status=404)
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        return JsonResponse({
+            'status': 'error', 
+            'message': str(e)
+        }, status=500)
 
 @require_POST
 @require_authenticated_staff_or_superuser
@@ -309,9 +372,37 @@ def change_buyer(request):
 
     if buyer_id:
         request.session['selected_buyer_id'] = buyer_id
+        User = get_user_model()
+        try:
+            buyer = User.objects.get(id=buyer_id)
+            price_list_id = buyer.profile.price_list_id if buyer.profile.price_list else None
+
+            # Get cart data for the selected buyer
+            cart = Cart.objects.filter(user=request.user, buyer=buyer).first()
+            cart_data = None
+            if cart:
+                cart_data = {
+                    'items': [{
+                        'id': item.id,
+                        'name': item.product.name,
+                        'quantity': item.quantity,
+                        'price': str(item.price),
+                        'subtotal': str(item.subtotal),
+                        'image_url': item.product.images.first().image.url if item.product.images.exists() else None
+                    } for item in cart.items.all()],
+                    'total_cost': str(cart.total_cost)
+                }
+            
+            return JsonResponse({
+                'status': 'success',
+                'price_list_id': price_list_id,
+                'cart_data': cart_data
+            })
+        except User.DoesNotExist:
+            pass
     else:
         request.session.pop('selected_buyer_id', None)
-
+    
     return JsonResponse({'status': 'success'})
 
 def orders(request):
@@ -371,4 +462,27 @@ def update_order_status(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_product(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    product.delete()
+    return JsonResponse({'status': 'success'})
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_order(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+        order.delete()
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Zamówienie zostało usunięte'
+        })
+    except Order.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Zamówienie nie zostało znalezione'
+        }, status=404)
 
