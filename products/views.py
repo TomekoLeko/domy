@@ -74,10 +74,13 @@ def edit_product(request, product_id):
     if request.method == 'POST':
         product.name = request.POST.get('name', product.name)
         product.description = request.POST.get('description', product.description)
+        product.vat = request.POST.get('vat', product.vat)
+        product.ean = request.POST.get('ean', product.ean)
+        product.volume_value = request.POST.get('volume_value', product.volume_value)
+        product.volume_unit = request.POST.get('volume_unit', product.volume_unit)
 
         if 'image' in request.FILES:
             uploaded_image = request.FILES['image']
-
             existing_images = product.images.all()
             if existing_images.exists():
                 image_instance = existing_images.first()
@@ -86,8 +89,11 @@ def edit_product(request, product_id):
             else:
                 ProductImage.objects.create(product=product, image=uploaded_image)
 
-        product.save()
+        # Handle categories
+        categories = request.POST.getlist('categories')
+        product.categories.set(categories)
 
+        product.save()
         return HttpResponseRedirect(reverse('products'))
 
     return render(request, 'products/edit_product.html', {'product': product})
