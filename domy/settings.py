@@ -27,12 +27,16 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-8mw@c655@)q6#&95dy=^&mtu$yy(!6xv!6dayj@6$v*-81didd'
+SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-8mw@c655@)q6#&95dy=^&mtu$yy(!6xv!6dayj@6$v*-81didd")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['domy-staging-22c1d452bb5a.herokuapp.com', '127.0.0.1']
+ALLOWED_HOSTS = [
+    'domy-staging-22c1d452bb5a.herokuapp.com',
+    'domy-production-b96b3b6b6fff.herokuapp.com/',
+    '127.0.0.1'
+    ]
 
 
 # Application definition
