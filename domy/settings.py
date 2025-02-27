@@ -34,7 +34,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = [
     'domy-staging-22c1d452bb5a.herokuapp.com',
-    'domy-production-b96b3b6b6fff.herokuapp.com/',
+    'domy-production-b96b3b6b6fff.herokuapp.com',
     '127.0.0.1'
     ]
 
