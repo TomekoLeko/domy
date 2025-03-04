@@ -31,7 +31,6 @@ def add_product(request):
     if request.method == 'POST':
         name = request.POST.get('name')
         description = request.POST.get('description')
-        image = request.FILES.get('image')
         vat = request.POST.get('vat')
         ean = request.POST.get('ean')
         volume_value = request.POST.get('volume_value')
@@ -51,8 +50,13 @@ def add_product(request):
             if categories:
                 product.categories.set(categories)
 
-            if image:
-                product.images.create(image=image)
+            # Handle image upload
+            if 'image' in request.FILES:
+                image_file = request.FILES['image']
+                ProductImage.objects.create(
+                    product=product,
+                    image=image_file
+                )
 
             price_lists = PriceList.objects.all()
             for price_list in price_lists:
@@ -79,15 +83,18 @@ def edit_product(request, product_id):
         product.volume_value = request.POST.get('volume_value', product.volume_value)
         product.volume_unit = request.POST.get('volume_unit', product.volume_unit)
 
+        # Handle image upload
         if 'image' in request.FILES:
-            uploaded_image = request.FILES['image']
-            existing_images = product.images.all()
-            if existing_images.exists():
-                image_instance = existing_images.first()
-                image_instance.image = uploaded_image
-                image_instance.save()
-            else:
-                ProductImage.objects.create(product=product, image=uploaded_image)
+            image_file = request.FILES['image']
+            # Get or create ProductImage
+            product_image, created = ProductImage.objects.get_or_create(
+                product=product,
+                defaults={'image': image_file}
+            )
+            # If image already exists, update it
+            if not created:
+                product_image.image = image_file
+                product_image.save()
 
         # Handle categories
         categories = request.POST.getlist('categories')
