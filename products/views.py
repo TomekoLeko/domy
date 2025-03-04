@@ -86,15 +86,13 @@ def edit_product(request, product_id):
         # Handle image upload
         if 'image' in request.FILES:
             image_file = request.FILES['image']
-            # Get or create ProductImage
-            product_image, created = ProductImage.objects.get_or_create(
+            # Delete all existing images
+            product.images.all().delete()
+            # Create new image
+            ProductImage.objects.create(
                 product=product,
-                defaults={'image': image_file}
+                image=image_file
             )
-            # If image already exists, update it
-            if not created:
-                product_image.image = image_file
-                product_image.save()
 
         # Handle categories
         categories = request.POST.getlist('categories')
