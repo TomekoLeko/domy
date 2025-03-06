@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Faktury{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sort-icon {
+        display: inline-block;
+        width: 1em;
+        height: 1em;
+        margin-left: 0.2em;
+        vertical-align: middle;
+    }
+    
+    .table th {
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    
+    .table th:hover {
+        background-color: rgba(0,0,0,0.05);
+    }
+    
+    .search-container {
+        max-width: 300px;
+    }
+
+    /* Add these styles to match payment history table */
+    .table {
+        --bs-table-striped-bg: rgba(0, 0, 0, 0.02);
+    }
+
+    .table > :not(caption) > * > * {
+        padding: 1rem;
+    }
+
+    .table tbody tr {
+        vertical-align: middle;
+    }
+
+    .table thead th {
+        background-color: var(--bs-gray-100);
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 0.875rem;
+        letter-spacing: 0.5px;
+    }
+
+    .badge {
+        font-size: 0.875rem;
+        padding: 0.5em 0.75em;
+    }
+
+    .btn-sm {
+        padding: 0.4rem 0.8rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0">Faktury</h2>
+        <div class="search-container">
+            <form method="GET" class="d-flex">
+                <input type="text" 
+                       class="form-control form-control-sm" 
+                       name="search" 
+                       value="{{ search_query }}"
+                       placeholder="Szukaj faktury lub dostawcy...">
+                <button type="submit" class="btn btn-sm btn-primary ms-2">
+                    <i class="bi bi-search"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead>
+                        <tr>
+                            {% with sort_fields="-invoice_number,invoice_number" %}
+                            <th onclick="sortTable('invoice_number')">
+                                Numer faktury
+                                {% if current_sort in sort_fields %}
+                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% endif %}
+                            </th>
+                            {% endwith %}
+
+                            {% with sort_fields="-supplier_name,supplier_name" %}
+                            <th onclick="sortTable('supplier_name')">
+                                Dostawca
+                                {% if current_sort in sort_fields %}
+                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% endif %}
+                            </th>
+                            {% endwith %}
+
+                            {% with sort_fields="-net_price,net_price" %}
+                            <th onclick="sortTable('net_price')">
+                                Cena netto
+                                {% if current_sort in sort_fields %}
+                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% endif %}
+                            </th>
+                            {% endwith %}
+
+                            {% with sort_fields="-gross_price,gross_price" %}
+                            <th onclick="sortTable('gross_price')">
+                                Cena brutto
+                                {% if current_sort in sort_fields %}
+                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% endif %}
+                            </th>
+                            {% endwith %}
+
+                            {% with sort_fields="-created_at,created_at" %}
+                            <th onclick="sortTable('created_at')">
+                                Data utworzenia
+                                {% if current_sort in sort_fields %}
+                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% endif %}
+                            </th>
+                            {% endwith %}
+
+                            <th class="text-center">Zamówienia</th>
+                            <th class="text-end">Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        <tr>
+                            <td>{{ invoice.invoice_number }}</td>
+                            <td>{{ invoice.supplier_name }}</td>
+                            <td>{{ invoice.net_price }} zł</td>
+                            <td>{{ invoice.gross_price }} zł</td>
+                            <td>{{ invoice.created_at|date:"d.m.Y H:i" }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-primary rounded-pill">{{ invoice.supply_orders_count }}</span>
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary view-details" 
+                                        data-invoice-id="{{ invoice.id }}">
+                                    <i class="bi bi-eye"></i> Szczegóły
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-4 text-muted">
+                                {% if search_query %}
+                                    Nie znaleziono faktur spełniających kryteria wyszukiwania
+                                {% else %}
+                                    Brak faktur w systemie
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function sortTable(field) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentSort = urlParams.get('sort') || '-created_at';
+    
+    // Toggle sort direction if clicking the same field
+    let newSort = field;
+    if (currentSort === field) {
+        newSort = '-' + field;
+    } else if (currentSort === '-' + field) {
+        newSort = field;
+    }
+    
+    // Preserve search parameter if it exists
+    urlParams.set('sort', newSort);
+    window.location.search = urlParams.toString();
+}
+</script>
+{% endblock %} 
