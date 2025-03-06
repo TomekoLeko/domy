@@ -14,4 +14,5 @@ urlpatterns = [
     path('finance/delete-all-payments/', views.delete_all_payments, name='delete_all_payments'),
     path('finance/get-report-data/', views.get_report_data, name='get_report_data'),
     path('invoices/', views.invoices, name='invoices'),
+    path('invoices/add/', views.add_invoice, name='add_invoice'),
 ]

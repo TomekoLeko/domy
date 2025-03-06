@@ -60,17 +60,22 @@
 <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="h4 mb-0">Faktury</h2>
-        <div class="search-container">
-            <form method="GET" class="d-flex">
-                <input type="text" 
-                       class="form-control form-control-sm" 
-                       name="search" 
-                       value="{{ search_query }}"
-                       placeholder="Szukaj faktury lub dostawcy...">
-                <button type="submit" class="btn btn-sm btn-primary ms-2">
-                    <i class="bi bi-search"></i>
-                </button>
-            </form>
+        <div class="d-flex gap-3">
+            <div class="search-container">
+                <form method="GET" class="d-flex">
+                    <input type="text" 
+                           class="form-control form-control-sm" 
+                           name="search" 
+                           value="{{ search_query }}"
+                           placeholder="Szukaj faktury lub dostawcy...">
+                    <button type="submit" class="btn btn-sm btn-primary ms-2">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </form>
+            </div>
+            <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addInvoiceModal">
+                <i class="bi bi-plus-lg"></i> Dodaj fakturę
+            </button>
         </div>
     </div>
 
@@ -165,6 +170,80 @@
     </div>
 </div>
 
+<!-- Add Invoice Modal -->
+<div class="modal fade" id="addInvoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dodaj fakturę</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addInvoiceForm" method="POST" action="{% url 'finance:add_invoice' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Numer faktury</label>
+                                <input type="text" class="form-control" name="invoice_number" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Dostawca</label>
+                                <select class="form-select" name="supplier" required>
+                                    <option value="">Wybierz dostawcę</option>
+                                    {% for supplier in suppliers %}
+                                    <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Cena netto</label>
+                                <div class="input-group">
+                                    <input type="number" 
+                                           class="form-control" 
+                                           name="net_price" 
+                                           step="0.01" 
+                                           required>
+                                    <span class="input-group-text">zł</span>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Stawka VAT</label>
+                                <div class="input-group">
+                                    <input type="number" 
+                                           class="form-control" 
+                                           name="vat_rate" 
+                                           step="0.01" 
+                                           value="23.00" 
+                                           required>
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Cena brutto</label>
+                                <div class="input-group">
+                                    <input type="number" 
+                                           class="form-control" 
+                                           name="gross_price" 
+                                           step="0.01" 
+                                           required>
+                                    <span class="input-group-text">zł</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-primary">Dodaj</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 function sortTable(field) {
     const urlParams = new URLSearchParams(window.location.search);
@@ -182,5 +261,58 @@ function sortTable(field) {
     urlParams.set('sort', newSort);
     window.location.search = urlParams.toString();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const addInvoiceForm = document.getElementById('addInvoiceForm');
+    const netPriceInput = addInvoiceForm.querySelector('[name="net_price"]');
+    const vatRateInput = addInvoiceForm.querySelector('[name="vat_rate"]');
+    const grossPriceInput = addInvoiceForm.querySelector('[name="gross_price"]');
+
+    // Calculate gross price when net price or VAT rate changes
+    function updateGrossPrice() {
+        const netPrice = parseFloat(netPriceInput.value) || 0;
+        const vatRate = parseFloat(vatRateInput.value) || 0;
+        const grossPrice = netPrice * (1 + vatRate / 100);
+        grossPriceInput.value = grossPrice.toFixed(2);
+    }
+
+    // Calculate net price when gross price or VAT rate changes
+    function updateNetPrice() {
+        const grossPrice = parseFloat(grossPriceInput.value) || 0;
+        const vatRate = parseFloat(vatRateInput.value) || 0;
+        const netPrice = grossPrice / (1 + vatRate / 100);
+        netPriceInput.value = netPrice.toFixed(2);
+    }
+
+    netPriceInput.addEventListener('input', updateGrossPrice);
+    vatRateInput.addEventListener('input', updateGrossPrice);
+    grossPriceInput.addEventListener('input', updateNetPrice);
+
+    // Handle form submission
+    addInvoiceForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas dodawania faktury.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas dodawania faktury.');
+        });
+    });
+});
 </script>
 {% endblock %} 

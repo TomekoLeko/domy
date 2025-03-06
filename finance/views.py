@@ -14,6 +14,8 @@ from datetime import datetime, date
 import calendar
 from django.db.models import Count, Q
 from domy.decorators import require_authenticated_staff_or_superuser
+from decimal import Decimal
+from .models import Supplier
 
 User = get_user_model()
 
@@ -182,8 +184,45 @@ def invoices(request):
 
     invoices = invoices.order_by(sort_by)
 
+    suppliers = Supplier.objects.all()
+    
     return render(request, 'finance/invoices.html', {
         'invoices': invoices,
         'current_sort': sort_by,
-        'search_query': search_query
+        'search_query': search_query,
+        'suppliers': suppliers
     })
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def add_invoice(request):
+    try:
+        supplier = get_object_or_404(Supplier, id=request.POST.get('supplier'))
+        invoice_number = request.POST.get('invoice_number')
+        net_price = Decimal(request.POST.get('net_price'))
+        vat_rate = Decimal(request.POST.get('vat_rate'))
+        gross_price = Decimal(request.POST.get('gross_price'))
+
+        if Invoice.objects.filter(invoice_number=invoice_number).exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Faktura o tym numerze już istnieje'
+            }, status=400)
+
+        invoice = Invoice.objects.create(
+            invoice_number=invoice_number,
+            supplier=supplier,
+            net_price=net_price,
+            vat_rate=vat_rate,
+            gross_price=gross_price
+        )
+
+        return JsonResponse({
+            'status': 'success',
+            'invoice_id': invoice.id
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
