@@ -6,12 +6,35 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 import json
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Q, Sum, F
+from stock.models import StockEntry, StockReduction
 
 @require_authenticated_staff_or_superuser
 def products(request):
-    products = Product.objects.filter(is_active=True)
+    products = Product.objects.filter(is_active=True).prefetch_related('images')
     categories = ProductCategory.objects.all()
+    
+    # Get stock information for each product
+    for product in products:
+        # Get physical stock
+        physical_entries = StockEntry.objects.filter(
+            product=product,
+            stock_type='physical'
+        ).aggregate(
+            total=Sum('remaining_quantity')
+        )['total'] or 0
+        
+        # Get virtual stock
+        virtual_entries = StockEntry.objects.filter(
+            product=product,
+            stock_type='virtual'
+        ).aggregate(
+            total=Sum('remaining_quantity')
+        )['total'] or 0
+        
+        product.physical_stock = physical_entries
+        product.virtual_stock = virtual_entries
+
     return render(request, 'products/products.html', {
         'products': products,
         'categories': categories

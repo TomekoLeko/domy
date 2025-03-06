@@ -40,6 +40,19 @@
             font-weight: 500;
             color: #198754;  /* Bootstrap success color */
         }
+        .stock-info {
+            background-color: #f8f9fa;
+        }
+        
+        .stock-info .badge {
+            font-size: 1rem;
+            min-width: 3rem;
+        }
+        
+        .stock-info small {
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -206,6 +219,21 @@
             {% for product in products %}
                 <div class="col-md-4 mb-4">
                     <div class="card h-100">
+                        <!-- Add stock information -->
+                        <div class="stock-info p-2 border-bottom">
+                            <div class="d-flex justify-content-around">
+                                <div class="text-center">
+                                    <small class="d-block text-muted">Fizyczny</small>
+                                    <span class="badge bg-primary">{{ product.physical_stock }}</span>
+                                </div>
+                                <div class="text-center">
+                                    <small class="d-block text-muted">Wirtualny</small>
+                                    <span class="badge bg-secondary">{{ product.virtual_stock }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Existing product image container -->
                         <div class="product-image-container my-3">
                             <div class="product-image" style="background-image: url('{% if product.images.first %}{{ product.images.first.image.url }}{% else %}https://via.placeholder.com/300x400{% endif %}');">
                             </div>
@@ -223,6 +251,8 @@
                                 <i class="bi bi-pencil-square"></i>
                             </button>
                         </div>
+                        
+                        <!-- Existing card body -->
                         <div class="card-body">
                             <h5 class="card-title">{{ product.name }}</h5>
                             <p class="card-text">{{ product.description|default:"No description available." }}</p>

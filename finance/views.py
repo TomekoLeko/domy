@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
-from .models import Payment
+from .models import Payment, Invoice
 from products.models import Order
 from .forms import PaymentForm
 from django.http import JsonResponse
@@ -12,6 +12,10 @@ from django.core.serializers.json import DjangoJSONEncoder
 import json
 from datetime import datetime, date
 import calendar
+from django.db.models import Count, Q
+from domy.decorators import require_authenticated_staff_or_superuser
+from decimal import Decimal
+from .models import Supplier
 
 User = get_user_model()
 
@@ -155,3 +159,70 @@ def get_report_data(request):
             'amount': float(payment.amount)
         } for payment in payments]
     })
+
+@require_authenticated_staff_or_superuser
+def invoices(request):
+    # Get sort parameter
+    sort_by = request.GET.get('sort', '-created_at')
+    if sort_by not in ['invoice_number', 'supplier_name', 'net_price', 'gross_price', 'created_at',
+                      '-invoice_number', '-supplier_name', '-net_price', '-gross_price', '-created_at']:
+        sort_by = '-created_at'
+
+    # Get search query
+    search_query = request.GET.get('search', '')
+
+    # Filter and sort invoices
+    invoices = Invoice.objects.annotate(
+        supply_orders_count=Count('supply_orders')
+    )
+
+    if search_query:
+        invoices = invoices.filter(
+            Q(invoice_number__icontains=search_query) |
+            Q(supplier_name__icontains=search_query)
+        )
+
+    invoices = invoices.order_by(sort_by)
+
+    suppliers = Supplier.objects.all()
+    
+    return render(request, 'finance/invoices.html', {
+        'invoices': invoices,
+        'current_sort': sort_by,
+        'search_query': search_query,
+        'suppliers': suppliers
+    })
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def add_invoice(request):
+    try:
+        supplier = get_object_or_404(Supplier, id=request.POST.get('supplier'))
+        invoice_number = request.POST.get('invoice_number')
+        net_price = Decimal(request.POST.get('net_price'))
+        vat_rate = Decimal(request.POST.get('vat_rate'))
+        gross_price = Decimal(request.POST.get('gross_price'))
+
+        if Invoice.objects.filter(invoice_number=invoice_number).exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Faktura o tym numerze już istnieje'
+            }, status=400)
+
+        invoice = Invoice.objects.create(
+            invoice_number=invoice_number,
+            supplier=supplier,
+            net_price=net_price,
+            vat_rate=vat_rate,
+            gross_price=gross_price
+        )
+
+        return JsonResponse({
+            'status': 'success',
+            'invoice_id': invoice.id
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
