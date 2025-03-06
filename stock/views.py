@@ -2,7 +2,11 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from domy.decorators import require_authenticated_staff_or_superuser
-from .models import Supplier
+from .models import Supplier, SupplyOrder, StockEntry
+from finance.models import Invoice
+from products.models import Product
+from decimal import Decimal
+import json
 
 @require_authenticated_staff_or_superuser
 def suppliers(request):
@@ -60,4 +64,55 @@ def edit_supplier(request, supplier_id):
 def delete_supplier(request, supplier_id):
     supplier = get_object_or_404(Supplier, id=supplier_id)
     supplier.delete()
-    return JsonResponse({'status': 'success'}) 
+    return JsonResponse({'status': 'success'})
+
+@require_authenticated_staff_or_superuser
+def stock_main(request):
+    return render(request, 'stock/main.html', {
+        'suppliers': Supplier.objects.all(),
+        'invoices': Invoice.objects.filter(supply_orders__isnull=True),
+        'products': Product.objects.filter(is_active=True)
+    })
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def add_supply_order(request):
+    try:
+        supplier_id = request.POST.get('supplier')
+        invoice_id = request.POST.get('invoice')
+        stock_entries = json.loads(request.POST.get('stock_entries', '[]'))
+
+        supplier = Supplier.objects.get(id=supplier_id)
+        invoice = None if not invoice_id else Invoice.objects.get(id=invoice_id)
+
+        if invoice and invoice.supply_orders.exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Ta faktura jest już przypisana do innego zamówienia'
+            }, status=400)
+
+        supply_order = SupplyOrder.objects.create(
+            supplier=supplier,
+            invoice=invoice
+        )
+
+        for entry in stock_entries:
+            product = Product.objects.get(id=entry['product_id'])
+            StockEntry.objects.create(
+                product=product,
+                supply_order=supply_order,
+                quantity=entry['quantity'],
+                net_cost=Decimal(entry['net_cost']),
+                gross_cost=Decimal(entry['gross_cost']),
+                stock_type=entry['stock_type']
+            )
+
+        return JsonResponse({
+            'status': 'success',
+            'supply_order_id': supply_order.id
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400) 

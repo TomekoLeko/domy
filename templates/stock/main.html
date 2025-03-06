@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Magazyn{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0">Magazyn</h2>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addSupplyOrderModal">
+            <i class="bi bi-plus-lg"></i> Dodaj dostawę
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h5>Lista dostaw</h5>
+            <p class="text-muted">Placeholder - będzie uzupełnione później</p>
+        </div>
+    </div>
+</div>
+
+<!-- Add Supply Order Modal -->
+<div class="modal fade" id="addSupplyOrderModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dodaj dostawę</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addSupplyOrderForm" method="POST" action="{% url 'add_supply_order' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Dostawca</label>
+                                <select class="form-select" name="supplier" required>
+                                    <option value="">Wybierz dostawcę</option>
+                                    {% for supplier in suppliers %}
+                                    <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Faktura</label>
+                                <div class="d-flex gap-2">
+                                    <select class="form-select" name="invoice">
+                                        <option value="">Wybierz fakturę</option>
+                                        {% for invoice in invoices %}
+                                        <option value="{{ invoice.id }}">{{ invoice.invoice_number }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" 
+                                            class="btn btn-outline-primary" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#addInvoiceModal">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="mb-3">Produkty</h6>
+                    <div id="stockEntries">
+                        <!-- Stock entries will be added here -->
+                    </div>
+                    <button type="button" class="btn btn-outline-success" onclick="addStockEntry()">
+                        <i class="bi bi-plus-lg"></i> Dodaj produkt
+                    </button>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-primary">Dodaj</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Invoice Modal -->
+<div class="modal fade" id="addInvoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dodaj fakturę</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            {% include "finance/partials/invoice_form.html" with submit_text="Dodaj" %}
+        </div>
+    </div>
+</div>
+
+<template id="stockEntryTemplate">
+    <div class="stock-entry card mb-3">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">Produkt</label>
+                        <select class="form-select product-select" required>
+                            <option value="">Wybierz produkt</option>
+                            {% for product in products %}
+                            <option value="{{ product.id }}">{{ product.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Ilość</label>
+                        <input type="number" class="form-control quantity" min="1" required>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Cena netto</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control net-cost" step="0.01" required>
+                            <span class="input-group-text">zł</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Cena brutto</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control gross-cost" step="0.01" required>
+                            <span class="input-group-text">zł</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Typ</label>
+                        <select class="form-select stock-type" required>
+                            <option value="physical">Fizyczny</option>
+                            <option value="virtual">Wirtualny</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger remove-entry position-absolute top-0 end-0 m-3">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    </div>
+</template>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle new invoice creation
+    const addInvoiceModal = document.getElementById('addInvoiceModal');
+    const addInvoiceForm = document.getElementById('addInvoiceForm');
+    const invoiceSelect = document.querySelector('select[name="invoice"]');
+    
+    const bsAddInvoiceModal = new bootstrap.Modal(addInvoiceModal);
+
+    // Override the invoice form's success handler
+    addInvoiceForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Add new invoice to select and select it
+                const option = new Option(formData.get('invoice_number'), data.invoice_id);
+                invoiceSelect.add(option);
+                invoiceSelect.value = data.invoice_id;
+                
+                // Close the modal
+                bsAddInvoiceModal.hide();
+                addInvoiceForm.reset();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas dodawania faktury.');
+            }
+        });
+    });
+
+    // Handle supply order submission
+    const addSupplyOrderForm = document.getElementById('addSupplyOrderForm');
+    addSupplyOrderForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Collect stock entries data
+        const stockEntries = [];
+        document.querySelectorAll('.stock-entry').forEach(entry => {
+            stockEntries.push({
+                product_id: entry.querySelector('.product-select').value,
+                quantity: entry.querySelector('.quantity').value,
+                net_cost: entry.querySelector('.net-cost').value,
+                gross_cost: entry.querySelector('.gross-cost').value,
+                stock_type: entry.querySelector('.stock-type').value
+            });
+        });
+
+        const formData = new FormData(this);
+        formData.append('stock_entries', JSON.stringify(stockEntries));
+
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas dodawania dostawy.');
+            }
+        });
+    });
+});
+
+function addStockEntry() {
+    const template = document.getElementById('stockEntryTemplate');
+    const stockEntries = document.getElementById('stockEntries');
+    const clone = template.content.cloneNode(true);
+    
+    // Add event listeners
+    const entry = clone.querySelector('.stock-entry');
+    
+    // Remove entry button
+    entry.querySelector('.remove-entry').addEventListener('click', function() {
+        entry.remove();
+    });
+
+    // Auto-calculate gross cost
+    const netCostInput = entry.querySelector('.net-cost');
+    const grossCostInput = entry.querySelector('.gross-cost');
+    
+    netCostInput.addEventListener('input', function() {
+        const netCost = parseFloat(this.value) || 0;
+        grossCostInput.value = (netCost * 1.23).toFixed(2);
+    });
+
+    grossCostInput.addEventListener('input', function() {
+        const grossCost = parseFloat(this.value) || 0;
+        netCostInput.value = (grossCost / 1.23).toFixed(2);
+    });
+
+    stockEntries.appendChild(clone);
+}
+</script>
+{% endblock %} 
