@@ -14,72 +14,42 @@
     .table th {
         white-space: nowrap;
         cursor: pointer;
-    }
-    
-    .table th:hover {
-        background-color: rgba(0,0,0,0.05);
-    }
-    
-    .search-container {
-        max-width: 300px;
-    }
-
-    /* Add these styles to match payment history table */
-    .table {
-        --bs-table-striped-bg: rgba(0, 0, 0, 0.02);
-    }
-
-    .table > :not(caption) > * > * {
-        padding: 1rem;
-    }
-
-    .table tbody tr {
-        vertical-align: middle;
-    }
-
-    .table thead th {
         background-color: var(--bs-gray-100);
         font-weight: 500;
         text-transform: uppercase;
         font-size: 0.875rem;
         letter-spacing: 0.5px;
     }
-
-    .badge {
-        font-size: 0.875rem;
-        padding: 0.5em 0.75em;
+    
+    .table th:hover {
+        background-color: rgba(0,0,0,0.05);
     }
 
-    .btn-sm {
-        padding: 0.4rem 0.8rem;
+    .search-container {
+        max-width: 300px;
     }
 
-    .price-list-edit-form {
+    /* Invoice details styles */
+    .invoice-details {
         position: relative;
+        padding: 1.5rem;
         background-color: var(--bs-gray-100);
     }
     
-    .price-list-edit-form::before {
+    .invoice-details::before {
         content: '';
         position: absolute;
-        left: -24px;
-        top: -24px;
-        bottom: -24px;
+        left: 0;
+        top: 0;
+        bottom: 0;
         width: 4px;
         background-color: #198754;
         border-radius: 2px;
     }
 
-    .accordion-collapse {
+    .accordion-button:not(.collapsed) {
         background-color: var(--bs-gray-100);
-    }
-
-    .accordion-collapse td {
-        padding: 0 !important;
-    }
-
-    tr.accordion-header:hover {
-        background-color: rgba(0,0,0,0.05);
+        color: var(--bs-body-color);
     }
 
     dl.row {
@@ -93,20 +63,6 @@
 
     dd {
         margin-bottom: 0.5rem;
-    }
-
-    /* Override Bootstrap's striping to only apply to accordion-header rows */
-    .table-striped > tbody > tr.accordion-header:nth-of-type(odd) {
-        --bs-table-accent-bg: var(--bs-table-striped-bg);
-    }
-
-    .table-striped > tbody > tr.accordion-header:nth-of-type(even) {
-        --bs-table-accent-bg: var(--bs-table-bg);
-    }
-
-    /* Remove background from collapse rows so they don't affect striping */
-    .table-striped > tbody > tr.accordion-collapse {
-        --bs-table-accent-bg: transparent;
     }
 </style>
 {% endblock %}
@@ -134,121 +90,123 @@
         </div>
     </div>
 
-    <div class="card">
+    <!-- Table Header -->
+    <div class="card mb-4">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
+                <table class="table mb-0">
                     <thead>
                         <tr>
-                            {% with sort_fields="-invoice_number,invoice_number" %}
-                            <th onclick="sortTable('invoice_number')">
+                            <th onclick="handleSort('invoice_number')">
                                 Numer faktury
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% if current_sort == 'invoice_number' %}
+                                <i class="bi bi-arrow-up sort-icon"></i>
+                                {% elif current_sort == '-invoice_number' %}
+                                <i class="bi bi-arrow-down sort-icon"></i>
                                 {% endif %}
                             </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-supplier_name,supplier_name" %}
-                            <th onclick="sortTable('supplier_name')">
+                            <th onclick="handleSort('supplier_name')">
                                 Dostawca
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% if current_sort == 'supplier_name' %}
+                                <i class="bi bi-arrow-up sort-icon"></i>
+                                {% elif current_sort == '-supplier_name' %}
+                                <i class="bi bi-arrow-down sort-icon"></i>
                                 {% endif %}
                             </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-net_price,net_price" %}
-                            <th onclick="sortTable('net_price')">
+                            <th onclick="handleSort('net_price')">
                                 Cena netto
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% if current_sort == 'net_price' %}
+                                <i class="bi bi-arrow-up sort-icon"></i>
+                                {% elif current_sort == '-net_price' %}
+                                <i class="bi bi-arrow-down sort-icon"></i>
                                 {% endif %}
                             </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-gross_price,gross_price" %}
-                            <th onclick="sortTable('gross_price')">
+                            <th onclick="handleSort('gross_price')">
                                 Cena brutto
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% if current_sort == 'gross_price' %}
+                                <i class="bi bi-arrow-up sort-icon"></i>
+                                {% elif current_sort == '-gross_price' %}
+                                <i class="bi bi-arrow-down sort-icon"></i>
                                 {% endif %}
                             </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-created_at,created_at" %}
-                            <th onclick="sortTable('created_at')">
+                            <th onclick="handleSort('created_at')">
                                 Data utworzenia
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
+                                {% if current_sort == 'created_at' %}
+                                <i class="bi bi-arrow-up sort-icon"></i>
+                                {% elif current_sort == '-created_at' %}
+                                <i class="bi bi-arrow-down sort-icon"></i>
                                 {% endif %}
                             </th>
-                            {% endwith %}
-
                             <th class="text-center">Zamówienia</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {% for invoice in invoices %}
-                        <tr class="accordion-header" id="heading{{ invoice.id }}">
-                            <td>{{ invoice.invoice_number }}</td>
-                            <td>{{ invoice.supplier_name }}</td>
-                            <td>{{ invoice.net_price }} zł</td>
-                            <td>{{ invoice.gross_price }} zł</td>
-                            <td>{{ invoice.created_at|date:"d.m.Y H:i" }}</td>
-                            <td class="text-center">
-                                <span class="badge bg-primary rounded-pill">{{ invoice.supply_orders_count }}</span>
-                            </td>
-                        </tr>
-                        <tr class="accordion-collapse collapse" id="collapse{{ invoice.id }}" 
-                            aria-labelledby="heading{{ invoice.id }}">
-                            <td colspan="6">
-                                <div class="price-list-edit-form p-4">
-                                    <h6 class="mb-4">Szczegóły faktury {{ invoice.invoice_number }}</h6>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <dl class="row">
-                                                <dt class="col-sm-4">Numer faktury</dt>
-                                                <dd class="col-sm-8">{{ invoice.invoice_number }}</dd>
-
-                                                <dt class="col-sm-4">Dostawca</dt>
-                                                <dd class="col-sm-8">{{ invoice.supplier_name }}</dd>
-
-                                                <dt class="col-sm-4">Data utworzenia</dt>
-                                                <dd class="col-sm-8">{{ invoice.created_at|date:"d.m.Y H:i" }}</dd>
-                                            </dl>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <dl class="row">
-                                                <dt class="col-sm-4">Cena netto</dt>
-                                                <dd class="col-sm-8">{{ invoice.net_price }} zł</dd>
-
-                                                <dt class="col-sm-4">VAT</dt>
-                                                <dd class="col-sm-8">{{ invoice.vat_rate }}%</dd>
-
-                                                <dt class="col-sm-4">Cena brutto</dt>
-                                                <dd class="col-sm-8">{{ invoice.gross_price }} zł</dd>
-                                            </dl>
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="6" class="text-center py-4 text-muted">
-                                {% if search_query %}
-                                    Nie znaleziono faktur spełniających kryteria wyszukiwania
-                                {% else %}
-                                    Brak faktur w systemie
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
                 </table>
             </div>
         </div>
+    </div>
+
+    <!-- Invoices Accordion -->
+    <div class="accordion" id="invoicesAccordion">
+        {% for invoice in invoices %}
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#collapse{{ invoice.id }}">
+                    <div class="d-flex justify-content-between align-items-center flex-grow-1 me-3">
+                        <div class="d-flex gap-4">
+                            <span style="width: 150px">{{ invoice.invoice_number }}</span>
+                            <span style="width: 150px">{{ invoice.supplier_name }}</span>
+                            <span style="width: 120px">{{ invoice.net_price }} zł</span>
+                            <span style="width: 120px">{{ invoice.gross_price }} zł</span>
+                            <span style="width: 150px">{{ invoice.created_at|date:"d.m.Y H:i" }}</span>
+                        </div>
+                        <span class="badge bg-primary rounded-pill">{{ invoice.supply_orders_count }}</span>
+                    </div>
+                </button>
+            </h2>
+            <div id="collapse{{ invoice.id }}" class="accordion-collapse collapse" data-bs-parent="#invoicesAccordion">
+                <div class="accordion-body p-0">
+                    <div class="invoice-details">
+                        <h6 class="mb-4">Szczegóły faktury {{ invoice.invoice_number }}</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <dl class="row">
+                                    <dt class="col-sm-4">Numer faktury</dt>
+                                    <dd class="col-sm-8">{{ invoice.invoice_number }}</dd>
+
+                                    <dt class="col-sm-4">Dostawca</dt>
+                                    <dd class="col-sm-8">{{ invoice.supplier_name }}</dd>
+
+                                    <dt class="col-sm-4">Data utworzenia</dt>
+                                    <dd class="col-sm-8">{{ invoice.created_at|date:"d.m.Y H:i" }}</dd>
+                                </dl>
+                            </div>
+                            <div class="col-md-6">
+                                <dl class="row">
+                                    <dt class="col-sm-4">Cena netto</dt>
+                                    <dd class="col-sm-8">{{ invoice.net_price }} zł</dd>
+
+                                    <dt class="col-sm-4">VAT</dt>
+                                    <dd class="col-sm-8">{{ invoice.vat_rate }}%</dd>
+
+                                    <dt class="col-sm-4">Cena brutto</dt>
+                                    <dd class="col-sm-8">{{ invoice.gross_price }} zł</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-4 text-muted">
+            {% if search_query %}
+                Nie znaleziono faktur spełniających kryteria wyszukiwania
+            {% else %}
+                Brak faktur w systemie
+            {% endif %}
+        </div>
+        {% endfor %}
     </div>
 </div>
 
@@ -266,42 +224,8 @@
 </div>
 
 <script>
-function sortTable(field) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const currentSort = urlParams.get('sort') || '-created_at';
-    
-    // Toggle sort direction if clicking the same field
-    let newSort = field;
-    if (currentSort === field) {
-        newSort = '-' + field;
-    } else if (currentSort === '-' + field) {
-        newSort = field;
-    }
-    
-    // Preserve search parameter if it exists
-    urlParams.set('sort', newSort);
-    window.location.search = urlParams.toString();
+function handleSort(column) {
+    console.log('Sorting by:', column);
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Make table rows clickable
-    document.querySelectorAll('tr.accordion-header').forEach(row => {
-        row.style.cursor = 'pointer';
-        row.addEventListener('click', function() {
-            const invoiceId = this.id.replace('heading', '');
-            const collapseElement = document.getElementById('collapse' + invoiceId);
-            
-            // Close all other open rows
-            document.querySelectorAll('.accordion-collapse.show').forEach(el => {
-                if (el.id !== 'collapse' + invoiceId) {
-                    el.classList.remove('show');
-                }
-            });
-            
-            // Toggle current row
-            collapseElement.classList.toggle('show');
-        });
-    });
-});
 </script>
 {% endblock %} 
