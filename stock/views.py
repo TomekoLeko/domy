@@ -71,7 +71,13 @@ def stock_main(request):
     return render(request, 'stock/main.html', {
         'suppliers': Supplier.objects.all(),
         'invoices': Invoice.objects.filter(supply_orders__isnull=True),
-        'products': Product.objects.filter(is_active=True)
+        'products': Product.objects.filter(is_active=True),
+        'supply_orders': SupplyOrder.objects.all().select_related(
+            'supplier', 
+            'invoice'
+        ).prefetch_related(
+            'stock_entries__product'
+        ).order_by('-created_at')
     })
 
 @require_POST
