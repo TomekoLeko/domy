@@ -169,20 +169,12 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Faktura</label>
-                                <div class="d-flex gap-2">
-                                    <select class="form-select" name="invoice">
-                                        <option value="">Wybierz fakturę</option>
-                                        {% for invoice in invoices %}
-                                        <option value="{{ invoice.id }}">{{ invoice.invoice_number }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    <button type="button" 
-                                            class="btn btn-outline-primary" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#addInvoiceModal">
-                                        <i class="bi bi-plus-lg"></i>
-                                    </button>
-                                </div>
+                                <select class="form-select" name="invoice">
+                                    <option value="">Wybierz fakturę</option>
+                                    {% for invoice in invoices %}
+                                    <option value="{{ invoice.id }}">{{ invoice.invoice_number }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -200,19 +192,6 @@
                     <button type="submit" class="btn btn-primary">Dodaj</button>
                 </div>
             </form>
-        </div>
-    </div>
-</div>
-
-<!-- Add Invoice Modal -->
-<div class="modal fade" id="addInvoiceModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Dodaj fakturę</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            {% include "finance/partials/invoice_form.html" with submit_text="Dodaj" %}
         </div>
     </div>
 </div>
@@ -275,42 +254,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Handle new invoice creation
-    const addInvoiceModal = document.getElementById('addInvoiceModal');
-    const addInvoiceForm = document.getElementById('addInvoiceForm');
-    const invoiceSelect = document.querySelector('select[name="invoice"]');
-    
-    const bsAddInvoiceModal = new bootstrap.Modal(addInvoiceModal);
-
-    // Override the invoice form's success handler
-    addInvoiceForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-
-        fetch(this.action, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                // Add new invoice to select and select it
-                const option = new Option(formData.get('invoice_number'), data.invoice_id);
-                invoiceSelect.add(option);
-                invoiceSelect.value = data.invoice_id;
-                
-                // Close the modal
-                bsAddInvoiceModal.hide();
-                addInvoiceForm.reset();
-            } else {
-                alert(data.message || 'Wystąpił błąd podczas dodawania faktury.');
-            }
-        });
-    });
-
     // Handle supply order submission
     const addSupplyOrderForm = document.getElementById('addSupplyOrderForm');
     addSupplyOrderForm.addEventListener('submit', function(e) {
