@@ -46,10 +46,16 @@
         {% for supply_order in supply_orders %}
         <div class="accordion-item">
             <h2 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#supplyOrder{{ supply_order.id }}" aria-expanded="false">
+                <button class="accordion-button collapsed {% if not supply_order.invoice %}bg-warning-subtle{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse"
+                        data-bs-target="#supplyOrder{{ supply_order.id }}" 
+                        aria-expanded="false">
                     <div class="d-flex justify-content-between align-items-center w-100 me-3">
                         <span>Dostawa od {{ supply_order.supplier.name }}</span>
+                        {% if not supply_order.invoice %}
+                        <span class="badge bg-warning text-dark me-3">Brak faktury</span>
+                        {% endif %}
                         <small class="text-muted">{{ supply_order.created_at|date:"d.m.Y H:i" }}</small>
                     </div>
                 </button>
@@ -67,10 +73,29 @@
                                     <dt class="col-sm-4">Data utworzenia</dt>
                                     <dd class="col-sm-8">{{ supply_order.created_at|date:"d.m.Y H:i" }}</dd>
 
-                                    {% if supply_order.invoice %}
                                     <dt class="col-sm-4">Numer faktury</dt>
-                                    <dd class="col-sm-8">{{ supply_order.invoice.invoice_number }}</dd>
-                                    {% endif %}
+                                    <dd class="col-sm-8">
+                                        {% if supply_order.invoice %}
+                                            {{ supply_order.invoice.invoice_number }}
+                                        {% else %}
+                                            <div class="d-flex gap-2">
+                                                <select class="form-select form-select-sm invoice-select" 
+                                                        data-supply-order-id="{{ supply_order.id }}">
+                                                    <option value="">Wybierz fakturę</option>
+                                                    {% for invoice in invoices %}
+                                                        {% if invoice.supplier_id == supply_order.supplier.id and not invoice.supply_orders.exists %}
+                                                            <option value="{{ invoice.id }}">{{ invoice.invoice_number }}</option>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </select>
+                                                <button class="btn btn-sm btn-primary assign-invoice-btn" 
+                                                        style="display: none;"
+                                                        data-supply-order-id="{{ supply_order.id }}">
+                                                    Przypisz
+                                                </button>
+                                            </div>
+                                        {% endif %}
+                                    </dd>
                                 </dl>
                             </div>
                         </div>
@@ -320,6 +345,49 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 alert(data.message || 'Wystąpił błąd podczas dodawania dostawy.');
             }
+        });
+    });
+
+    // Show/hide assign button when invoice is selected
+    document.querySelectorAll('.invoice-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const btn = this.nextElementSibling;
+            btn.style.display = this.value ? 'block' : 'none';
+        });
+    });
+
+    // Handle invoice assignment
+    document.querySelectorAll('.assign-invoice-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const supplyOrderId = this.dataset.supplyOrderId;
+            const select = this.previousElementSibling;
+            const invoiceId = select.value;
+
+            if (!invoiceId) return;
+
+            fetch('/stock/supply-orders/assign-invoice/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    supply_order_id: supplyOrderId,
+                    invoice_id: invoiceId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Wystąpił błąd podczas przypisywania faktury');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas przypisywania faktury');
+            });
         });
     });
 });

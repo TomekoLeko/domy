@@ -121,4 +121,35 @@ def add_supply_order(request):
         return JsonResponse({
             'status': 'error',
             'message': str(e)
+        }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def assign_invoice(request):
+    try:
+        data = json.loads(request.body)
+        supply_order = get_object_or_404(SupplyOrder, id=data['supply_order_id'])
+        invoice = get_object_or_404(Invoice, id=data['invoice_id'])
+
+        # Verify invoice isn't already assigned and belongs to same supplier
+        if invoice.supply_orders.exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Ta faktura jest już przypisana do innego zamówienia'
+            }, status=400)
+
+        if invoice.supplier_id != supply_order.supplier_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Ta faktura należy do innego dostawcy'
+            }, status=400)
+
+        supply_order.invoice = invoice
+        supply_order.save()
+
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
         }, status=400) 
