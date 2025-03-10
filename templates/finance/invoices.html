@@ -39,11 +39,10 @@
     .invoice-details::before {
         content: '';
         position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
+        left: -24px;
+        top: -24px;
+        bottom: -24px;
         width: 4px;
-        background-color: #198754;
         border-radius: 2px;
     }
 
@@ -129,33 +128,35 @@
                 </button>
             </h2>
             <div id="collapse{{ invoice.id }}" class="accordion-collapse collapse" data-bs-parent="#invoicesAccordion">
-                <div class="accordion-body p-0">
-                    <div class="invoice-details">
-                        <h6 class="mb-4">Szczegóły faktury {{ invoice.invoice_number }}</h6>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <dl class="row">
-                                    <dt class="col-sm-4">Numer faktury</dt>
-                                    <dd class="col-sm-8">{{ invoice.invoice_number }}</dd>
+                <div class="accordion-body bg-light">
+                    <div class="border p-4 rounded bg-white shadow-sm">
+                        <div class="price-list-edit-form">
+                            <h6 class="mb-4">Szczegóły faktury {{ invoice.invoice_number }}</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-4">Numer faktury</dt>
+                                        <dd class="col-sm-8">{{ invoice.invoice_number }}</dd>
 
-                                    <dt class="col-sm-4">Dostawca</dt>
-                                    <dd class="col-sm-8">{{ invoice.supplier_name }}</dd>
+                                        <dt class="col-sm-4">Dostawca</dt>
+                                        <dd class="col-sm-8">{{ invoice.supplier_name }}</dd>
 
-                                    <dt class="col-sm-4">Data utworzenia</dt>
-                                    <dd class="col-sm-8">{{ invoice.created_at|date:"d.m.Y H:i" }}</dd>
-                                </dl>
-                            </div>
-                            <div class="col-md-6">
-                                <dl class="row">
-                                    <dt class="col-sm-4">Cena netto</dt>
-                                    <dd class="col-sm-8">{{ invoice.net_price }} zł</dd>
+                                        <dt class="col-sm-4">Data utworzenia</dt>
+                                        <dd class="col-sm-8">{{ invoice.created_at|date:"d.m.Y H:i" }}</dd>
+                                    </dl>
+                                </div>
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-4">Cena netto</dt>
+                                        <dd class="col-sm-8">{{ invoice.net_price }} zł</dd>
 
-                                    <dt class="col-sm-4">VAT</dt>
-                                    <dd class="col-sm-8">{{ invoice.vat_rate }}%</dd>
+                                        <dt class="col-sm-4">VAT</dt>
+                                        <dd class="col-sm-8">{{ invoice.vat_rate }}%</dd>
 
-                                    <dt class="col-sm-4">Cena brutto</dt>
-                                    <dd class="col-sm-8">{{ invoice.gross_price }} zł</dd>
-                                </dl>
+                                        <dt class="col-sm-4">Cena brutto</dt>
+                                        <dd class="col-sm-8">{{ invoice.gross_price }} zł</dd>
+                                    </dl>
+                                </div>
                             </div>
                         </div>
                     </div>
