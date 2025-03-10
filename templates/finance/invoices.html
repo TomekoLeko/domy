@@ -90,75 +90,39 @@
         </div>
     </div>
 
-    <!-- Table Header -->
-    <div class="card mb-4">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table mb-0">
-                    <thead>
-                        <tr>
-                            <th onclick="handleSort('invoice_number')">
-                                Numer faktury
-                                {% if current_sort == 'invoice_number' %}
-                                <i class="bi bi-arrow-up sort-icon"></i>
-                                {% elif current_sort == '-invoice_number' %}
-                                <i class="bi bi-arrow-down sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            <th onclick="handleSort('supplier_name')">
-                                Dostawca
-                                {% if current_sort == 'supplier_name' %}
-                                <i class="bi bi-arrow-up sort-icon"></i>
-                                {% elif current_sort == '-supplier_name' %}
-                                <i class="bi bi-arrow-down sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            <th onclick="handleSort('net_price')">
-                                Cena netto
-                                {% if current_sort == 'net_price' %}
-                                <i class="bi bi-arrow-up sort-icon"></i>
-                                {% elif current_sort == '-net_price' %}
-                                <i class="bi bi-arrow-down sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            <th onclick="handleSort('gross_price')">
-                                Cena brutto
-                                {% if current_sort == 'gross_price' %}
-                                <i class="bi bi-arrow-up sort-icon"></i>
-                                {% elif current_sort == '-gross_price' %}
-                                <i class="bi bi-arrow-down sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            <th onclick="handleSort('created_at')">
-                                Data utworzenia
-                                {% if current_sort == 'created_at' %}
-                                <i class="bi bi-arrow-up sort-icon"></i>
-                                {% elif current_sort == '-created_at' %}
-                                <i class="bi bi-arrow-down sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            <th class="text-center">Zamówienia</th>
-                        </tr>
-                    </thead>
-                </table>
-            </div>
-        </div>
-    </div>
-
     <!-- Invoices Accordion -->
     <div class="accordion" id="invoicesAccordion">
+        <!-- Static header row -->
+        <div class="accordion-item">
+            <div class="accordion-header">
+                <div class="accordion-button bg-light" style="cursor: default;" type="button">
+                    <div class="d-flex justify-content-between align-items-center flex-grow-1 me-3">
+                        <div class="d-flex">
+                            <span style="width: 10rem;">Numer faktury</span>
+                            <span style="width: 15rem;">Dostawca</span>
+                            <span style="width: 8rem;">Cena netto</span>
+                            <span style="width: 8rem;">Cena brutto</span>
+                            <span style="width: 10rem;">Data utworzenia</span>
+                        </div>
+                        <span style="width: 100px;" class="text-center">Zamówienia</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Regular accordion items -->
         {% for invoice in invoices %}
         <div class="accordion-item">
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
                         data-bs-target="#collapse{{ invoice.id }}">
                     <div class="d-flex justify-content-between align-items-center flex-grow-1 me-3">
-                        <div class="d-flex gap-4">
-                            <span style="width: 150px">{{ invoice.invoice_number }}</span>
-                            <span style="width: 150px">{{ invoice.supplier_name }}</span>
-                            <span style="width: 120px">{{ invoice.net_price }} zł</span>
-                            <span style="width: 120px">{{ invoice.gross_price }} zł</span>
-                            <span style="width: 150px">{{ invoice.created_at|date:"d.m.Y H:i" }}</span>
+                        <div class="d-flex">
+                            <span style="width: 10rem;">{{ invoice.invoice_number }}</span>
+                            <span style="width: 15rem;">{{ invoice.supplier_name }}</span>
+                            <span style="width: 8rem;">{{ invoice.net_price }} zł</span>
+                            <span style="width: 8rem;">{{ invoice.gross_price }} zł</span>
+                            <span style="width: 10rem;">{{ invoice.created_at|date:"d.m.Y H:i" }}</span>
                         </div>
                         <span class="badge bg-primary rounded-pill">{{ invoice.supply_orders_count }}</span>
                     </div>
