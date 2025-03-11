@@ -172,7 +172,9 @@
                                 <select class="form-select" name="invoice" id="invoiceSelect" disabled>
                                     <option value="">Wybierz fakturę</option>
                                     {% for invoice in invoices %}
-                                    <option value="{{ invoice.id }}" data-supplier="{{ invoice.supplier_id }}">
+                                    <option value="{{ invoice.id }}" 
+                                            data-supplier="{{ invoice.supplier_id }}"
+                                            data-gross-price="{{ invoice.gross_price }}">
                                         {{ invoice.invoice_number }}
                                     </option>
                                     {% endfor %}
@@ -188,6 +190,19 @@
                     <button type="button" class="btn btn-outline-success" onclick="addStockEntry()">
                         <i class="bi bi-plus-lg"></i> Dodaj produkt
                     </button>
+
+                    <!-- Update the totals section -->
+                    <div class="d-flex flex-column align-items-end mt-3">
+                        <div id="orderTotal" class="h5 mb-2">
+                            Razem: <span>0.00</span> zł
+                        </div>
+                        <div id="invoiceInfo" class="h5 mb-2" style="display: none;">
+                            Faktura: <span id="invoiceAmount"></span> zł
+                        </div>
+                        <div id="amountDiff" class="h5" style="display: none;">
+                            Różnica: <span>0.00</span> zł
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
@@ -362,36 +377,119 @@ document.addEventListener('DOMContentLoaded', function() {
             option.style.display = supplierMatch ? '' : 'none';
         });
     });
+
+    // Move these declarations to the top
+    const invoiceInfo = document.getElementById('invoiceInfo');
+    {% comment %} const invoiceNumber = document.getElementById('invoiceNumber'); {% endcomment %}
+    const invoiceAmount = document.getElementById('invoiceAmount');
+    const orderTotal = document.getElementById('orderTotal').querySelector('span');
+    const submitButton = document.querySelector('#addSupplyOrderForm button[type="submit"]');
+    let selectedInvoiceAmount = 0;
+
+    // Function to calculate total gross amount
+    function calculateTotal() {
+        let total = 0;
+        document.querySelectorAll('.stock-entry').forEach(entry => {
+            const grossCost = parseFloat(entry.querySelector('.gross-cost').value) || 0;
+            const quantity = parseInt(entry.querySelector('.quantity').value) || 0;
+            total += grossCost * quantity;
+        });
+        return total;
+    }
+
+    // Function to update total and validate
+    function updateTotalAndValidate() {
+        const total = calculateTotal();
+        const orderTotal = document.getElementById('orderTotal').querySelector('span');
+        const amountDiff = document.getElementById('amountDiff');
+        const amountDiffSpan = amountDiff.querySelector('span');
+        
+        orderTotal.textContent = total.toFixed(2);
+
+        if (selectedInvoiceAmount > 0) {
+            // Show invoice info and difference
+            invoiceInfo.style.display = 'block';
+            amountDiff.style.display = 'block';
+            
+            // Calculate and display difference
+            const difference = total - selectedInvoiceAmount;
+            amountDiffSpan.textContent = difference.toFixed(2);
+            
+            // Style based on difference
+            if (Math.abs(difference) < 0.01) {
+                amountDiff.style.color = '#198754'; // Bootstrap success color
+            } else {
+                amountDiff.style.color = '#dc3545'; // Bootstrap danger color
+            }
+            
+            // Enable submit button only if amounts match
+            submitButton.disabled = Math.abs(difference) >= 0.01;
+        } else {
+            // Hide invoice info and difference when no invoice is selected
+            invoiceInfo.style.display = 'none';
+            amountDiff.style.display = 'none';
+            submitButton.disabled = true;
+        }
+    }
+
+    // Define the addStockEntry function
+    window.addStockEntry = function() {
+        const template = document.getElementById('stockEntryTemplate');
+        const stockEntries = document.getElementById('stockEntries');
+        const clone = template.content.cloneNode(true);
+        
+        // Add event listeners
+        const entry = clone.querySelector('.stock-entry');
+        
+        // Remove entry button
+        entry.querySelector('.remove-entry').addEventListener('click', function() {
+            entry.remove();
+            updateTotalAndValidate(); // Update total when entry is removed
+        });
+
+        // Auto-calculate gross cost
+        const netCostInput = entry.querySelector('.net-cost');
+        const grossCostInput = entry.querySelector('.gross-cost');
+        
+        netCostInput.addEventListener('input', function() {
+            const netCost = parseFloat(this.value) || 0;
+            grossCostInput.value = (netCost * 1.23).toFixed(2);
+            updateTotalAndValidate(); // Update total when net cost changes
+        });
+
+        grossCostInput.addEventListener('input', function() {
+            const grossCost = parseFloat(this.value) || 0;
+            netCostInput.value = (grossCost / 1.23).toFixed(2);
+            updateTotalAndValidate(); // Update total when gross cost changes
+        });
+
+        // Add quantity change listener
+        entry.querySelector('.quantity').addEventListener('input', updateTotalAndValidate);
+
+        stockEntries.appendChild(clone);
+        updateTotalAndValidate(); // Update total when new entry is added
+    };
+
+    // Add event delegation for input changes in stock entries
+    document.getElementById('stockEntries').addEventListener('input', function(e) {
+        if (e.target.matches('.gross-cost, .quantity')) {
+            updateTotalAndValidate();
+        }
+    });
+
+    // Update invoice info when invoice is selected
+    invoiceSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (this.value) {
+            invoiceAmount.textContent = selectedOption.dataset.grossPrice;
+            selectedInvoiceAmount = parseFloat(selectedOption.dataset.grossPrice);
+        } else {
+            selectedInvoiceAmount = 0;
+        }
+        
+        updateTotalAndValidate();
+    });
 });
-
-function addStockEntry() {
-    const template = document.getElementById('stockEntryTemplate');
-    const stockEntries = document.getElementById('stockEntries');
-    const clone = template.content.cloneNode(true);
-    
-    // Add event listeners
-    const entry = clone.querySelector('.stock-entry');
-    
-    // Remove entry button
-    entry.querySelector('.remove-entry').addEventListener('click', function() {
-        entry.remove();
-    });
-
-    // Auto-calculate gross cost
-    const netCostInput = entry.querySelector('.net-cost');
-    const grossCostInput = entry.querySelector('.gross-cost');
-    
-    netCostInput.addEventListener('input', function() {
-        const netCost = parseFloat(this.value) || 0;
-        grossCostInput.value = (netCost * 1.23).toFixed(2);
-    });
-
-    grossCostInput.addEventListener('input', function() {
-        const grossCost = parseFloat(this.value) || 0;
-        netCostInput.value = (grossCost / 1.23).toFixed(2);
-    });
-
-    stockEntries.appendChild(clone);
-}
 </script>
 {% endblock %} 
