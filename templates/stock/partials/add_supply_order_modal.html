@@ -132,6 +132,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const invoiceSelect = document.getElementById('invoiceSelect');
     const invoiceInfo = document.getElementById('invoiceInfo');
     const invoiceAmount = document.getElementById('invoiceAmount');
+    const amountDiff = document.getElementById('amountDiff');
+    const amountDiffSpan = amountDiff.querySelector('span');
     const orderTotal = document.getElementById('orderTotal').querySelector('span');
     const submitButton = document.querySelector('#addSupplyOrderForm button[type="submit"]');
     let selectedInvoiceAmount = 0;
@@ -187,22 +189,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const total = calculateTotal();
         orderTotal.textContent = total.toFixed(2);
 
-        // Block submit if total is 0
-        if (total === 0) {
-            submitButton.disabled = true;
-            invoiceInfo.style.display = 'none';
-            amountDiff.style.display = 'none';
-            return;
-        }
-
         if (selectedInvoiceAmount > 0) {
-            // Show invoice info and difference
+            // Show invoice info and difference when invoice is selected
             invoiceInfo.style.display = 'block';
             amountDiff.style.display = 'block';
             
             // Calculate and display difference
             const difference = total - selectedInvoiceAmount;
-            amountDiff.textContent = difference.toFixed(2);
+            amountDiffSpan.textContent = difference.toFixed(2);
             
             // Style based on difference
             if (Math.abs(difference) < 0.01) {
@@ -217,7 +211,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Hide invoice info and difference when no invoice is selected
             invoiceInfo.style.display = 'none';
             amountDiff.style.display = 'none';
-            submitButton.disabled = false;
+            // Enable submit button when no invoice is selected, but disable if total is 0
+            submitButton.disabled = total === 0;
         }
     }
 
@@ -245,15 +240,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Update invoice info when invoice is selected
+    invoiceSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+
+        if (this.value) {
+            // Update both invoice number and amount
+            invoiceAmount.textContent = selectedOption.dataset.grossPrice;
+            selectedInvoiceAmount = parseFloat(selectedOption.dataset.grossPrice);
+            invoiceInfo.style.display = 'block';
+            amountDiff.style.display = 'block';
+        } else {
+            // Clear and hide invoice info
+            invoiceAmount.textContent = '';
+            selectedInvoiceAmount = 0;
+            invoiceInfo.style.display = 'none';
+            amountDiff.style.display = 'none';
+        }
+
+        updateTotalAndValidate();
+    });
+
     // Define the addStockEntry function
     window.addStockEntry = function() {
         const template = document.getElementById('stockEntryTemplate');
         const stockEntries = document.getElementById('stockEntries');
         const clone = template.content.cloneNode(true);
-        
+
         // Add event listeners
         const entry = clone.querySelector('.stock-entry');
-        
+
         // Remove entry button
         entry.querySelector('.remove-entry').addEventListener('click', function() {
             entry.remove();
@@ -263,7 +279,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Auto-calculate gross cost
         const netCostInput = entry.querySelector('.net-cost');
         const grossCostInput = entry.querySelector('.gross-cost');
-        
+
         netCostInput.addEventListener('input', function() {
             const netCost = parseFloat(this.value) || 0;
             grossCostInput.value = (netCost * 1.23).toFixed(2);
@@ -290,25 +306,5 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Update invoice info when invoice is selected
-    invoiceSelect.addEventListener('change', function() {
-        const selectedOption = this.options[this.selectedIndex];
-        
-        if (this.value) {
-            // Update both invoice number and amount
-            invoiceAmount.textContent = selectedOption.dataset.grossPrice;
-            selectedInvoiceAmount = parseFloat(selectedOption.dataset.grossPrice);
-            invoiceInfo.style.display = 'block';
-            amountDiff.style.display = 'block';
-        } else {
-            // Clear and hide invoice info
-            invoiceAmount.textContent = '';
-            selectedInvoiceAmount = 0;
-            invoiceInfo.style.display = 'none';
-            amountDiff.style.display = 'none';
-        }
-        
-        updateTotalAndValidate();
-    });
 });
 </script> 
