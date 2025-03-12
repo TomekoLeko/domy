@@ -30,6 +30,16 @@
         font-size: 0.8rem;
         padding: 0.4em 0.8em;
     }
+
+    .invoice-select option[disabled] {
+        background-color: #f8f9fa;
+        color: #6c757d;
+    }
+    
+    .invoice-select option:not([disabled]) {
+        color: #198754;
+        font-weight: 500;
+    }
 </style>
 {% endblock %}
 
@@ -84,15 +94,24 @@
                                     <dt class="col-sm-4">Numer faktury</dt>
                                     <dd class="col-sm-8">
                                         {% if supply_order.invoice %}
-                                            {{ supply_order.invoice.invoice_number }}
+                                            {{ supply_order.invoice.invoice_number }}: {{ supply_order.invoice.gross_price }} zł
                                         {% else %}
                                             <div class="d-flex gap-2">
                                                 <select class="form-select form-select-sm invoice-select" 
-                                                        data-supply-order-id="{{ supply_order.id }}">
+                                                        data-supply-order-id="{{ supply_order.id }}"
+                                                        data-total-cost="{{ supply_order.get_total_gross_cost }}">
                                                     <option value="">Wybierz fakturę</option>
                                                     {% for invoice in invoices %}
                                                         {% if invoice.supplier_id == supply_order.supplier.id and not invoice.supply_orders.exists %}
-                                                            <option value="{{ invoice.id }}">{{ invoice.invoice_number }}</option>
+                                                            <option value="{{ invoice.id }}"
+                                                                    data-gross-price="{{ invoice.gross_price }}"
+                                                                    {% if invoice.gross_price != supply_order.get_total_gross_cost %}
+                                                                        class="text-muted"
+                                                                        disabled
+                                                                        title="Kwota faktury ({{ invoice.gross_price }} zł) nie zgadza się z sumą dostawy ({{ supply_order.get_total_gross_cost }} zł)"
+                                                                    {% endif %}>
+                                                                {{ invoice.invoice_number }}: {{ invoice.gross_price }} zł
+                                                            </option>
                                                         {% endif %}
                                                     {% endfor %}
                                                 </select>
