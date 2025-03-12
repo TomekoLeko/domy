@@ -181,7 +181,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Function to calculate total gross amount
     function calculateTotal() {
         let total = 0;
         document.querySelectorAll('.stock-entry').forEach(entry => {
@@ -196,7 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateTotalAndValidate() {
         // update Total
         orderTotalValue = calculateTotal();
-        updateInvoiceInfo();
+        updateSummary();
         validateModal();
     }
 
@@ -213,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateInvoiceInfo() {
+    function updateSummary() {
         orderTotalValue = calculateTotal();
         orderTotal.textContent = orderTotalValue.toFixed(2);
         orderMinusInvoice = orderTotalValue - selectedInvoiceAmount;
@@ -319,7 +318,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add event delegation for input changes in stock entries
     document.getElementById('stockEntries').addEventListener('input', function(e) {
         if (e.target.matches('.gross-cost, .quantity')) {
-            updateInvoiceInfo();
+            updateSummary();
             validateModal();
         }
     });
