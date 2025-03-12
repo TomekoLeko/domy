@@ -137,6 +137,13 @@
                                     </tr>
                                     {% endfor %}
                                 </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="4" class="text-end"><strong>Razem:</strong></td>
+                                        <td><strong>{{ supply_order.get_total_gross_cost }} zł</strong></td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>

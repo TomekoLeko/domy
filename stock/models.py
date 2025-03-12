@@ -24,6 +24,9 @@ class SupplyOrder(models.Model):
     invoice = models.ForeignKey('finance.Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='supply_orders')
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def get_total_gross_cost(self):
+        return sum(entry.total_gross_cost for entry in self.stock_entries.all())
+
     def __str__(self):
         return f"Zamówienie {self.id} - {self.supplier.name}"
 
