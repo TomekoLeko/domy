@@ -77,13 +77,9 @@ def stock_main(request):
             'supplier', 
             'invoice'
         ).prefetch_related(
+            'stock_entries',
             'stock_entries__product'
-        ).annotate(
-            total_gross_cost=ExpressionWrapper(
-                F('stock_entries__quantity') * F('stock_entries__gross_cost'),
-                output_field=DecimalField()
-            )
-        ).order_by('-created_at')
+        ).distinct().order_by('-created_at')
     })
 
 @require_POST
