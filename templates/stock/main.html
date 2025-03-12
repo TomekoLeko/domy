@@ -63,6 +63,14 @@
             <div id="supplyOrder{{ supply_order.id }}" class="accordion-collapse collapse" data-bs-parent="#supplyOrdersAccordion">
                 <div class="accordion-body bg-light">
                     <div class="border p-4 rounded bg-white shadow-sm stock-entry-details">
+                        <div class="d-flex justify-content-end">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger"
+                                    onclick="removeSupplyOrder({{ supply_order.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+
                         <div class="row mb-4">
                             <div class="col-md-6">
                                 <h6 class="mb-3">Informacje o dostawie</h6>
@@ -144,4 +152,29 @@
 </div>
 
 {% include "stock/partials/add_supply_order_modal.html" %}
+
+<script>
+function removeSupplyOrder(supplyOrderId) {
+    if (confirm('Czy na pewno chcesz usunąć tę dostawę?')) {
+        fetch(`/stock/supply-orders/delete/${supplyOrderId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas usuwania dostawy.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas usuwania dostawy.');
+        });
+    }
+}
+</script>
 {% endblock %} 

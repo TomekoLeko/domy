@@ -152,4 +152,17 @@ def assign_invoice(request):
         return JsonResponse({
             'status': 'error',
             'message': str(e)
+        }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_supply_order(request, supply_order_id):
+    try:
+        supply_order = get_object_or_404(SupplyOrder, id=supply_order_id)
+        supply_order.delete()
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
         }, status=400) 

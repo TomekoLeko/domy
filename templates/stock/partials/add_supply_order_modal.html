@@ -30,7 +30,7 @@
                                     <option value="{{ invoice.id }}" 
                                             data-supplier="{{ invoice.supplier_id }}"
                                             data-gross-price="{{ invoice.gross_price }}">
-                                        {{ invoice.invoice_number }}
+                                        {{ invoice.invoice_number }}: {{ invoice.gross_price }} zł
                                     </option>
                                     {% endfor %}
                                 </select>
