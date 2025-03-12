@@ -204,5 +204,56 @@ function removeSupplyOrder(supplyOrderId) {
         });
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle invoice selection
+    document.querySelectorAll('.invoice-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const assignButton = this.nextElementSibling;
+            
+            if (this.value) {
+                assignButton.style.display = 'block';
+            } else {
+                assignButton.style.display = 'none';
+            }
+        });
+    });
+
+    // Handle assign button clicks
+    document.querySelectorAll('.assign-invoice-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const supplyOrderId = this.dataset.supplyOrderId;
+            const select = this.previousElementSibling;
+            const invoiceId = select.value;
+
+            fetch('/stock/supply-orders/assign-invoice/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+                body: JSON.stringify({
+                    supply_order_id: supplyOrderId,
+                    invoice_id: invoiceId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Replace select with static text
+                    const container = select.parentElement;
+                    const selectedOption = select.options[select.selectedIndex];
+                    container.innerHTML = selectedOption.text;
+                } else {
+                    alert(data.message || 'Wystąpił błąd podczas przypisywania faktury.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas przypisywania faktury.');
+            });
+        });
+    });
+});
 </script>
 {% endblock %} 
