@@ -226,3 +226,24 @@ def add_invoice(request):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_invoice(request, invoice_id):
+    try:
+        invoice = get_object_or_404(Invoice, id=invoice_id)
+        
+        # If there are associated supply orders, clear the invoice reference
+        for supply_order in invoice.supply_orders.all():
+            supply_order.invoice = None
+            supply_order.save()
+        
+        # Then delete the invoice
+        invoice.delete()
+        
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
