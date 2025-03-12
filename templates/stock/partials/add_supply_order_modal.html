@@ -191,13 +191,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return total;
     }
 
-    // Function to update total and validate
-    function updateTotalAndValidate() {
-        // update Total
-        orderTotalValue = calculateTotal();
-        updateSummary();
-        validateModal();
-    }
+
 
     function validateModal() {
         if ((calculateTotal() <= 0) ||
@@ -273,7 +267,8 @@ document.addEventListener('DOMContentLoaded', function() {
             selectedInvoiceAmount = 0;
         }
 
-        updateTotalAndValidate();
+        updateSummary();
+        validateModal();
     });
 
     // Define the addStockEntry function
@@ -288,7 +283,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Remove entry button
         entry.querySelector('.remove-entry').addEventListener('click', function() {
             entry.remove();
-            updateTotalAndValidate(); // Update total when entry is removed
+            updateSummary();
+            validateModal();
         });
 
         // Auto-calculate gross cost
@@ -298,21 +294,24 @@ document.addEventListener('DOMContentLoaded', function() {
         netCostInput.addEventListener('input', function() {
             const netCost = parseFloat(this.value) || 0;
             grossCostInput.value = (netCost * 1.23).toFixed(2);
-            updateTotalAndValidate()
+            updateSummary();
+            validateModal();
         });
 
         grossCostInput.addEventListener('input', function() {
             const grossCost = parseFloat(this.value) || 0;
             netCostInput.value = (grossCost / 1.23).toFixed(2);
-
-            updateTotalAndValidate()
+            updateSummary();
+            validateModal();
         });
 
         // Add quantity change listener
-        entry.querySelector('.quantity').addEventListener('input', updateTotalAndValidate);
+        entry.querySelector('.quantity').addEventListener('input', updateSummary();
+        validateModal();
 
         stockEntries.appendChild(clone);
-        updateTotalAndValidate(); // Update total when new entry is added
+        updateSummary();
+        validateModal();
     };
 
     // Add event delegation for input changes in stock entries
