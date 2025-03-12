@@ -146,7 +146,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let orderTotalValue = 0;
     let orderMinusInvoice = 0;
 
-
     addSupplyOrderForm.addEventListener('submit', function(e) {
         e.preventDefault();
         // Collect stock entries data
@@ -191,8 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return total;
     }
 
-
-
     function validateModal() {
         if ((calculateTotal() <= 0) ||
         (selectedInvoiceAmount > 0 && orderMinusInvoice != 0) ||
@@ -227,33 +224,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Handle supplier selection change
     supplierSelect.addEventListener('change', function() {
         selectedSupplierId = this.value;
-        
-        // Reset and disable invoice select if no supplier chosen
         invoiceSelect.value = '';
-        
+
         if (!selectedSupplierId) {
+            selectedInvoiceAmount = 0;
             invoiceSelect.disabled = true;
             validateModal();
             return;
         }
-        
-        // Enable invoice select and filter options
+
         invoiceSelect.disabled = false;
-        
+
         // Hide all options except the default one
         Array.from(invoiceSelect.options).forEach(option => {
             if (option.value === '') return; // Skip the default option
-            
+
             const supplierMatch = option.dataset.supplier === selectedSupplierId;
             option.style.display = supplierMatch ? '' : 'none';
         });
         validateModal();
     });
 
-    // Update invoice info when invoice is selected
     invoiceSelect.addEventListener('change', function() {
         const selectedOption = this.options[this.selectedIndex];
 
@@ -271,7 +264,6 @@ document.addEventListener('DOMContentLoaded', function() {
         validateModal();
     });
 
-    // Define the addStockEntry function
     window.addStockEntry = function() {
         const template = document.getElementById('stockEntryTemplate');
         const stockEntries = document.getElementById('stockEntries');
@@ -306,8 +298,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Add quantity change listener
-        entry.querySelector('.quantity').addEventListener('input', updateSummary();
-        validateModal();
+        entry.querySelector('.quantity').addEventListener('input', function() {
+            updateSummary();
+            validateModal();
+        });
 
         stockEntries.appendChild(clone);
         updateSummary();
@@ -323,4 +317,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
 });
-</script> 
+</script>
