@@ -117,6 +117,7 @@
                                         <th>Ilość</th>
                                         <th>Cena netto</th>
                                         <th>Cena brutto</th>
+                                        <th>Koszt brutto</th>
                                         <th>Typ</th>
                                     </tr>
                                 </thead>
@@ -127,6 +128,7 @@
                                         <td>{{ entry.quantity }}</td>
                                         <td>{{ entry.net_cost }} zł</td>
                                         <td>{{ entry.gross_cost }} zł</td>
+                                        <td>{{ entry.total_gross_cost }} zł</td>
                                         <td>
                                             <span class="badge stock-type bg-{% if entry.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
                                                 {% if entry.stock_type == 'physical' %}Fizyczny{% else %}Wirtualny{% endif %}

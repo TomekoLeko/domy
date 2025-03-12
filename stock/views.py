@@ -6,6 +6,7 @@ from .models import Supplier, SupplyOrder, StockEntry
 from finance.models import Invoice
 from products.models import Product
 from decimal import Decimal
+from django.db.models import F, ExpressionWrapper, DecimalField
 import json
 
 @require_authenticated_staff_or_superuser
@@ -77,6 +78,11 @@ def stock_main(request):
             'invoice'
         ).prefetch_related(
             'stock_entries__product'
+        ).annotate(
+            total_gross_cost=ExpressionWrapper(
+                F('stock_entries__quantity') * F('stock_entries__gross_cost'),
+                output_field=DecimalField()
+            )
         ).order_by('-created_at')
     })
 

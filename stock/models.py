@@ -55,6 +55,10 @@ class StockEntry(models.Model):
             self.remaining_quantity = self.quantity
         super().save(*args, **kwargs)
 
+    @property
+    def total_gross_cost(self):
+        return self.quantity * self.gross_cost
+
     class Meta:
         ordering = ['created_at']  # Oldest first for FIFO
         verbose_name = "Przyjęcie towaru"
