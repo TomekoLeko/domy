@@ -92,6 +92,10 @@ class StockEntry(models.Model):
         return f"{self.product.name} - {self.quantity} szt. ({self.get_stock_type_display()})"
 
     @property
+    def total_net_cost(self):
+        return self.quantity * self.net_cost
+
+    @property
     def total_gross_cost(self):
         return self.quantity * self.gross_cost
 

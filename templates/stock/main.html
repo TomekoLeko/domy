@@ -135,7 +135,9 @@
                                         <th>Produkt</th>
                                         <th>Ilość</th>
                                         <th>Cena netto</th>
+                                        <th>VAT</th>
                                         <th>Cena brutto</th>
+                                        <th>Koszt netto</th>
                                         <th>Koszt brutto</th>
                                         <th>Typ</th>
                                     </tr>
@@ -146,7 +148,9 @@
                                         <td>{{ entry.product.name }}</td>
                                         <td>{{ entry.quantity }}</td>
                                         <td>{{ entry.net_cost }} zł</td>
+                                        <td>{{ entry.vat_rate|default:"--" }}%</td>
                                         <td>{{ entry.gross_cost }} zł</td>
+                                        <td>{{ entry.total_net_cost }} zł</td>
                                         <td>{{ entry.total_gross_cost }} zł</td>
                                         <td>
                                             <span class="badge stock-type bg-{% if entry.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
@@ -158,7 +162,7 @@
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colspan="4" class="text-end"><strong>Razem:</strong></td>
+                                        <td colspan="6" class="text-end"><strong>Razem:</strong></td>
                                         <td><strong>{{ supply_order.get_total_gross_cost }} zł</strong></td>
                                         <td></td>
                                     </tr>
