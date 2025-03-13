@@ -125,7 +125,7 @@
                             <span style="width: 8rem;">{{ invoice.gross_price }} zł</span>
                             <span style="width: 10rem;">{{ invoice.created_at|date:"d.m.Y H:i" }}</span>
                             {% if not invoice.supply_orders.exists %}
-                                <span style="width: 10rem;" class="badge bg-warning text-dark me-3">Brak dostawy</span>
+                                <span style="width: 10rem;" class="badge bg-warning text-dark me-3">Nieprzypisana</span>
                             {% else %}
                                 <span style="width: 10rem;" class="text-dark me-3">
                                     {% for supply_order in invoice.supply_orders.all %}
@@ -144,7 +144,7 @@
                     <div class="border p-4 rounded bg-white shadow-sm">
                         <div class="price-list-edit-form">
                             <div class="d-flex justify-content-between align-items-center mb-4">
-                                <h6 class="mb-0">Szczegóły faktury {{ invoice.invoice_number }}</h6>
+                                <h6 class="mb-0">Faktura: {{ invoice.invoice_number }}</h6>
                                 <button type="button"
                                         class="btn btn-sm btn-outline-danger"
                                         onclick="removeInvoice({{ invoice.id }})">
@@ -154,14 +154,8 @@
                             <div class="row">
                                 <div class="col-md-6">
                                     <dl class="row">
-                                        <dt class="col-sm-4">Numer faktury</dt>
-                                        <dd class="col-sm-8">{{ invoice.invoice_number }}</dd>
-
                                         <dt class="col-sm-4">Dostawca</dt>
                                         <dd class="col-sm-8">{{ invoice.supplier_name }}</dd>
-
-                                        <dt class="col-sm-4">Data utworzenia</dt>
-                                        <dd class="col-sm-8">{{ invoice.created_at|date:"d.m.Y H:i" }}</dd>
                                     </dl>
                                 </div>
                                 <div class="col-md-6">
