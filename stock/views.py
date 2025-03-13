@@ -112,7 +112,8 @@ def add_supply_order(request):
                 quantity=entry['quantity'],
                 net_cost=Decimal(entry['net_cost']),
                 gross_cost=Decimal(entry['gross_cost']),
-                stock_type=entry['stock_type']
+                stock_type=entry['stock_type'],
+                vat_rate=entry['vat_rate']
             )
 
         return JsonResponse({

@@ -44,10 +44,10 @@
                         <select class="form-select" id="productSelector">
                             <option value="">Wybierz produkt</option>
                             {% for product in products %}
-                            <option value="{{ product.id }}" 
-                                    data-vat-rate="{{ product.vat_rate }}"
+                            <option value="{{ product.id }}"
+                                    data-vat-rate="{{ product.vat }}"
                                     data-name="{{ product.name }}">
-                                {{ product.name }} {{ product.vat_rate }}%
+                                {{ product.name }}
                             </option>
                             {% endfor %}
                         </select>
@@ -83,7 +83,7 @@
     <div class="stock-entry card mb-3">
         <div class="card-body">
             <div class="row align-items-end">
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <div class="mb-3">
                         <label class="form-label">Produkt</label>
                         <input type="hidden" class="product-id">
@@ -112,6 +112,15 @@
                     <div class="mb-3">
                         <label class="form-label">Cena brutto</label>
                         <input type="number" step="0.01" class="form-control gross-cost" required>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Typ</label>
+                        <select class="form-select stock-type" required>
+                            <option value="physical">Fizyczny</option>
+                            <option value="virtual">Wirtualny</option>
+                        </select>
                     </div>
                 </div>
                 <div class="col-md-1">
@@ -215,13 +224,24 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         // Collect stock entries data
         const stockEntries = [];
+
         document.querySelectorAll('.stock-entry').forEach(entry => {
+            // Get VAT rate from the text content and remove the % symbol
+            const vatRateText = entry.querySelector('.vat-rate').textContent;
+            const vatRate = vatRateText ? parseFloat(vatRateText.replace('%', '')) : 0;
+
+            console.log("vat rate", vatRate);
+
+            // stop for debugger
+            debugger;
+
             stockEntries.push({
                 product_id: entry.querySelector('.product-id').value,
                 quantity: entry.querySelector('.quantity').value,
                 net_cost: entry.querySelector('.net-cost').value,
                 gross_cost: entry.querySelector('.gross-cost').value,
-                stock_type: entry.querySelector('.stock-type').value
+                stock_type: entry.querySelector('.stock-type').value,
+                vat_rate: vatRate
             });
         });
 
