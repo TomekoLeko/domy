@@ -1,5 +1,6 @@
 from django.db import models
 from products.models import Product, Order
+from datetime import datetime
 
 class Supplier(models.Model):
     name = models.CharField(max_length=255)
@@ -23,12 +24,39 @@ class SupplyOrder(models.Model):
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='supply_orders')
     invoice = models.ForeignKey('finance.Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='supply_orders')
     created_at = models.DateTimeField(auto_now_add=True)
+    order_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            # Get current date
+            now = datetime.now()
+            month = now.month
+            year = now.year
+
+            # Get the last order from the current month
+            last_order = SupplyOrder.objects.filter(
+                created_at__month=month,
+                created_at__year=year
+            ).order_by('-order_number').first()
+
+            # Generate new number
+            if last_order and last_order.order_number:
+                # Extract the number from the last order
+                last_number = int(last_order.order_number.split('/')[0])
+                new_number = str(last_number + 1).zfill(2)
+            else:
+                new_number = '01'
+
+            # Create the order number
+            self.order_number = f"{new_number}/{str(month).zfill(2)}/{year}"
+
+        super().save(*args, **kwargs)
 
     def get_total_gross_cost(self):
         return sum(entry.total_gross_cost for entry in self.stock_entries.all())
 
     def __str__(self):
-        return f"Zamówienie {self.id} - {self.supplier.name}"
+        return f"Zamówienie {self.order_number} - {self.supplier.name}"
 
     class Meta:
         ordering = ['-created_at']
