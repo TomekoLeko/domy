@@ -39,12 +39,23 @@
                     </div>
 
                     <h6 class="mb-3">Produkty</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Dodaj produkt</label>
+                        <select class="form-select" id="productSelector">
+                            <option value="">Wybierz produkt</option>
+                            {% for product in products %}
+                            <option value="{{ product.id }}" 
+                                    data-vat-rate="{{ product.vat_rate }}"
+                                    data-name="{{ product.name }}">
+                                {{ product.name }} {{ product.vat_rate }}%
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
                     <div id="stockEntries">
                         <!-- Stock entries will be added here -->
                     </div>
-                    <button type="button" class="btn btn-outline-success" onclick="addStockEntry()">
-                        <i class="bi bi-plus-lg"></i> Dodaj produkt
-                    </button>
 
                     <!-- Update the totals section -->
                     <div class="d-flex flex-column align-items-end mt-3">
@@ -71,55 +82,44 @@
 <template id="stockEntryTemplate">
     <div class="stock-entry card mb-3">
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-4">
+            <div class="row align-items-end">
+                <div class="col-md-3">
                     <div class="mb-3">
                         <label class="form-label">Produkt</label>
-                        <select class="form-select product-select" required>
-                            <option value="">Wybierz produkt</option>
-                            {% for product in products %}
-                            <option value="{{ product.id }}">{{ product.name }}</option>
-                            {% endfor %}
-                        </select>
+                        <input type="hidden" class="product-id">
+                        <div class="form-control-plaintext product-name"></div>
                     </div>
                 </div>
                 <div class="col-md-2">
                     <div class="mb-3">
                         <label class="form-label">Ilość</label>
-                        <input type="number" class="form-control quantity" min="1" required>
+                        <input type="number" class="form-control quantity" required>
                     </div>
                 </div>
                 <div class="col-md-2">
                     <div class="mb-3">
                         <label class="form-label">Cena netto</label>
-                        <div class="input-group">
-                            <input type="number" class="form-control net-cost" step="0.01" required>
-                            <span class="input-group-text">zł</span>
-                        </div>
+                        <input type="number" step="0.01" class="form-control net-cost" required>
+                    </div>
+                </div>
+                <div class="col-md-1">
+                    <div class="mb-3">
+                        <label class="form-label">VAT</label>
+                        <div class="form-control-plaintext vat-rate"></div>
                     </div>
                 </div>
                 <div class="col-md-2">
                     <div class="mb-3">
                         <label class="form-label">Cena brutto</label>
-                        <div class="input-group">
-                            <input type="number" class="form-control gross-cost" step="0.01" required>
-                            <span class="input-group-text">zł</span>
-                        </div>
+                        <input type="number" step="0.01" class="form-control gross-cost" required>
                     </div>
                 </div>
-                <div class="col-md-2">
-                    <div class="mb-3">
-                        <label class="form-label">Typ</label>
-                        <select class="form-select stock-type" required>
-                            <option value="physical">Fizyczny</option>
-                            <option value="virtual">Wirtualny</option>
-                        </select>
-                    </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-outline-danger remove-entry">
+                        <i class="bi bi-trash"></i>
+                    </button>
                 </div>
             </div>
-            <button type="button" class="btn btn-sm btn-outline-danger remove-entry position-absolute top-0 end-0 m-3">
-                <i class="bi bi-trash"></i>
-            </button>
         </div>
     </div>
 </template>
@@ -146,13 +146,78 @@ document.addEventListener('DOMContentLoaded', function() {
     let orderTotalValue = 0;
     let orderMinusInvoice = 0;
 
+    const productSelector = document.getElementById('productSelector');
+    
+    productSelector.addEventListener('change', function() {
+        if (this.value) {
+            const selectedOption = this.options[this.selectedIndex];
+            addStockEntry({
+                id: this.value,
+                name: selectedOption.dataset.name,
+                vatRate: selectedOption.dataset.vatRate
+            });
+            this.value = ''; // Reset select after adding
+        }
+    });
+
+    function addStockEntry(product) {
+        const template = document.getElementById('stockEntryTemplate');
+        const stockEntries = document.getElementById('stockEntries');
+        const clone = template.content.cloneNode(true);
+        const entry = clone.querySelector('.stock-entry');
+
+        // Set product details
+        entry.querySelector('.product-id').value = product.id;
+        entry.querySelector('.product-name').textContent = product.name;
+        entry.querySelector('.vat-rate').textContent = product.vatRate + '%';
+
+        // Price calculation handlers
+        const netCostInput = entry.querySelector('.net-cost');
+        const grossCostInput = entry.querySelector('.gross-cost');
+        const vatRate = parseFloat(product.vatRate);
+
+        function updateGrossCost() {
+            const netCost = parseFloat(netCostInput.value) || 0;
+            const grossCost = netCost * (1 + vatRate / 100);
+            grossCostInput.value = grossCost.toFixed(2);
+            updateSummary();
+            validateModal();
+        }
+
+        function updateNetCost() {
+            const grossCost = parseFloat(grossCostInput.value) || 0;
+            const netCost = grossCost / (1 + vatRate / 100);
+            netCostInput.value = netCost.toFixed(2);
+            updateSummary();
+            validateModal();
+        }
+
+        netCostInput.addEventListener('input', updateGrossCost);
+        grossCostInput.addEventListener('input', updateNetCost);
+
+        // Remove entry handler
+        entry.querySelector('.remove-entry').addEventListener('click', function() {
+            entry.remove();
+            updateSummary();
+            validateModal();
+        });
+
+        // Add quantity change handler
+        entry.querySelector('.quantity').addEventListener('input', function() {
+            updateSummary();
+            validateModal();
+        });
+
+        stockEntries.appendChild(entry);
+    }
+
     addSupplyOrderForm.addEventListener('submit', function(e) {
         e.preventDefault();
         // Collect stock entries data
         const stockEntries = [];
         document.querySelectorAll('.stock-entry').forEach(entry => {
             stockEntries.push({
-                product_id: entry.querySelector('.product-select').value,
+                product_id: entry.querySelector('.product-id').value,
                 quantity: entry.querySelector('.quantity').value,
                 net_cost: entry.querySelector('.net-cost').value,
                 gross_cost: entry.querySelector('.gross-cost').value,
@@ -263,50 +328,6 @@ document.addEventListener('DOMContentLoaded', function() {
         updateSummary();
         validateModal();
     });
-
-    window.addStockEntry = function() {
-        const template = document.getElementById('stockEntryTemplate');
-        const stockEntries = document.getElementById('stockEntries');
-        const clone = template.content.cloneNode(true);
-
-        // Add event listeners
-        const entry = clone.querySelector('.stock-entry');
-
-        // Remove entry button
-        entry.querySelector('.remove-entry').addEventListener('click', function() {
-            entry.remove();
-            updateSummary();
-            validateModal();
-        });
-
-        // Auto-calculate gross cost
-        const netCostInput = entry.querySelector('.net-cost');
-        const grossCostInput = entry.querySelector('.gross-cost');
-
-        netCostInput.addEventListener('input', function() {
-            const netCost = parseFloat(this.value) || 0;
-            grossCostInput.value = (netCost * 1.23).toFixed(2);
-            updateSummary();
-            validateModal();
-        });
-
-        grossCostInput.addEventListener('input', function() {
-            const grossCost = parseFloat(this.value) || 0;
-            netCostInput.value = (grossCost / 1.23).toFixed(2);
-            updateSummary();
-            validateModal();
-        });
-
-        // Add quantity change listener
-        entry.querySelector('.quantity').addEventListener('input', function() {
-            updateSummary();
-            validateModal();
-        });
-
-        stockEntries.appendChild(clone);
-        updateSummary();
-        validateModal();
-    };
 
     // Add event delegation for input changes in stock entries
     document.getElementById('stockEntries').addEventListener('input', function(e) {
