@@ -244,6 +244,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     const container = select.parentElement;
                     const selectedOption = select.options[select.selectedIndex];
                     container.innerHTML = selectedOption.text;
+
+                    // Update the accordion button
+                    const accordionItem = container.closest('.accordion-item');
+                    const accordionButton = accordionItem.querySelector('.accordion-button');
+                    const warningBadge = accordionButton.querySelector('.badge.bg-warning');
+                    
+                    // Remove warning background and badge
+                    accordionButton.classList.remove('bg-warning-subtle');
+                    if (warningBadge) {
+                        warningBadge.remove();
+                    }
                 } else {
                     alert(data.message || 'Wystąpił błąd podczas przypisywania faktury.');
                 }
