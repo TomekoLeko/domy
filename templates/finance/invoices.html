@@ -172,46 +172,57 @@
                                 </div>
                             </div>
 
-                            {% for supply_order in invoice.supply_orders.all %}
-                                <h6 class="mb-3 mt-4">Produkty (Dostawa {{ supply_order.order_number }})</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Produkt</th>
-                                                <th>Ilość</th>
-                                                <th>Cena netto</th>
-                                                <th>Cena brutto</th>
-                                                <th>Koszt brutto</th>
-                                                <th>Typ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for entry in supply_order.stock_entries.all %}
-                                            <tr>
-                                                <td>{{ entry.product.name }}</td>
-                                                <td>{{ entry.quantity }}</td>
-                                                <td>{{ entry.net_cost }} zł</td>
-                                                <td>{{ entry.gross_cost }} zł</td>
-                                                <td>{{ entry.total_gross_cost }} zł</td>
-                                                <td>
-                                                    <span class="badge stock-type bg-{% if entry.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
-                                                        {% if entry.stock_type == 'physical' %}Fizyczny{% else %}Wirtualny{% endif %}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr>
-                                                <td colspan="4" class="text-end"><strong>Razem:</strong></td>
-                                                <td><strong>{{ supply_order.get_total_gross_cost }} zł</strong></td>
-                                                <td></td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
+                            {% if invoice.supply_orders.exists %}
+                                {% for supply_order in invoice.supply_orders.all %}
+                                    <h6 class="mb-3 mt-4">Produkty (Dostawa {{ supply_order.order_number }})</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Produkt</th>
+                                                    <th>Ilość</th>
+                                                    <th>Cena netto</th>
+                                                    <th>VAT</th>
+                                                    <th>Cena brutto</th>
+                                                    <th>Koszt netto</th>
+                                                    <th>Koszt brutto</th>
+                                                    <th>Typ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for entry in supply_order.stock_entries.all %}
+                                                <tr>
+                                                    <td>{{ entry.product.name }}</td>
+                                                    <td>{{ entry.quantity }}</td>
+                                                    <td>{{ entry.net_cost }} zł</td>
+                                                    <td>{{ entry.vat_rate|default:"--" }}%</td>
+                                                    <td>{{ entry.gross_cost }} zł</td>
+                                                    <td>{{ entry.total_net_cost }} zł</td>
+                                                    <td>{{ entry.total_gross_cost }} zł</td>
+                                                    <td>
+                                                        <span class="badge stock-type bg-{% if entry.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
+                                                            {% if entry.stock_type == 'physical' %}Fizyczny{% else %}Wirtualny{% endif %}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr>
+                                                    <td colspan="5" class="text-end"><strong>Razem:</strong></td>
+                                                    <td><strong>{{ supply_order.get_total_net_cost }} zł</strong></td>
+                                                    <td><strong>{{ supply_order.get_total_gross_cost }} zł</strong></td>
+                                                    <td></td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center text-muted mt-4">
+                                    Przypisz zlecenie
                                 </div>
-                            {% endfor %}
+                            {% endif %}
                         </div>
                     </div>
                 </div>
