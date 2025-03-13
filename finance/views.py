@@ -201,23 +201,20 @@ def invoices(request):
 @require_authenticated_staff_or_superuser
 def add_invoice(request):
     try:
-        supplier = get_object_or_404(Supplier, id=request.POST.get('supplier'))
         invoice_number = request.POST.get('invoice_number')
-        net_price = Decimal(request.POST.get('net_price'))
-        vat_rate = Decimal(request.POST.get('vat_rate'))
+        supplier_id = request.POST.get('supplier')
         gross_price = Decimal(request.POST.get('gross_price'))
 
-        if Invoice.objects.filter(invoice_number=invoice_number).exists():
+        # Validate required fields
+        if not all([invoice_number, supplier_id, gross_price]):
             return JsonResponse({
                 'status': 'error',
-                'message': 'Faktura o tym numerze już istnieje'
-            }, status=400)
+                'message': 'Wszystkie pola są wymagane.'
+            })
 
         invoice = Invoice.objects.create(
             invoice_number=invoice_number,
-            supplier=supplier,
-            net_price=net_price,
-            vat_rate=vat_rate,
+            supplier_id=supplier_id,
             gross_price=gross_price
         )
 
