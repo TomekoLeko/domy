@@ -52,6 +52,9 @@ class SupplyOrder(models.Model):
 
         super().save(*args, **kwargs)
 
+    def get_total_net_cost(self):
+        return sum(entry.total_net_cost for entry in self.stock_entries.all())
+
     def get_total_gross_cost(self):
         return sum(entry.total_gross_cost for entry in self.stock_entries.all())
 
