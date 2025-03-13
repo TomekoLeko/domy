@@ -174,6 +174,10 @@ def invoices(request):
     # Filter and sort invoices
     invoices = Invoice.objects.annotate(
         supply_orders_count=Count('supply_orders')
+    ).prefetch_related(
+        'supply_orders',
+        'supply_orders__stock_entries',
+        'supply_orders__stock_entries__product'
     )
 
     if search_query:
