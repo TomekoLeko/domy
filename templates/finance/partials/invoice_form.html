@@ -39,29 +39,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const addInvoiceForm = document.getElementById('addInvoiceForm');
-    const netPriceInput = addInvoiceForm.querySelector('[name="net_price"]');
-    const vatRateInput = addInvoiceForm.querySelector('[name="vat_rate"]');
     const grossPriceInput = addInvoiceForm.querySelector('[name="gross_price"]');
-
-    // Calculate gross price when net price or VAT rate changes
-    function updateGrossPrice() {
-        const netPrice = parseFloat(netPriceInput.value) || 0;
-        const vatRate = parseFloat(vatRateInput.value) || 0;
-        const grossPrice = netPrice * (1 + vatRate / 100);
-        grossPriceInput.value = grossPrice.toFixed(2);
-    }
-
-    // Calculate net price when gross price or VAT rate changes
-    function updateNetPrice() {
-        const grossPrice = parseFloat(grossPriceInput.value) || 0;
-        const vatRate = parseFloat(vatRateInput.value) || 0;
-        const netPrice = grossPrice / (1 + vatRate / 100);
-        netPriceInput.value = netPrice.toFixed(2);
-    }
-
-    netPriceInput.addEventListener('input', updateGrossPrice);
-    vatRateInput.addEventListener('input', updateGrossPrice);
-    grossPriceInput.addEventListener('input', updateNetPrice);
 
     // Handle form submission
     addInvoiceForm.addEventListener('submit', function(e) {

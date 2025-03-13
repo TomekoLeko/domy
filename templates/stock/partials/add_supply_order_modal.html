@@ -230,11 +230,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const vatRateText = entry.querySelector('.vat-rate').textContent;
             const vatRate = vatRateText ? parseFloat(vatRateText.replace('%', '')) : 0;
 
-            console.log("vat rate", vatRate);
-
-            // stop for debugger
-            debugger;
-
             stockEntries.push({
                 product_id: entry.querySelector('.product-id').value,
                 quantity: entry.querySelector('.quantity').value,
