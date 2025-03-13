@@ -174,6 +174,10 @@ def invoices(request):
     # Filter and sort invoices
     invoices = Invoice.objects.annotate(
         supply_orders_count=Count('supply_orders')
+    ).prefetch_related(
+        'supply_orders',
+        'supply_orders__stock_entries',
+        'supply_orders__stock_entries__product'
     )
 
     if search_query:
@@ -197,23 +201,20 @@ def invoices(request):
 @require_authenticated_staff_or_superuser
 def add_invoice(request):
     try:
-        supplier = get_object_or_404(Supplier, id=request.POST.get('supplier'))
         invoice_number = request.POST.get('invoice_number')
-        net_price = Decimal(request.POST.get('net_price'))
-        vat_rate = Decimal(request.POST.get('vat_rate'))
+        supplier_id = request.POST.get('supplier')
         gross_price = Decimal(request.POST.get('gross_price'))
 
-        if Invoice.objects.filter(invoice_number=invoice_number).exists():
+        # Validate required fields
+        if not all([invoice_number, supplier_id, gross_price]):
             return JsonResponse({
                 'status': 'error',
-                'message': 'Faktura o tym numerze już istnieje'
-            }, status=400)
+                'message': 'Wszystkie pola są wymagane.'
+            })
 
         invoice = Invoice.objects.create(
             invoice_number=invoice_number,
-            supplier=supplier,
-            net_price=net_price,
-            vat_rate=vat_rate,
+            supplier_id=supplier_id,
             gross_price=gross_price
         )
 
@@ -221,6 +222,27 @@ def add_invoice(request):
             'status': 'success',
             'invoice_id': invoice.id
         })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_invoice(request, invoice_id):
+    try:
+        invoice = get_object_or_404(Invoice, id=invoice_id)
+        
+        # If there are associated supply orders, clear the invoice reference
+        for supply_order in invoice.supply_orders.all():
+            supply_order.invoice = None
+            supply_order.save()
+        
+        # Then delete the invoice
+        invoice.delete()
+        
+        return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({
             'status': 'error',

@@ -74,8 +74,8 @@ class Payment(models.Model):
 class Invoice(models.Model):
     invoice_number = models.CharField(max_length=50, unique=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='invoices')
-    net_price = models.DecimalField(max_digits=10, decimal_places=2)
-    vat_rate = models.DecimalField(max_digits=4, decimal_places=2)
+    net_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    vat_rate = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     gross_price = models.DecimalField(max_digits=10, decimal_places=2)
     
     # Copied supplier details

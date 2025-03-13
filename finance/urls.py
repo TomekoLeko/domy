@@ -15,4 +15,5 @@ urlpatterns = [
     path('finance/get-report-data/', views.get_report_data, name='get_report_data'),
     path('invoices/', views.invoices, name='invoices'),
     path('invoices/add/', views.add_invoice, name='add_invoice'),
+    path('invoices/delete/<int:invoice_id>/', views.delete_invoice, name='delete_invoice'),
 ]

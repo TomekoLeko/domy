@@ -14,44 +14,54 @@
     .table th {
         white-space: nowrap;
         cursor: pointer;
-    }
-    
-    .table th:hover {
-        background-color: rgba(0,0,0,0.05);
-    }
-    
-    .search-container {
-        max-width: 300px;
-    }
-
-    /* Add these styles to match payment history table */
-    .table {
-        --bs-table-striped-bg: rgba(0, 0, 0, 0.02);
-    }
-
-    .table > :not(caption) > * > * {
-        padding: 1rem;
-    }
-
-    .table tbody tr {
-        vertical-align: middle;
-    }
-
-    .table thead th {
         background-color: var(--bs-gray-100);
         font-weight: 500;
         text-transform: uppercase;
         font-size: 0.875rem;
         letter-spacing: 0.5px;
     }
-
-    .badge {
-        font-size: 0.875rem;
-        padding: 0.5em 0.75em;
+    
+    .table th:hover {
+        background-color: rgba(0,0,0,0.05);
     }
 
-    .btn-sm {
-        padding: 0.4rem 0.8rem;
+    .search-container {
+        max-width: 300px;
+    }
+
+    /* Invoice details styles */
+    .invoice-details {
+        position: relative;
+        padding: 1.5rem;
+        background-color: var(--bs-gray-100);
+    }
+    
+    .invoice-details::before {
+        content: '';
+        position: absolute;
+        left: -24px;
+        top: -24px;
+        bottom: -24px;
+        width: 4px;
+        border-radius: 2px;
+    }
+
+    .accordion-button:not(.collapsed) {
+        background-color: var(--bs-gray-100);
+        color: var(--bs-body-color);
+    }
+
+    dl.row {
+        margin-bottom: 0;
+    }
+
+    dt {
+        font-weight: 500;
+        color: var(--bs-gray-600);
+    }
+
+    dd {
+        margin-bottom: 0.5rem;
     }
 </style>
 {% endblock %}
@@ -79,94 +89,154 @@
         </div>
     </div>
 
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
-                    <thead>
-                        <tr>
-                            {% with sort_fields="-invoice_number,invoice_number" %}
-                            <th onclick="sortTable('invoice_number')">
-                                Numer faktury
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-supplier_name,supplier_name" %}
-                            <th onclick="sortTable('supplier_name')">
-                                Dostawca
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-net_price,net_price" %}
-                            <th onclick="sortTable('net_price')">
-                                Cena netto
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-gross_price,gross_price" %}
-                            <th onclick="sortTable('gross_price')">
-                                Cena brutto
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            {% endwith %}
-
-                            {% with sort_fields="-created_at,created_at" %}
-                            <th onclick="sortTable('created_at')">
-                                Data utworzenia
-                                {% if current_sort in sort_fields %}
-                                <i class="bi bi-arrow-{% if '-' in current_sort %}down{% else %}up{% endif %} sort-icon"></i>
-                                {% endif %}
-                            </th>
-                            {% endwith %}
-
-                            <th class="text-center">Zamówienia</th>
-                            <th class="text-end">Akcje</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for invoice in invoices %}
-                        <tr>
-                            <td>{{ invoice.invoice_number }}</td>
-                            <td>{{ invoice.supplier_name }}</td>
-                            <td>{{ invoice.net_price }} zł</td>
-                            <td>{{ invoice.gross_price }} zł</td>
-                            <td>{{ invoice.created_at|date:"d.m.Y H:i" }}</td>
-                            <td class="text-center">
-                                <span class="badge bg-primary rounded-pill">{{ invoice.supply_orders_count }}</span>
-                            </td>
-                            <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary view-details" 
-                                        data-invoice-id="{{ invoice.id }}">
-                                    <i class="bi bi-eye"></i> Szczegóły
-                                </button>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">
-                                {% if search_query %}
-                                    Nie znaleziono faktur spełniających kryteria wyszukiwania
-                                {% else %}
-                                    Brak faktur w systemie
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <!-- Invoices Accordion -->
+    <div class="accordion" id="invoicesAccordion">
+        <!-- Static header row -->
+        <div class="accordion-item">
+            <div class="accordion-header">
+                <div class="accordion-button bg-light" style="cursor: default;" type="button">
+                    <div class="d-flex justify-content-between align-items-center flex-grow-1 me-3">
+                        <div class="d-flex">
+                            <span style="width: 10rem;">Numer faktury</span>
+                            <span style="width: 15rem;">Dostawca</span>
+                            <span style="width: 8rem;">Cena netto</span>
+                            <span style="width: 8rem;">Cena brutto</span>
+                            <span style="width: 10rem;">Data utworzenia</span>
+                            <span style="width: 10rem;">Zamówienie</span>
+                        </div>
+                        <span style="width: 100px;" class="text-center">Zamówienia</span>
+                    </div>
+                </div>
             </div>
         </div>
+
+        <!-- Regular accordion items -->
+        {% for invoice in invoices %}
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed {% if not invoice.supply_orders.exists %}bg-warning-subtle{% endif %}" 
+                        type="button" data-bs-toggle="collapse"
+                        data-bs-target="#collapse{{ invoice.id }}">
+                    <div class="d-flex justify-content-between align-items-center flex-grow-1 me-3">
+                        <div class="d-flex">
+                            <span style="width: 10rem;">{{ invoice.invoice_number }}</span>
+                            <span style="width: 15rem;">{{ invoice.supplier_name }}</span>
+                            <span style="width: 8rem;">{{ invoice.net_price }} zł</span>
+                            <span style="width: 8rem;">{{ invoice.gross_price }} zł</span>
+                            <span style="width: 10rem;">{{ invoice.created_at|date:"d.m.Y H:i" }}</span>
+                            {% if not invoice.supply_orders.exists %}
+                                <span style="width: 10rem;" class="badge bg-warning text-dark me-3">Nieprzypisana</span>
+                            {% else %}
+                                <span style="width: 10rem;" class="text-dark me-3">
+                                    {% for supply_order in invoice.supply_orders.all %}
+                                        {{ supply_order.order_number }}
+                                        {% if not forloop.last %}, {% endif %}
+                                    {% endfor %}
+                                </span>
+                            {% endif %}
+                        </div>
+                        <span class="badge bg-primary rounded-pill">{{ invoice.supply_orders_count }}</span>
+                    </div>
+                </button>
+            </h2>
+            <div id="collapse{{ invoice.id }}" class="accordion-collapse collapse" data-bs-parent="#invoicesAccordion">
+                <div class="accordion-body bg-light">
+                    <div class="border p-4 rounded bg-white shadow-sm">
+                        <div class="price-list-edit-form">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h6 class="mb-0">Faktura: {{ invoice.invoice_number }}</h6>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        onclick="removeInvoice({{ invoice.id }})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-4">Dostawca</dt>
+                                        <dd class="col-sm-8">{{ invoice.supplier_name }}</dd>
+                                    </dl>
+                                </div>
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-4">Cena netto</dt>
+                                        <dd class="col-sm-8">{{ invoice.net_price }} zł</dd>
+
+                                        <dt class="col-sm-4">VAT</dt>
+                                        <dd class="col-sm-8">{{ invoice.vat_rate }}%</dd>
+
+                                        <dt class="col-sm-4">Cena brutto</dt>
+                                        <dd class="col-sm-8">{{ invoice.gross_price }} zł</dd>
+                                    </dl>
+                                </div>
+                            </div>
+
+                            {% if invoice.supply_orders.exists %}
+                                {% for supply_order in invoice.supply_orders.all %}
+                                    <h6 class="mb-3 mt-4">Produkty (Dostawa {{ supply_order.order_number }})</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Produkt</th>
+                                                    <th>Ilość</th>
+                                                    <th>Cena netto</th>
+                                                    <th>VAT</th>
+                                                    <th>Cena brutto</th>
+                                                    <th>Koszt netto</th>
+                                                    <th>Koszt brutto</th>
+                                                    <th>Typ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for entry in supply_order.stock_entries.all %}
+                                                <tr>
+                                                    <td>{{ entry.product.name }}</td>
+                                                    <td>{{ entry.quantity }}</td>
+                                                    <td>{{ entry.net_cost }} zł</td>
+                                                    <td>{{ entry.vat_rate|default:"--" }}%</td>
+                                                    <td>{{ entry.gross_cost }} zł</td>
+                                                    <td>{{ entry.total_net_cost }} zł</td>
+                                                    <td>{{ entry.total_gross_cost }} zł</td>
+                                                    <td>
+                                                        <span class="badge stock-type bg-{% if entry.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
+                                                            {% if entry.stock_type == 'physical' %}Fizyczny{% else %}Wirtualny{% endif %}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr>
+                                                    <td colspan="5" class="text-end"><strong>Razem:</strong></td>
+                                                    <td><strong>{{ supply_order.get_total_net_cost }} zł</strong></td>
+                                                    <td><strong>{{ supply_order.get_total_gross_cost }} zł</strong></td>
+                                                    <td></td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center text-muted mt-4">
+                                    Przypisz zlecenie
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-4 text-muted">
+            {% if search_query %}
+                Nie znaleziono faktur spełniających kryteria wyszukiwania
+            {% else %}
+                Brak faktur w systemie
+            {% endif %}
+        </div>
+        {% endfor %}
     </div>
 </div>
 
@@ -184,21 +254,31 @@
 </div>
 
 <script>
-function sortTable(field) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const currentSort = urlParams.get('sort') || '-created_at';
-    
-    // Toggle sort direction if clicking the same field
-    let newSort = field;
-    if (currentSort === field) {
-        newSort = '-' + field;
-    } else if (currentSort === '-' + field) {
-        newSort = field;
+function handleSort(column) {
+    console.log('Sorting by:', column);
+}
+
+function removeInvoice(invoiceId) {
+    if (confirm('Czy na pewno chcesz usunąć tę fakturę?')) {
+        fetch(`{% url 'finance:invoices' %}delete/${invoiceId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas usuwania faktury.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Wystąpił błąd podczas usuwania faktury.');
+        });
     }
-    
-    // Preserve search parameter if it exists
-    urlParams.set('sort', newSort);
-    window.location.search = urlParams.toString();
 }
 </script>
 {% endblock %} 
