@@ -6,6 +6,7 @@ from .models import Supplier, SupplyOrder, StockEntry
 from finance.models import Invoice
 from products.models import Product
 from decimal import Decimal
+from django.db.models import F, ExpressionWrapper, DecimalField
 import json
 
 @require_authenticated_staff_or_superuser
@@ -76,8 +77,9 @@ def stock_main(request):
             'supplier', 
             'invoice'
         ).prefetch_related(
+            'stock_entries',
             'stock_entries__product'
-        ).order_by('-created_at')
+        ).distinct().order_by('-created_at')
     })
 
 @require_POST
@@ -110,13 +112,64 @@ def add_supply_order(request):
                 quantity=entry['quantity'],
                 net_cost=Decimal(entry['net_cost']),
                 gross_cost=Decimal(entry['gross_cost']),
-                stock_type=entry['stock_type']
+                stock_type=entry['stock_type'],
+                vat_rate=entry['vat_rate']
             )
 
         return JsonResponse({
             'status': 'success',
             'supply_order_id': supply_order.id
         })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def assign_invoice(request):
+    try:
+        data = json.loads(request.body)
+        supply_order = get_object_or_404(SupplyOrder, id=data['supply_order_id'])
+        invoice = get_object_or_404(Invoice, id=data['invoice_id'])
+
+        # Verify invoice isn't already assigned and belongs to same supplier
+        if invoice.supply_orders.exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Ta faktura jest już przypisana do innego zamówienia'
+            }, status=400)
+
+        if invoice.supplier_id != supply_order.supplier_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Ta faktura należy do innego dostawcy'
+            }, status=400)
+
+        supply_order.invoice = invoice
+        supply_order.save()
+
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def delete_supply_order(request, supply_order_id):
+    try:
+        supply_order = get_object_or_404(SupplyOrder, id=supply_order_id)
+        
+        # Delete all related stock entries first
+        supply_order.stock_entries.all().delete()
+        
+        # Then delete the supply order
+        supply_order.delete()
+        
+        return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({
             'status': 'error',

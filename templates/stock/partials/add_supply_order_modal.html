@@ -1,0 +1,356 @@
+<!-- Add Supply Order Modal -->
+<div class="modal fade" id="addSupplyOrderModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dodaj dostawę</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addSupplyOrderForm" method="POST" action="{% url 'add_supply_order' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Dostawca</label>
+                                <select class="form-select" name="supplier" id="supplierSelect" required>
+                                    <option value="">Wybierz dostawcę</option>
+                                    {% for supplier in suppliers %}
+                                    <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Faktura</label>
+                                <select class="form-select" name="invoice" id="invoiceSelect" disabled>
+                                    <option value="">Wybierz fakturę</option>
+                                    {% for invoice in invoices %}
+                                    <option value="{{ invoice.id }}" 
+                                            data-supplier="{{ invoice.supplier_id }}"
+                                            data-gross-price="{{ invoice.gross_price }}">
+                                        {{ invoice.invoice_number }}: {{ invoice.gross_price }} zł
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="mb-3">Produkty</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Dodaj produkt</label>
+                        <select class="form-select" id="productSelector">
+                            <option value="">Wybierz produkt</option>
+                            {% for product in products %}
+                            <option value="{{ product.id }}"
+                                    data-vat-rate="{{ product.vat }}"
+                                    data-name="{{ product.name }}">
+                                {{ product.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div id="stockEntries">
+                        <!-- Stock entries will be added here -->
+                    </div>
+
+                    <!-- Update the totals section -->
+                    <div class="d-flex flex-column align-items-end mt-3">
+                        <div id="orderTotal" class="h5 mb-2">
+                            Razem: <span>0.00</span> zł
+                        </div>
+                        <div id="invoiceInfo" class="h5 mb-2" style="display: none;">
+                            Faktura: <span id="invoiceAmount"></span> zł
+                        </div>
+                        <div id="amountDiff" class="h5" style="display: none;">
+                            Różnica: <span>0.00</span> zł
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-primary">Dodaj</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<template id="stockEntryTemplate">
+    <div class="stock-entry card mb-3">
+        <div class="card-body">
+            <div class="row align-items-end">
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Produkt</label>
+                        <input type="hidden" class="product-id">
+                        <div class="form-control-plaintext product-name"></div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Ilość</label>
+                        <input type="number" class="form-control quantity" required>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Cena netto</label>
+                        <input type="number" step="0.01" class="form-control net-cost" required>
+                    </div>
+                </div>
+                <div class="col-md-1">
+                    <div class="mb-3">
+                        <label class="form-label">VAT</label>
+                        <div class="form-control-plaintext vat-rate"></div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Cena brutto</label>
+                        <input type="number" step="0.01" class="form-control gross-cost" required>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-3">
+                        <label class="form-label">Typ</label>
+                        <select class="form-select stock-type" required>
+                            <option value="physical">Fizyczny</option>
+                            <option value="virtual">Wirtualny</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-outline-danger remove-entry">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('addSupplyOrderModal');
+    modal.addEventListener('show.bs.modal', function () {
+        let valid = validateModal();
+    });
+
+    // Handle supply order submission
+    const addSupplyOrderForm = document.getElementById('addSupplyOrderForm');
+    const supplierSelect = document.getElementById('supplierSelect');
+    const invoiceSelect = document.getElementById('invoiceSelect');
+    const invoiceInfo = document.getElementById('invoiceInfo');
+    const invoiceAmount = document.getElementById('invoiceAmount');
+    const amountDiff = document.getElementById('amountDiff');
+    const amountDiffSpan = amountDiff.querySelector('span');
+    const orderTotal = document.getElementById('orderTotal').querySelector('span');
+    const submitButton = document.querySelector('#addSupplyOrderForm button[type="submit"]');
+    let selectedInvoiceAmount = 0;
+    let selectedSupplierId = null;
+    let orderTotalValue = 0;
+    let orderMinusInvoice = 0;
+
+    const productSelector = document.getElementById('productSelector');
+    
+    productSelector.addEventListener('change', function() {
+        if (this.value) {
+            const selectedOption = this.options[this.selectedIndex];
+            addStockEntry({
+                id: this.value,
+                name: selectedOption.dataset.name,
+                vatRate: selectedOption.dataset.vatRate
+            });
+            this.value = ''; // Reset select after adding
+        }
+    });
+
+    function addStockEntry(product) {
+        const template = document.getElementById('stockEntryTemplate');
+        const stockEntries = document.getElementById('stockEntries');
+        const clone = template.content.cloneNode(true);
+        const entry = clone.querySelector('.stock-entry');
+
+        // Set product details
+        entry.querySelector('.product-id').value = product.id;
+        entry.querySelector('.product-name').textContent = product.name;
+        entry.querySelector('.vat-rate').textContent = product.vatRate + '%';
+
+        // Price calculation handlers
+        const netCostInput = entry.querySelector('.net-cost');
+        const grossCostInput = entry.querySelector('.gross-cost');
+        const vatRate = parseFloat(product.vatRate);
+
+        function updateGrossCost() {
+            const netCost = parseFloat(netCostInput.value) || 0;
+            const grossCost = netCost * (1 + vatRate / 100);
+            grossCostInput.value = grossCost.toFixed(2);
+            updateSummary();
+            validateModal();
+        }
+
+        function updateNetCost() {
+            const grossCost = parseFloat(grossCostInput.value) || 0;
+            const netCost = grossCost / (1 + vatRate / 100);
+            netCostInput.value = netCost.toFixed(2);
+            updateSummary();
+            validateModal();
+        }
+
+        netCostInput.addEventListener('input', updateGrossCost);
+        grossCostInput.addEventListener('input', updateNetCost);
+
+        // Remove entry handler
+        entry.querySelector('.remove-entry').addEventListener('click', function() {
+            entry.remove();
+            updateSummary();
+            validateModal();
+        });
+
+        // Add quantity change handler
+        entry.querySelector('.quantity').addEventListener('input', function() {
+            updateSummary();
+            validateModal();
+        });
+
+        stockEntries.appendChild(entry);
+    }
+
+    addSupplyOrderForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        // Collect stock entries data
+        const stockEntries = [];
+
+        document.querySelectorAll('.stock-entry').forEach(entry => {
+            // Get VAT rate from the text content and remove the % symbol
+            const vatRateText = entry.querySelector('.vat-rate').textContent;
+            const vatRate = vatRateText ? parseFloat(vatRateText.replace('%', '')) : 0;
+
+            stockEntries.push({
+                product_id: entry.querySelector('.product-id').value,
+                quantity: entry.querySelector('.quantity').value,
+                net_cost: entry.querySelector('.net-cost').value,
+                gross_cost: entry.querySelector('.gross-cost').value,
+                stock_type: entry.querySelector('.stock-type').value,
+                vat_rate: vatRate
+            });
+        });
+
+        const formData = new FormData(this);
+        formData.append('stock_entries', JSON.stringify(stockEntries));
+
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas dodawania dostawy.');
+            }
+        });
+    });
+
+    function calculateTotal() {
+        let total = 0;
+        document.querySelectorAll('.stock-entry').forEach(entry => {
+            const grossCost = parseFloat(entry.querySelector('.gross-cost').value) || 0;
+            const quantity = parseInt(entry.querySelector('.quantity').value) || 0;
+            total += grossCost * quantity;
+        });
+        return total;
+    }
+
+    function validateModal() {
+        if ((calculateTotal() <= 0) ||
+        (selectedInvoiceAmount > 0 && orderMinusInvoice != 0) ||
+        (!selectedSupplierId)) {
+            submitButton.disabled = true;
+            return false;
+        }
+        else {
+            submitButton.disabled = false;
+            return true;
+        }
+    }
+
+    function updateSummary() {
+        orderTotalValue = calculateTotal();
+        orderTotal.textContent = orderTotalValue.toFixed(2);
+        orderMinusInvoice = orderTotalValue - selectedInvoiceAmount;
+        amountDiffSpan.textContent = orderMinusInvoice.toFixed(2);
+
+        if (selectedInvoiceAmount > 0) {
+            invoiceInfo.style.display = 'block';
+            amountDiff.style.display = 'block';
+        } else {
+            invoiceAmount.textContent = '';
+            selectedInvoiceAmount = 0;
+        }
+          // Style based on difference
+          if (Math.abs(orderMinusInvoice) < 0.01) {
+            amountDiff.style.color = '#198754'; // Bootstrap success color
+        } else {
+            amountDiff.style.color = '#dc3545'; // Bootstrap danger color
+        }
+    }
+
+    supplierSelect.addEventListener('change', function() {
+        selectedSupplierId = this.value;
+        invoiceSelect.value = '';
+
+        if (!selectedSupplierId) {
+            selectedInvoiceAmount = 0;
+            invoiceSelect.disabled = true;
+            validateModal();
+            return;
+        }
+
+        invoiceSelect.disabled = false;
+
+        // Hide all options except the default one
+        Array.from(invoiceSelect.options).forEach(option => {
+            if (option.value === '') return; // Skip the default option
+
+            const supplierMatch = option.dataset.supplier === selectedSupplierId;
+            option.style.display = supplierMatch ? '' : 'none';
+        });
+        validateModal();
+    });
+
+    invoiceSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+
+        if (this.value) {
+            // Update both invoice number and amount
+            invoiceAmount.textContent = selectedOption.dataset.grossPrice;
+            selectedInvoiceAmount = parseFloat(selectedOption.dataset.grossPrice);
+        } else {
+            // Clear and hide invoice info
+            invoiceAmount.textContent = '';
+            selectedInvoiceAmount = 0;
+        }
+
+        updateSummary();
+        validateModal();
+    });
+
+    // Add event delegation for input changes in stock entries
+    document.getElementById('stockEntries').addEventListener('input', function(e) {
+        if (e.target.matches('.gross-cost, .quantity')) {
+            updateSummary();
+            validateModal();
+        }
+    });
+
+});
+</script>
