@@ -74,36 +74,45 @@
                 {% csrf_token %}
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">Nazwa</label>
-                            <input type="text" class="form-control" name="name" required>
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="productName" name="name" required>
+                            <label for="productName">Nazwa</label>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Opis</label>
-                            <textarea class="form-control" name="description" rows="3"></textarea>
+
+                        <div class="form-floating mb-3">
+                            <textarea class="form-control" id="productDescription" name="description" style="height: 100px"></textarea>
+                            <label for="productDescription">Opis</label>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">VAT (%)</label>
-                            <input type="number" class="form-control" name="vat" value="23" step="0.01" required>
+
+                        <div class="form-floating mb-3">
+                            <input type="number" class="form-control" id="productVat" name="vat" value="23" step="0.01" required>
+                            <label for="productVat">VAT (%)</label>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">EAN</label>
-                            <input type="text" class="form-control" name="ean" maxlength="13">
+
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="productEan" name="ean" maxlength="13">
+                            <label for="productEan">EAN</label>
                         </div>
+
                         <div class="row mb-3">
                             <div class="col">
-                                <label class="form-label">Ilość</label>
-                                <input type="number" class="form-control" name="volume_value" value="1" step="0.01" required>
+                                <div class="form-floating">
+                                    <input type="number" class="form-control" id="volumeValue" name="volume_value" value="1" step="0.01" required>
+                                    <label for="volumeValue">Ilość</label>
+                                </div>
                             </div>
                             <div class="col">
-                                <label class="form-label">Jednostka</label>
-                                <select class="form-select" name="volume_unit" required>
-                                    <option value="l">Litry</option>
-                                    <option value="kg">Kilogramy</option>
-                                    <option value="pcs">Sztuki</option>
-                                </select>
+                                <div class="form-floating">
+                                    <select class="form-select" id="volumeUnit" name="volume_unit" required>
+                                        <option value="l">Litry</option>
+                                        <option value="kg">Kilogramy</option>
+                                        <option value="pcs">Sztuki</option>
+                                    </select>
+                                    <label for="volumeUnit">Jednostka</label>
+                                </div>
                             </div>
                         </div>
+
                         <div class="mb-3">
                             <label class="form-label">Kategorie</label>
                             <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">
@@ -121,7 +130,7 @@
                                 {% endfor %}
                             </div>
                         </div>
-                        <!-- Add a wrapper div for the Submit button -->
+
                         <div class="d-flex justify-content-end">
                             <button type="submit" class="btn btn-success">Zapisz</button>
                         </div>
@@ -152,36 +161,45 @@
                     {% csrf_token %}
                     <div class="row">
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Nazwa</label>
+                            <div class="form-floating mb-3">
                                 <input type="text" class="form-control" id="edit_name" name="name" required>
+                                <label for="edit_name">Nazwa</label>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Opis</label>
-                                <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
+
+                            <div class="form-floating mb-3">
+                                <textarea class="form-control" id="edit_description" name="description" style="height: 100px"></textarea>
+                                <label for="edit_description">Opis</label>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">VAT (%)</label>
+
+                            <div class="form-floating mb-3">
                                 <input type="number" class="form-control" id="edit_vat" name="vat" step="0.01" required>
+                                <label for="edit_vat">VAT (%)</label>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">EAN</label>
+
+                            <div class="form-floating mb-3">
                                 <input type="text" class="form-control" id="edit_ean" name="ean" maxlength="13">
+                                <label for="edit_ean">EAN</label>
                             </div>
+
                             <div class="row mb-3">
                                 <div class="col">
-                                    <label class="form-label">Ilość</label>
-                                    <input type="number" class="form-control" id="edit_volume_value" name="volume_value" step="0.01" required>
+                                    <div class="form-floating">
+                                        <input type="number" class="form-control" id="edit_volume_value" name="volume_value" step="0.01" required>
+                                        <label for="edit_volume_value">Ilość</label>
+                                    </div>
                                 </div>
                                 <div class="col">
-                                    <label class="form-label">Jednostka</label>
-                                    <select class="form-select" id="edit_volume_unit" name="volume_unit" required>
-                                        <option value="l">Litry</option>
-                                        <option value="kg">Kilogramy</option>
-                                        <option value="pcs">Sztuki</option>
-                                    </select>
+                                    <div class="form-floating">
+                                        <select class="form-select" id="edit_volume_unit" name="volume_unit" required>
+                                            <option value="l">Litry</option>
+                                            <option value="kg">Kilogramy</option>
+                                            <option value="pcs">Sztuki</option>
+                                        </select>
+                                        <label for="edit_volume_unit">Jednostka</label>
+                                    </div>
                                 </div>
                             </div>
+
                             <div class="mb-3">
                                 <label class="form-label">Kategorie</label>
                                 <div class="category-checkboxes border rounded p-2" style="max-height: 200px; overflow-y: auto;">

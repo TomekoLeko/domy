@@ -9,16 +9,28 @@
         {% if user.is_staff or user.is_superuser %}
             <div class="mb-4">
                 {% csrf_token %}
-                <label for="buyerSelect" class="form-label">Wybierz kupującego:</label>
-                <select class="form-select" id="buyerSelect" onchange="changeBuyer(this.value)">
-                    <option value="">-- Wybierz --</option>
-                    {% for beneficiary in beneficiaries %}
-                        <option value="{{ beneficiary.id }}"
-                                {% if selected_buyer.id == beneficiary.id %}selected{% endif %}>
-                            {{ beneficiary.profile.name|default:beneficiary.username }}
-                        </option>
-                    {% endfor %}
-                </select>
+                <label class="form-label">Wybierz kupującego:</label>
+                <div class="dropdown">
+                    <button class="btn btn-outline-primary dropdown-toggle" type="button" id="buyerDropdown" 
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        {% if selected_buyer %}
+                            {{ selected_buyer.profile.name|default:selected_buyer.username }}
+                        {% else %}
+                            Wybierz kupującego
+                        {% endif %}
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="buyerDropdown">
+                        {% for beneficiary in beneficiaries %}
+                            <li>
+                                <a class="dropdown-item {% if selected_buyer.id == beneficiary.id %}active{% endif %}" 
+                                   href="#" 
+                                   onclick="changeBuyer('{{ beneficiary.id }}'); return false;">
+                                    {{ beneficiary.profile.name|default:beneficiary.username }}
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
         {% endif %}
 
@@ -144,6 +156,13 @@
         </div>
     {% endif %}
 </div>
+
+<style>
+    .dropdown-item:hover {
+        background-color: var(--bs-secondary);
+        color: white;
+    }
+</style>
 
 {% block extra_js %}
 <script>

@@ -34,30 +34,42 @@
                     {% csrf_token %}
                     <div class="row">
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">{{ form.payment_type.label }}</label>
-                            {{ form.payment_type }}
+                            <div class="form-floating">
+                                {{ form.payment_type }}
+                                <label for="{{ form.payment_type.id_for_label }}">{{ form.payment_type.label }}</label>
+                            </div>
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">{{ form.related_user.label }}</label>
-                            {{ form.related_user }}
+                            <div class="form-floating">
+                                {{ form.related_user }}
+                                <label for="{{ form.related_user.id_for_label }}">{{ form.related_user.label }}</label>
+                            </div>
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">{{ form.related_order.label }}</label>
-                            {{ form.related_order }}
+                            <div class="form-floating">
+                                {{ form.related_order }}
+                                <label for="{{ form.related_order.id_for_label }}">{{ form.related_order.label }}</label>
+                            </div>
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">{{ form.amount.label }}</label>
-                            {{ form.amount }}
+                            <div class="form-floating">
+                                {{ form.amount }}
+                                <label for="{{ form.amount.id_for_label }}">{{ form.amount.label }}</label>
+                            </div>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">{{ form.payment_date.label }}</label>
-                            {{ form.payment_date }}
+                            <div class="form-floating">
+                                {{ form.payment_date }}
+                                <label for="{{ form.payment_date.id_for_label }}">{{ form.payment_date.label }}</label>
+                            </div>
                         </div>
                         <div class="col-md-9 mb-3">
-                            <label class="form-label">{{ form.description.label }}</label>
-                            {{ form.description }}
+                            <div class="form-floating">
+                                {{ form.description }}
+                                <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+                            </div>
                         </div>
                     </div>
                     <div class="text-end">
@@ -70,16 +82,20 @@
 
     <div class="card mb-4">
         <div class="card-body">
-            <form id="dateFilterForm" class="row g-3 align-items-end">
+            <form id="dateFilterForm" class="row g-3">
                 <div class="col-md-4">
-                    <label for="dateFrom" class="form-label">Data od</label>
-                    <input type="date" class="form-control" id="dateFrom" name="date_from" onchange="filterPayments()">
+                    <div class="form-floating">
+                        <input type="date" class="form-control" id="dateFrom" name="date_from" onchange="filterPayments()">
+                        <label for="dateFrom">Data od</label>
+                    </div>
                 </div>
                 <div class="col-md-4">
-                    <label for="dateTo" class="form-label">Data do</label>
-                    <input type="date" class="form-control" id="dateTo" name="date_to" onchange="filterPayments()">
+                    <div class="form-floating">
+                        <input type="date" class="form-control" id="dateTo" name="date_to" onchange="filterPayments()">
+                        <label for="dateTo">Data do</label>
+                    </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-4 d-flex align-items-center">
                     <button type="button" class="btn btn-secondary" onclick="clearFilters()">
                         <i class="bi bi-x-circle me-2"></i>Wyczyść
                     </button>

@@ -41,35 +41,35 @@
                             {% csrf_token %}
                             <div class="row">
                                 <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">Nazwa</label>
-                                        <input type="text" class="form-control" name="name" value="{{ supplier.name }}" required>
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="name_{{ supplier.id }}" name="name" value="{{ supplier.name }}" required>
+                                        <label for="name_{{ supplier.id }}">Nazwa</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Adres</label>
-                                        <input type="text" class="form-control" name="address" value="{{ supplier.address }}">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="address_{{ supplier.id }}" name="address" value="{{ supplier.address }}">
+                                        <label for="address_{{ supplier.id }}">Adres</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Kod pocztowy</label>
-                                        <input type="text" class="form-control" name="postal" value="{{ supplier.postal }}">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="postal_{{ supplier.id }}" name="postal" value="{{ supplier.postal }}">
+                                        <label for="postal_{{ supplier.id }}">Kod pocztowy</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Miasto</label>
-                                        <input type="text" class="form-control" name="city" value="{{ supplier.city }}">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="city_{{ supplier.id }}" name="city" value="{{ supplier.city }}">
+                                        <label for="city_{{ supplier.id }}">Miasto</label>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">Email</label>
-                                        <input type="email" class="form-control" name="mail" value="{{ supplier.mail }}">
+                                    <div class="form-floating mb-3">
+                                        <input type="email" class="form-control" id="mail_{{ supplier.id }}" name="mail" value="{{ supplier.mail }}">
+                                        <label for="mail_{{ supplier.id }}">Email</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Telefon</label>
-                                        <input type="text" class="form-control" name="phone" value="{{ supplier.phone }}">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="phone_{{ supplier.id }}" name="phone" value="{{ supplier.phone }}">
+                                        <label for="phone_{{ supplier.id }}">Telefon</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">NIP</label>
-                                        <input type="text" class="form-control" name="nip" value="{{ supplier.nip }}">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="nip_{{ supplier.id }}" name="nip" value="{{ supplier.nip }}">
+                                        <label for="nip_{{ supplier.id }}">NIP</label>
                                     </div>
                                 </div>
                             </div>
@@ -106,35 +106,35 @@
                             {% csrf_token %}
                             <div class="row">
                                 <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">Nazwa</label>
-                                        <input type="text" class="form-control" name="name" required>
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="supplierName" name="name" required>
+                                        <label for="supplierName">Nazwa</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Adres</label>
-                                        <input type="text" class="form-control" name="address">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="supplierAddress" name="address">
+                                        <label for="supplierAddress">Adres</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Kod pocztowy</label>
-                                        <input type="text" class="form-control" name="postal">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="supplierPostal" name="postal">
+                                        <label for="supplierPostal">Kod pocztowy</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Miasto</label>
-                                        <input type="text" class="form-control" name="city">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="supplierCity" name="city">
+                                        <label for="supplierCity">Miasto</label>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">Email</label>
-                                        <input type="email" class="form-control" name="mail">
+                                    <div class="form-floating mb-3">
+                                        <input type="email" class="form-control" id="supplierMail" name="mail">
+                                        <label for="supplierMail">Email</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Telefon</label>
-                                        <input type="text" class="form-control" name="phone">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="supplierPhone" name="phone">
+                                        <label for="supplierPhone">Telefon</label>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">NIP</label>
-                                        <input type="text" class="form-control" name="nip">
+                                    <div class="form-floating mb-3">
+                                        <input type="text" class="form-control" id="supplierNip" name="nip">
+                                        <label for="supplierNip">NIP</label>
                                     </div>
                                 </div>
                             </div>

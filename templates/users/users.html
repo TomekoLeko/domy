@@ -48,69 +48,68 @@
                             <div class="border p-4 rounded bg-white shadow-sm">
                                 <form class="user-edit-form">
                                     {% csrf_token %}
-                                    <!-- Single column layout -->
                                     <div class="row mb-3">
-                                        <div class="col-md-6">  <!-- Using col-md-6 to make the form not too wide -->
+                                        <div class="col-md-6">
                                             <!-- Nazwa -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Nazwa</label>
-                                                <input type="text" class="form-control" name="name" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="name_{{ user.id }}" name="name" 
                                                        value="{{ user.profile.name }}" data-original-value="{{ user.profile.name }}">
+                                                <label for="name_{{ user.id }}">Nazwa</label>
                                             </div>
 
                                             <!-- Imię -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Imię</label>
-                                                <input type="text" class="form-control" name="first_name" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="first_name_{{ user.id }}" name="first_name" 
                                                        value="{{ user.first_name }}" data-original-value="{{ user.first_name }}">
+                                                <label for="first_name_{{ user.id }}">Imię</label>
                                             </div>
 
                                             <!-- Nazwisko -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Nazwisko</label>
-                                                <input type="text" class="form-control" name="last_name" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="last_name_{{ user.id }}" name="last_name" 
                                                        value="{{ user.last_name }}" data-original-value="{{ user.last_name }}">
+                                                <label for="last_name_{{ user.id }}">Nazwisko</label>
                                             </div>
 
                                             <!-- Adres -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Adres</label>
-                                                <input type="text" class="form-control" name="address" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="address_{{ user.id }}" name="address" 
                                                        value="{{ user.profile.address }}" data-original-value="{{ user.profile.address }}">
+                                                <label for="address_{{ user.id }}">Adres</label>
                                             </div>
 
                                             <!-- Kod pocztowy -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Kod pocztowy</label>
-                                                <input type="text" class="form-control" name="postal" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="postal_{{ user.id }}" name="postal" 
                                                        value="{{ user.profile.postal }}" data-original-value="{{ user.profile.postal }}">
+                                                <label for="postal_{{ user.id }}">Kod pocztowy</label>
                                             </div>
 
                                             <!-- Miasto -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Miasto</label>
-                                                <input type="text" class="form-control" name="city" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="city_{{ user.id }}" name="city" 
                                                        value="{{ user.profile.city }}" data-original-value="{{ user.profile.city }}">
+                                                <label for="city_{{ user.id }}">Miasto</label>
                                             </div>
 
                                             <!-- Email -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Email</label>
-                                                <input type="email" class="form-control" name="email" 
+                                            <div class="form-floating mb-3">
+                                                <input type="email" class="form-control" id="email_{{ user.id }}" name="email" 
                                                        value="{{ user.email }}" data-original-value="{{ user.email }}">
+                                                <label for="email_{{ user.id }}">Email</label>
                                             </div>
 
                                             <!-- Telefon -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Telefon</label>
-                                                <input type="text" class="form-control" name="phone" 
+                                            <div class="form-floating mb-3">
+                                                <input type="text" class="form-control" id="phone_{{ user.id }}" name="phone" 
                                                        value="{{ user.profile.phone }}" data-original-value="{{ user.profile.phone }}">
+                                                <label for="phone_{{ user.id }}">Telefon</label>
                                             </div>
 
                                             <!-- Cennik -->
-                                            <div class="mb-3">
-                                                <label class="form-label">Cennik</label>
-                                                <select class="form-select" name="price_list" data-original-value="{{ user.profile.price_list_id|default:'' }}">
+                                            <div class="form-floating mb-3">
+                                                <select class="form-select" id="price_list_{{ user.id }}" name="price_list" 
+                                                        data-original-value="{{ user.profile.price_list_id|default:'' }}">
                                                     <option value="">-- Wybierz cennik --</option>
                                                     {% for price_list in price_lists %}
                                                         <option value="{{ price_list.id }}" 
@@ -119,6 +118,7 @@
                                                         </option>
                                                     {% endfor %}
                                                 </select>
+                                                <label for="price_list_{{ user.id }}">Cennik</label>
                                             </div>
 
                                             <!-- Beneficjent -->
