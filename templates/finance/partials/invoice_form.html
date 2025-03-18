@@ -3,28 +3,28 @@
     <div class="modal-body">
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
-                    <label class="form-label">Numer faktury</label>
-                    <input type="text" class="form-control" name="invoice_number" required>
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control" id="invoice_number" name="invoice_number" required>
+                    <label for="invoice_number">Numer faktury</label>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Dostawca</label>
-                    <select class="form-select" name="supplier" required>
+                <div class="form-floating mb-3">
+                    <select class="form-select" id="supplier" name="supplier" required>
                         <option value="">Wybierz dostawcę</option>
                         {% for supplier in suppliers %}
                         <option value="{{ supplier.id }}">{{ supplier.name }}</option>
                         {% endfor %}
                     </select>
+                    <label for="supplier">Dostawca</label>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Cena brutto</label>
-                    <div class="input-group">
+                    <div class="form-floating">
                         <input type="number" 
                                class="form-control" 
+                               id="gross_price"
                                name="gross_price" 
                                step="0.01" 
                                required>
-                        <span class="input-group-text">zł</span>
+                        <label for="gross_price">Cena brutto</label>
                     </div>
                 </div>
             </div>
