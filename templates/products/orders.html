@@ -76,6 +76,8 @@
                                         <div class="col-auto">
                                             <select class="form-select form-select-sm order-status-select" 
                                                     data-order-id="{{ order.id }}">
+                                                <option value="pending" {% if order.status == 'accepted' %}selected{% endif %}>
+                                                    Oczekujące
                                                 <option value="accepted" {% if order.status == 'accepted' %}selected{% endif %}>
                                                     Przyjęte
                                                 </option>
