@@ -47,6 +47,12 @@ class Payment(models.Model):
         blank=True,
         verbose_name="Powiązane zamówienie"
     )
+    related_order_items = models.ManyToManyField(
+        'products.OrderItem',
+        blank=True,
+        related_name='payments',
+        verbose_name="Powiązane elementy zamówienia"
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
