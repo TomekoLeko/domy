@@ -113,6 +113,7 @@
                                                 <th>Suma</th>
                                                 <th>Stan magazynowy</th>
                                                 <th>Płacący</th>
+                                                <th>Opłacone</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -180,11 +181,21 @@
                                                             </select>
                                                         {% endif %}
                                                     </td>
+                                                    <td>
+                                                        {% if item.payments.exists %}
+                                                            {% for payment in item.payments.all %}
+                                                                <span class="badge bg-success">{{ payment.id }}</span>{% if not forloop.last %}, {% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <span class="badge bg-danger">Nieopłacone</span>
+                                                        {% endif %}
+                                                    </td>
                                                 </tr>
                                             {% endfor %}
                                             <tr class="table-light">
                                                 <td colspan="4" class="text-end"><strong>Razem:</strong></td>
                                                 <td><strong>{{ order.total_cost }} zł</strong></td>
+                                                <td></td>
                                                 <td></td>
                                             </tr>
                                         </tbody>
