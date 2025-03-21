@@ -53,10 +53,11 @@
                                               {% elif order.status == 'cancelled' %}bg-danger
                                               {% elif order.status == 'shipped' %}bg-info
                                               {% else %}bg-primary{% endif %} me-3">
-                                        {% if order.status == 'accepted' %}Przyjęte
+                                        {% if order.status == 'pending' %}Oczekujące
+                                        {% elif order.status == 'accepted' %}Przyjęte
                                         {% elif order.status == 'shipped' %}Nadane
                                         {% elif order.status == 'delivered' %}Dostarczone
-                                        {% else %}Anulowane{% endif %}
+                                        {% else %}Anulowane la la{% endif %}
                                     </span>
                                     <strong>{{ order.total_cost }} zł</strong>
                                 </div>
@@ -106,27 +107,49 @@
                                     <table class="table">
                                         <thead>
                                             <tr>
-                                                <th></th>
                                                 <th>Produkt</th>
                                                 <th>Ilość</th>
                                                 <th>Cena</th>
                                                 <th>Suma</th>
+                                                <th>Stan magazynowy</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {% for item in order.items.all %}
                                                 <tr>
-                                                    <td>
-                                                        {% if item.product.images.first %}
-                                                            <img src="{{ item.product.images.first.image.url }}" 
-                                                                 alt="{{ item.product.name }}"
-                                                                 style="width: 50px; height: 50px; object-fit: contain;">
-                                                        {% endif %}
-                                                    </td>
                                                     <td>{{ item.product.name }}</td>
                                                     <td>{{ item.quantity }}</td>
                                                     <td>{{ item.price }} zł</td>
                                                     <td>{{ item.subtotal }} zł</td>
+                                                    <td>
+                                                        {% if item.stock_reductions.exists %}
+                                                            {% for reduction in item.stock_reductions.all %}
+                                                                <span class="badge bg-{% if reduction.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
+                                                                    {{ reduction.get_stock_type_display }}: {{ reduction.quantity }}
+                                                                </span>
+                                                                {% if not forloop.last %}<br>{% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <div class="btn-group btn-group-sm">
+                                                                <button type="button" 
+                                                                        class="btn btn-primary create-stock-reduction" 
+                                                                        data-order-item-id="{{ item.id }}" 
+                                                                        data-product-id="{{ item.product.id }}"
+                                                                        data-quantity="{{ item.quantity }}"
+                                                                        data-stock-type="physical">
+                                                                    Fizyczny
+                                                                </button>
+                                                                <button type="button" 
+                                                                        class="btn btn-secondary create-stock-reduction" 
+                                                                        data-order-item-id="{{ item.id }}" 
+                                                                        data-product-id="{{ item.product.id }}"
+                                                                        data-quantity="{{ item.quantity }}"
+                                                                        data-stock-type="virtual">
+                                                                    Wirtualny
+                                                                </button>
+                                                            </div>
+                                                        {% endif %}
+                                                    </td>
                                                 </tr>
                                             {% endfor %}
                                             <tr class="table-light">
@@ -230,6 +253,18 @@ document.addEventListener('DOMContentLoaded', function() {
             location.reload();
         });
     }
+
+    // Handle stock reduction creation
+    document.querySelectorAll('.create-stock-reduction').forEach(button => {
+        button.addEventListener('click', function() {
+            const orderItemId = this.dataset.orderItemId;
+            const productId = this.dataset.productId;
+            const quantity = this.dataset.quantity;
+            const stockType = this.dataset.stockType;
+            
+            createStockReduction(orderItemId, productId, quantity, stockType);
+        });
+    });
 });
 
 function changeBuyer(buyerId) {
@@ -283,6 +318,34 @@ function deleteOrder(orderId) {
     .catch(error => {
         console.error('Error:', error);
         alert('Wystąpił błąd podczas usuwania zamówienia');
+    });
+}
+
+function createStockReduction(orderItemId, productId, quantity, stockType) {
+    fetch('/stock/create-reduction/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            order_item_id: orderItemId,
+            product_id: productId,
+            quantity: quantity,
+            stock_type: stockType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert(data.message || 'Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
     });
 }
 </script>

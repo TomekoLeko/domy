@@ -115,6 +115,7 @@ class StockReduction(models.Model):
 
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='stock_reductions')
     order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='stock_reductions')
+    order_item = models.ForeignKey('products.OrderItem', on_delete=models.PROTECT, related_name='stock_reductions', null=True, blank=True)
     quantity = models.PositiveIntegerField()
     stock_entry = models.ForeignKey(StockEntry, on_delete=models.SET_NULL, null=True, blank=True, related_name='reductions')
     stock_type = models.CharField(max_length=10, choices=STOCK_TYPE_CHOICES, default='physical')
