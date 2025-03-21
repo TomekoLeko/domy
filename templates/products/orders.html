@@ -112,6 +112,7 @@
                                                 <th>Cena</th>
                                                 <th>Suma</th>
                                                 <th>Stan magazynowy</th>
+                                                <th>Płacący</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -150,11 +151,41 @@
                                                             </div>
                                                         {% endif %}
                                                     </td>
+                                                    <td>
+                                                        {% if item.buyer %}
+                                                            {% if item.buyer.profile.is_beneficiary %}
+                                                                {{ item.buyer.profile.name|default:item.buyer.username }}
+                                                            {% elif item.buyer.profile.is_contributor %}
+                                                                {% if item.buyer.first_name and item.buyer.last_name %}
+                                                                    {{ item.buyer.first_name }} {{ item.buyer.last_name }}
+                                                                {% else %}
+                                                                    {{ item.buyer.username }}
+                                                                {% endif %}
+                                                            {% else %}
+                                                                {{ item.buyer.username }}
+                                                            {% endif %}
+                                                        {% else %}
+                                                            <select class="form-select form-select-sm buyer-select" data-order-item-id="{{ item.id }}">
+                                                                <option value="">Wybierz płacącego</option>
+                                                                <option value="{{ order.buyer.id }}">{{ order.buyer.profile.name|default:order.buyer.username }}</option>
+                                                                {% for contributor in contributors %}
+                                                                    <option value="{{ contributor.id }}">
+                                                                        {% if contributor.first_name and contributor.last_name %}
+                                                                            {{ contributor.first_name }} {{ contributor.last_name }}
+                                                                        {% else %}
+                                                                            {{ contributor.username }}
+                                                                        {% endif %}
+                                                                    </option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        {% endif %}
+                                                    </td>
                                                 </tr>
                                             {% endfor %}
                                             <tr class="table-light">
-                                                <td colspan="3" class="text-end" style="border: 1px solid red;"><strong>Razem:</strong></td>
+                                                <td colspan="4" class="text-end"><strong>Razem:</strong></td>
                                                 <td><strong>{{ order.total_cost }} zł</strong></td>
+                                                <td></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -265,6 +296,16 @@ document.addEventListener('DOMContentLoaded', function() {
             createStockReduction(orderItemId, productId, quantity, stockType);
         });
     });
+
+    // Handle buyer selection
+    document.querySelectorAll('.buyer-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const orderItemId = this.dataset.orderItemId;
+            const buyerId = this.value;
+            
+            assignBuyerToOrderItem(orderItemId, buyerId);
+        });
+    });
 });
 
 function changeBuyer(buyerId) {
@@ -346,6 +387,32 @@ function createStockReduction(orderItemId, productId, quantity, stockType) {
     .catch(error => {
         console.error('Error:', error);
         alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+    });
+}
+
+function assignBuyerToOrderItem(orderItemId, buyerId) {
+    fetch('/orders/assign-buyer/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            order_item_id: orderItemId,
+            buyer_id: buyerId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert(data.message || 'Wystąpił błąd podczas przypisywania płacącego');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas przypisywania płacącego');
     });
 }
 </script>

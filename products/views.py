@@ -443,6 +443,10 @@ def orders(request):
             beneficiaries = User.objects.filter(profile__is_beneficiary=True)
             context['beneficiaries'] = beneficiaries
             
+            # Get all contributor users for staff/superuser
+            contributors = User.objects.filter(profile__is_contributor=True)
+            context['contributors'] = contributors
+            
             # Get selected buyer or default to None
             selected_buyer_id = request.session.get('selected_buyer_id')
             if selected_buyer_id:
@@ -461,6 +465,10 @@ def orders(request):
                 'items__product__images'
             ).order_by('-created_at')
             context['orders'] = orders
+            
+            # Regular users might also need the contributors list for the dropdown
+            contributors = User.objects.filter(profile__is_contributor=True)
+            context['contributors'] = contributors
 
     return render(request, 'products/orders.html', context)
 
@@ -513,4 +521,37 @@ def delete_order(request, order_id):
             'status': 'error',
             'message': 'Zamówienie nie zostało znalezione'
         }, status=404)
+
+@require_POST
+def assign_buyer_to_order_item(request):
+    try:
+        data = json.loads(request.body)
+        order_item_id = data.get('order_item_id')
+        buyer_id = data.get('buyer_id')
+        
+        if not order_item_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'ID elementu zamówienia jest wymagane'
+            }, status=400)
+            
+        order_item = get_object_or_404(OrderItem, id=order_item_id)
+        
+        if buyer_id:
+            buyer = get_object_or_404(get_user_model(), id=buyer_id)
+            order_item.buyer = buyer
+        else:
+            order_item.buyer = None
+            
+        order_item.save()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Płacący został przypisany pomyślnie'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 
