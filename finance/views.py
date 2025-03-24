@@ -265,3 +265,75 @@ def contributions(request):
     return render(request, 'finance/contributions.html', {
         'contributors': contributors
     })
+
+@staff_member_required
+def get_user_payments(request, user_id):
+    """Get payments related to a specific user"""
+
+    try:
+        user = get_object_or_404(User, id=user_id)
+
+        payments = Payment.objects.filter(
+            Q(related_user=user) | 
+            (Q(related_user__profile__is_contributor=True) & Q(payment_type='contribution'))
+        ).order_by('-payment_date')
+
+        # Combine both querysets
+        all_payments = list(payments)
+        
+        # Convert to JSON-serializable format
+        payment_data = [{
+            'id': payment.id,
+            'payment_date': payment.payment_date.strftime('%d.%m.%Y'),
+            'amount': str(payment.amount),
+            'sender': payment.sender or '',
+            'description': payment.description or ''
+        } for payment in all_payments]
+        
+        return JsonResponse({
+            'status': 'success',
+            'payments': payment_data
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print traceback to server console for debugging
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)
+
+@require_POST
+@staff_member_required
+def assign_payment_to_item(request):
+    """Assign a payment to an order item"""
+    try:
+        data = json.loads(request.body)
+        payment_id = data.get('payment_id')
+        order_item_id = data.get('order_item_id')
+        
+        if not payment_id or not order_item_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Missing required parameters'
+            }, status=400)
+        
+        payment = get_object_or_404(Payment, id=payment_id)
+        
+        # Use correct import for OrderItem
+        from products.models import OrderItem
+        order_item = get_object_or_404(OrderItem, id=order_item_id)
+        
+        # Add the order item to the payment's related items
+        payment.related_order_items.add(order_item)
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Płatność została przypisana pomyślnie'
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print traceback to server console for debugging
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=400)

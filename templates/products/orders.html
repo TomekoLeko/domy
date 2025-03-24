@@ -2,13 +2,13 @@
 {% block title %}Zamówienia{% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="container mt-4">
     <h2>Zamówienia</h2>
 
     {% if user.is_authenticated %}
         {% if user.is_staff or user.is_superuser %}
             <div class="mb-4">
-                {% csrf_token %}
                 <label class="form-label">Wybierz kupującego:</label>
                 <div class="dropdown">
                     <button class="btn btn-outline-primary dropdown-toggle" type="button" id="buyerDropdown" 
@@ -187,7 +187,13 @@
                                                                 <span class="badge bg-success">{{ payment.id }}</span>{% if not forloop.last %}, {% endif %}
                                                             {% endfor %}
                                                         {% else %}
-                                                            <span class="badge bg-danger">Nieopłacone</span>
+                                                            <button type="button" class="btn btn-sm btn-danger payment-button" 
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#paymentModal"
+                                                                    data-order-item-id="{{ item.id }}"
+                                                                    data-buyer-id="{{ order.buyer.id }}">
+                                                                Nieopłacone
+                                                            </button>
                                                         {% endif %}
                                                     </td>
                                                 </tr>
@@ -223,6 +229,8 @@
         </div>
     {% endif %}
 </div>
+
+{% include 'products/partials/payment_modal.html' %}
 
 <style>
     .dropdown-item:hover {
