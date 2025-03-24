@@ -274,8 +274,7 @@ def get_user_payments(request, user_id):
         user = get_object_or_404(User, id=user_id)
 
         payments = Payment.objects.filter(
-            Q(related_user=user) | 
-            (Q(related_user__profile__is_contributor=True) & Q(payment_type='contribution'))
+            related_user=user
         ).order_by('-payment_date')
 
         # Combine both querysets
