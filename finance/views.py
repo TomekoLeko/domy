@@ -16,6 +16,7 @@ from django.db.models import Count, Q
 from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal
 from .models import Supplier
+from finance.models import Payment
 
 User = get_user_model()
 
@@ -248,3 +249,19 @@ def delete_invoice(request, invoice_id):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+def contributions(request):
+    """View for listing all contributors with their related payments"""
+    User = get_user_model()
+
+    contributors = User.objects.filter(
+        profile__is_contributor=True
+    ).prefetch_related(
+        'related_payments',
+        'related_payments__related_order_items',
+        'related_payments__related_order_items__product'
+    )
+
+    return render(request, 'finance/contributions.html', {
+        'contributors': contributors
+    })
