@@ -8,6 +8,8 @@ import json
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
 from stock.models import StockEntry, StockReduction
+from django.utils import timezone
+from finance.models import MonthlyContributionUsage
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -220,10 +222,18 @@ def home(request):
                         
                         product_prices = {price.product_id: price.gross_price for price in prices}
                         context['product_prices'] = product_prices
+
+                    if selected_buyer:
+                        current_date = timezone.now()
+                        monthly_usage = selected_buyer.profile.get_or_create_monthly_usage(
+                            year=current_date.year,
+                            month=current_date.month
+                        )
+                    else:
+                        monthly_usage = None
                 except User.DoesNotExist:
                     pass
         else:
-            # Regular user is their own buyer
             context['selected_buyer'] = request.user
             buyer_price_list = request.user.profile.price_list
             if buyer_price_list:

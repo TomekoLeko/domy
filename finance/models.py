@@ -130,6 +130,10 @@ class MonthlyContributionUsage(models.Model):
         return f"{self.profile.user.username} - {self.year}/{self.month}"
 
     def clean(self):
+        # Skip validation if this is a new instance (not saved yet)
+        if self.pk is None:
+            return
+            
         # Calculate total usage from related order items
         total_usage = sum(item.quantity * item.price for item in self.order_items.all())
         
@@ -139,7 +143,9 @@ class MonthlyContributionUsage(models.Model):
             )
 
     def save(self, *args, **kwargs):
-        self.clean()
+        # Only run clean() if the instance already exists
+        if self.pk is not None:
+            self.clean()
         super().save(*args, **kwargs)
 
     @property
