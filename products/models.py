@@ -96,6 +96,14 @@ class CartItem(models.Model):
     product = models.ForeignKey('Product', on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
     price = models.DecimalField(max_digits=10, decimal_places=2)  # Store the price at the time of adding to cart
+    buyer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_cart_items',
+        verbose_name="Przypisany odbiorca"
+    )
 
     @property
     def subtotal(self):
