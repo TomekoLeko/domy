@@ -222,15 +222,6 @@ def home(request):
                         
                         product_prices = {price.product_id: price.gross_price for price in prices}
                         context['product_prices'] = product_prices
-
-                    if selected_buyer:
-                        current_date = timezone.now()
-                        monthly_usage = selected_buyer.profile.get_or_create_monthly_usage(
-                            year=current_date.year,
-                            month=current_date.month
-                        )
-                    else:
-                        monthly_usage = None
                 except User.DoesNotExist:
                     pass
         else:
@@ -243,6 +234,16 @@ def home(request):
                 ).select_related('product')
                 product_prices = {price.product_id: price.gross_price for price in prices}
                 context['product_prices'] = product_prices
+
+        if selected_buyer:
+            current_date = timezone.now()
+            monthly_usage = selected_buyer.profile.get_or_create_monthly_usage(
+                year=current_date.year,
+                month=current_date.month
+            )
+        else:
+            monthly_usage = None
+        context['monthly_usage'] = monthly_usage
 
     return render(request, 'home.html', context)
 
