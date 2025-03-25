@@ -134,6 +134,15 @@
                                                 </div>
                                             </div>
 
+                                            <!-- Monthly Limit (visible only for beneficiaries) -->
+                                            <div class="form-floating mb-3 monthly-limit-field" 
+                                                 style="display: {% if user.profile.is_beneficiary %}block{% else %}none{% endif %}">
+                                                <input type="number" class="form-control" id="monthly_limit_{{ user.id }}" 
+                                                       name="monthly_limit" value="{{ user.profile.monthly_limit|default:'' }}" 
+                                                       data-original-value="{{ user.profile.monthly_limit|default:'' }}">
+                                                <label for="monthly_limit_{{ user.id }}">Miesięczny limit</label>
+                                            </div>
+
                                             <!-- Action buttons -->
                                             <div class="d-flex gap-2">
                                                 <button type="submit" class="btn btn-success save-user">
@@ -163,6 +172,13 @@
                 const cancelButton = form.querySelector('.cancel-user');
                 const accordionItem = form.closest('.accordion-item');
                 const collapseElement = form.closest('.accordion-collapse');
+                const beneficiaryCheckbox = form.querySelector('[name="is_beneficiary"]');
+                const monthlyLimitField = form.querySelector('.monthly-limit-field');
+
+                // Toggle monthly limit field visibility based on beneficiary checkbox
+                beneficiaryCheckbox.addEventListener('change', function() {
+                    monthlyLimitField.style.display = this.checked ? 'block' : 'none';
+                });
 
                 // Function to collapse the accordion item
                 const collapseForm = () => {

@@ -14,9 +14,28 @@ class Profile(models.Model):
     postal = models.CharField(max_length=6, blank=True)
     phone = models.CharField(max_length=15, blank=True)
     price_list = models.ForeignKey(PriceList, on_delete=models.SET_NULL, null=True, blank=True)
+    monthly_limit = models.IntegerField(null=True, blank=True, help_text="Miesięczny limit dla beneficjenta")
 
     def __str__(self):
         return f"{self.user.username}'s profile"
+
+    def get_or_create_monthly_usage(self, year, month):
+        """
+        Get or create MonthlyContributionUsage for the given month.
+        If creating new, copies the current monthly_limit.
+        """
+        from finance.models import MonthlyContributionUsage
+        
+        if not self.is_beneficiary or not self.monthly_limit:
+            return None
+            
+        usage, created = MonthlyContributionUsage.objects.get_or_create(
+            profile=self,
+            year=year,
+            month=month,
+            defaults={'limit': self.monthly_limit}
+        )
+        return usage
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
