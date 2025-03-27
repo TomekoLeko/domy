@@ -10,16 +10,17 @@ from django.db.models import Q, Sum, F
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
 from finance.models import MonthlyContributionUsage
+from django.contrib import messages
 
 @require_POST
 def add_to_cart(request):
-    data = json.loads(request.body)
-    product_id = data.get('product_id')
-    quantity = int(data.get('quantity', 1))
-    buyer_id = data.get('buyer_id')
+    product_id = request.POST.get('product_id')
+    quantity = int(request.POST.get('quantity', 1))
+    buyer_id = request.POST.get('buyer_id')
 
     if not all([product_id, quantity, buyer_id]):
-        return JsonResponse({'error': 'Missing required fields'}, status=400)
+        messages.error(request, 'Brak wymaganych danych')
+        return redirect('home')
 
     try:
         product = Product.objects.get(id=product_id)
@@ -27,7 +28,8 @@ def add_to_cart(request):
         
         # Verify this is the currently selected buyer
         if str(buyer_id) != str(request.session.get('selected_buyer_id')):
-            return JsonResponse({'error': 'Invalid buyer selected'}, status=400)
+            messages.error(request, 'Nieprawidłowy kupujący')
+            return redirect('home')
 
         # Get or create cart for this specific buyer
         cart, created = Cart.objects.get_or_create(
@@ -38,7 +40,8 @@ def add_to_cart(request):
         # Get price for the buyer
         price_list = buyer.profile.price_list
         if not price_list:
-            return JsonResponse({'error': 'No price list assigned to buyer'}, status=400)
+            messages.error(request, 'Brak cennika dla kupującego')
+            return redirect('home')
 
         price = Price.objects.get(price_list=price_list, product=product)
 
@@ -59,37 +62,22 @@ def add_to_cart(request):
                 price=price.gross_price
             )
 
-        # Prepare cart data for response
-        cart_data = {
-            'items': [{
-                'id': item.id,
-                'name': item.product.name,
-                'quantity': item.quantity,
-                'price': str(item.price),
-                'subtotal': str(item.subtotal),
-                'image_url': item.product.images.first().image.url if item.product.images.exists() else None
-            } for item in cart.items.all()],
-            'total_cost': str(cart.total_cost)
-        }
-
-        return JsonResponse({
-            'status': 'success',
-            'cart_count': cart.total_items,
-            'cart_total': str(cart.total_cost),
-            'cart_data': cart_data
-        })
+        request.session['cart_open'] = True
+        request.session.modified = True
+        messages.success(request, 'Produkt dodany do koszyka')
+        return redirect('home')
 
     except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist) as e:
-        return JsonResponse({'error': str(e)}, status=404)
+        messages.error(request, str(e))
+        return redirect('home')
     except Exception as e:
-        print(f"Error in add_to_cart: {str(e)}")  # Add debugging
-        return JsonResponse({'error': str(e)}, status=500)
+        messages.error(request, f'Wystąpił błąd: {str(e)}')
+        return redirect('home')
 
 @require_POST
 def update_cart(request):
-    data = json.loads(request.body)
-    item_id = data.get('item_id')
-    quantity = int(data.get('quantity', 0))
+    item_id = request.POST.get('item_id')
+    quantity = int(request.POST.get('quantity', 0))
 
     try:
         cart_item = CartItem.objects.get(id=item_id)
@@ -100,19 +88,17 @@ def update_cart(request):
         else:
             cart_item.delete()
 
-        cart = cart_item.cart
-
-        return JsonResponse({
-            'status': 'success',
-            'cart_count': cart.total_items,
-            'cart_total': str(cart.total_cost),
-            'item_subtotal': str(cart_item.subtotal) if quantity > 0 else '0'
-        })
+        request.session['cart_open'] = True
+        request.session.modified = True
+        messages.success(request, 'Koszyk zaktualizowany')
+        return redirect('home')
 
     except CartItem.DoesNotExist:
-        return JsonResponse({'error': 'Cart item not found'}, status=404)
+        messages.error(request, 'Nie znaleziono pozycji w koszyku')
+        return redirect('home')
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        messages.error(request, f'Wystąpił błąd: {str(e)}')
+        return redirect('home')
 
 @require_POST
 def create_order(request):
@@ -120,10 +106,8 @@ def create_order(request):
         # Get the selected buyer's ID from session
         selected_buyer_id = request.session.get('selected_buyer_id')
         if not selected_buyer_id:
-            return JsonResponse({
-                'status': 'error', 
-                'message': 'No buyer selected'
-            }, status=400)
+            messages.error(request, 'Nie wybrano kupującego')
+            return redirect('home')
 
         # Get the specific cart for the current user and selected buyer
         cart = Cart.objects.get(
@@ -151,18 +135,20 @@ def create_order(request):
         # Clear the cart
         cart.delete()
 
-        return JsonResponse({
-            'status': 'success',
-            'order_id': order.id
-        })
+        request.session['cart_open'] = False  # Close cart after successful order
+        request.session.modified = True
+        messages.success(request, 'Zamówienie zostało złożone pomyślnie!')
+        return redirect('home')
 
     except Cart.DoesNotExist:
-        return JsonResponse({
-            'status': 'error', 
-            'message': 'No active cart found'
-        }, status=404)
+        messages.error(request, 'Nie znaleziono koszyka')
+        return redirect(request.META.get('HTTP_REFERER', 'home') + '?cart=open')
     except Exception as e:
-        return JsonResponse({
-            'status': 'error', 
-            'message': str(e)
-        }, status=500)
+        messages.error(request, f'Wystąpił błąd: {str(e)}')
+        return redirect(request.META.get('HTTP_REFERER', 'home') + '?cart=open')
+
+@require_POST
+def toggle_cart(request):
+    request.session['cart_open'] = not request.session.get('cart_open', False)
+    request.session.modified = True
+    return redirect('home')

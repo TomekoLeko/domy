@@ -69,15 +69,19 @@
                             {% if product_prices and product_prices|get_item:product.id %}
                                 <div class="add-to-cart-overlay">
                                     <div class="add-to-cart-input-group">
-                                        <input type="number" 
-                                               class="form-control form-control-sm" 
-                                               value="1" 
-                                               min="1"
-                                               id="quantity-{{ product.id }}">
-                                        <button class="btn btn-success btn-sm" 
-                                                onclick="addToCart({{ product.id }}, {{ request.session.selected_buyer_id }})">
-                                            <i class="bi bi-plus-lg"></i>
-                                        </button>
+                                        <form action="{% url 'add_to_cart' %}" method="post" class="d-flex">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="product_id" value="{{ product.id }}">
+                                            <input type="hidden" name="buyer_id" value="{{ request.session.selected_buyer_id }}">
+                                            <input type="number" 
+                                                   name="quantity"
+                                                   class="form-control form-control-sm" 
+                                                   value="1" 
+                                                   min="1">
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             {% endif %}
@@ -189,35 +193,6 @@
             console.error('Error:', error);
             alert('Wystąpił błąd podczas zmiany kupującego');
         });
-    }
-
-    function addToCart(productId, buyerId) {
-        const quantity = parseInt(document.getElementById(`quantity-${productId}`).value);
-
-        fetch('/cart/add/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
-                product_id: productId,
-                buyer_id: buyerId,
-                quantity: quantity
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                updateCartIcon(data.cart_count);
-                updateCartContent(data.cart_data);
-                const sidebar = document.getElementById('cartSidebar');
-                if (!sidebar.classList.contains('show')) {
-                    sidebar.classList.add('show');
-                }
-            }
-        })
-        .catch(error => console.error('Error:', error));
     }
 </script>
 {% endblock %}

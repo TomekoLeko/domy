@@ -41,11 +41,13 @@
 </style>
 
 <!-- Cart Sidebar HTML -->
-<div id="cartSidebar">
-    {% csrf_token %}
+<div id="cartSidebar" class="{% if request.session.cart_open %}show{% endif %}">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">Koszyk</h5>
-        <button type="button" class="btn-close" onclick="toggleCart()"></button>
+        <form action="{% url 'toggle_cart' %}" method="post" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn-close"></button>
+        </form>
     </div>
     <div id="cartContent">
         {% if cart and cart.items.exists %}
@@ -62,17 +64,26 @@
                         <div class="flex-grow-1">
                             <h6 class="mb-0">{{ item.product.name }}</h6>
                             <div class="d-flex align-items-center mt-2">
-                                <input type="number" 
-                                       class="form-control form-control-sm w-25 me-2" 
-                                       value="{{ item.quantity }}"
-                                       min="1"
-                                       onchange="updateCartItem({{ item.id }}, this.value)">
-                                <span class="text-muted">× {{ item.price }} zł</span>
-                                <span class="ms-auto item-subtotal">{{ item.subtotal }} zł</span>
-                                <button class="btn btn-link text-danger ms-2 p-0" 
-                                        onclick="removeCartItem({{ item.id }})">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                                <form action="{% url 'update_cart' %}" method="post" class="d-flex align-items-center" style="flex-grow: 1;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                                    <input type="number" 
+                                           name="quantity"
+                                           class="form-control form-control-sm w-25 me-2" 
+                                           value="{{ item.quantity }}"
+                                           min="1"
+                                           onchange="this.form.submit()">
+                                    <span class="text-muted">× {{ item.price }} zł</span>
+                                    <span class="ms-auto item-subtotal">{{ item.subtotal }} zł</span>
+                                </form>
+                                <form action="{% url 'update_cart' %}" method="post" class="ms-2">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                                    <input type="hidden" name="quantity" value="0">
+                                    <button type="submit" class="btn btn-link text-danger p-0">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -84,181 +95,13 @@
                     <strong>Razem:</strong>
                     <strong class="cart-total">{{ cart.total_cost }} zł</strong>
                 </div>
-                <button class="btn btn-success w-100" onclick="createOrder()">Zamów</button>
+                <form action="{% url 'create_order' %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success w-100">Zamów</button>
+                </form>
             </div>
         {% else %}
             <p class="text-center text-muted">Koszyk jest pusty</p>
         {% endif %}
     </div>
 </div>
-
-<!-- Cart Sidebar JavaScript -->
-<script>
-    function toggleCart() {
-        const sidebar = document.getElementById('cartSidebar');
-        sidebar.classList.toggle('show');
-    }
-
-    function updateCartItem(itemId, quantity) {
-        fetch('/cart/update/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
-                item_id: itemId,
-                quantity: quantity
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                updateCartIcon(data.cart_count);
-                const itemRow = document.querySelector(`[data-item-id="${itemId}"]`);
-                if (itemRow) {
-                    const subtotalElement = itemRow.querySelector('.item-subtotal');
-                    if (subtotalElement) {
-                        subtotalElement.textContent = `${data.item_subtotal} zł`;
-                    }
-                }
-                const cartTotalElement = document.querySelector('.cart-total');
-                if (cartTotalElement) {
-                    cartTotalElement.textContent = `${data.cart_total} zł`;
-                }
-            }
-        })
-        .catch(error => console.error('Error:', error));
-    }
-
-    function createOrder() {
-        fetch('/cart/order/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                toggleCart();
-                alert('Zamówienie zostało złożone pomyślnie!');
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                alert('Wystąpił błąd: ' + (data.message || 'Nieznany błąd'));
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Wystąpił błąd podczas składania zamówienia');
-        });
-    }
-
-    function updateCartIcon(count) {
-        const cartIcon = document.querySelector('.cart-icon i');
-        const cartCount = document.querySelector('.cart-count');
-
-        if (count > 0) {
-            cartIcon.className = 'bi bi-cart-fill text-success fs-4';
-            if (cartCount) {
-                cartCount.textContent = count;
-            } else {
-                const span = document.createElement('span');
-                span.className = 'cart-count';
-                span.textContent = count;
-                document.querySelector('.cart-icon').appendChild(span);
-            }
-        } else {
-            cartIcon.className = 'bi bi-cart text-secondary fs-4';
-            if (cartCount) cartCount.remove();
-        }
-    }
-
-    function removeCartItem(itemId) {
-        fetch('/cart/update/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
-                item_id: itemId,
-                quantity: 0
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                const itemRow = document.querySelector(`[data-item-id="${itemId}"]`);
-                if (itemRow) {
-                    itemRow.remove();
-                }
-
-                updateCartIcon(data.cart_count);
-
-                const cartTotalElement = document.querySelector('.cart-total');
-                if (cartTotalElement) {
-                    cartTotalElement.textContent = `${data.cart_total} zł`;
-                }
-
-                if (data.cart_count === 0) {
-                    const cartContent = document.getElementById('cartContent');
-                    cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
-                }
-            }
-        })
-        .catch(error => console.error('Error:', error));
-    }
-
-    function updateCartContent(cartData) {
-        const cartContent = document.getElementById('cartContent');
-        if (cartData.items && cartData.items.length > 0) {
-            let html = '';
-            cartData.items.forEach(item => {
-                html += `
-                    <div class="card mb-2" data-item-id="${item.id}">
-                        <div class="card-body">
-                            <div class="d-flex align-items-center">
-                                ${item.image_url ? `
-                                    <img src="${item.image_url}" 
-                                        alt="${item.name}" 
-                                        style="width: 50px; height: 50px; object-fit: cover;"
-                                        class="me-2">
-                                ` : ''}
-                                <div class="flex-grow-1">
-                                    <h6 class="mb-0">${item.name}</h6>
-                                    <div class="d-flex align-items-center mt-2">
-                                        <input type="number" 
-                                               class="form-control form-control-sm w-25 me-2" 
-                                               value="${item.quantity}"
-                                               min="1"
-                                               onchange="updateCartItem(${item.id}, this.value)">
-                                        <span class="text-muted">× ${item.price} zł</span>
-                                        <span class="ms-auto item-subtotal">${item.subtotal} zł</span>
-                                        <button class="btn btn-link text-danger ms-2 p-0" 
-                                                onclick="removeCartItem(${item.id})">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            html += `
-                <div class="border-top pt-3 mt-3">
-                    <div class="d-flex justify-content-between mb-3">
-                        <strong>Razem:</strong>
-                        <strong class="cart-total">${cartData.total_cost} zł</strong>
-                    </div>
-                    <button class="btn btn-success w-100" onclick="createOrder()">Zamów</button>
-                </div>
-            `;
-            cartContent.innerHTML = html;
-        } else {
-            cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
-        }
-    }
-</script> 
