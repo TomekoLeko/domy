@@ -96,6 +96,14 @@ class CartItem(models.Model):
     product = models.ForeignKey('Product', on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
     price = models.DecimalField(max_digits=10, decimal_places=2)  # Store the price at the time of adding to cart
+    buyer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_cart_items',
+        verbose_name="Przypisany odbiorca"
+    )
 
     @property
     def subtotal(self):
@@ -103,6 +111,7 @@ class CartItem(models.Model):
 
 class Order(models.Model):
     STATUS_CHOICES = [
+        ('pending', 'Oczekujące'),
         ('accepted', 'Przyjęte'),
         ('shipped', 'Nadane'),
         ('delivered', 'Dostarczone'),
@@ -114,7 +123,7 @@ class Order(models.Model):
     status = models.CharField(
         max_length=20, 
         choices=STATUS_CHOICES, 
-        default='accepted'
+        default='pending'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2)
@@ -128,6 +137,14 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)  # Price at the time of order
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+    buyer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_order_items',
+        verbose_name="Przypisany odbiorca"
+    )
 
     def save(self, *args, **kwargs):
         self.subtotal = self.quantity * self.price

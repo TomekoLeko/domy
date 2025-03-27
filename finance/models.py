@@ -2,6 +2,10 @@ from django.db import models
 from django.conf import settings
 from decimal import Decimal
 from stock.models import Supplier
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.exceptions import ValidationError
+from users.models import Profile
+from products.models import OrderItem
 
 class Payment(models.Model):
     PAYMENT_TYPES = [
@@ -46,6 +50,12 @@ class Payment(models.Model):
         null=True,
         blank=True,
         verbose_name="Powiązane zamówienie"
+    )
+    related_order_items = models.ManyToManyField(
+        'products.OrderItem',
+        blank=True,
+        related_name='payments',
+        verbose_name="Powiązane elementy zamówienia"
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -104,3 +114,44 @@ class Invoice(models.Model):
         ordering = ['-created_at']
         verbose_name = "Faktura"
         verbose_name_plural = "Faktury"
+
+class MonthlyContributionUsage(models.Model):
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='monthly_usage')
+    year = models.IntegerField(validators=[MinValueValidator(2000), MaxValueValidator(2100)])
+    month = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(12)])
+    limit = models.IntegerField()
+    order_items = models.ManyToManyField(OrderItem, related_name='monthly_usage', blank=True)
+
+    class Meta:
+        unique_together = ['profile', 'year', 'month']
+        ordering = ['-year', '-month']
+
+    def __str__(self):
+        return f"{self.profile.user.username} - {self.year}/{self.month}"
+
+    def clean(self):
+        # Skip validation if this is a new instance (not saved yet)
+        if self.pk is None:
+            return
+            
+        # Calculate total usage from related order items
+        total_usage = sum(item.quantity * item.price for item in self.order_items.all())
+        
+        if total_usage > self.limit:
+            raise ValidationError(
+                f"Total usage ({total_usage}) exceeds the monthly limit ({self.limit})"
+            )
+
+    def save(self, *args, **kwargs):
+        # Only run clean() if the instance already exists
+        if self.pk is not None:
+            self.clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def total_usage(self):
+        return sum(item.quantity * item.price for item in self.order_items.all())
+
+    @property
+    def remaining_limit(self):
+        return self.limit - self.total_usage

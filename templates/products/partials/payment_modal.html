@@ -1,0 +1,156 @@
+<!-- Payment Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="paymentModalLabel">Wybierz płatność</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Wybierz płatność dla produktu <span id="paymentModalItemName"></span></p>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Data</th>
+                                <th>Kwota</th>
+                                <th>Nadawca</th>
+                                <th>Opis</th>
+                                <th>Akcje</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentTableBody">
+                            <!-- Will be filled by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle payment button clicks
+    const paymentButtons = document.querySelectorAll('.payment-button');
+    const paymentModal = document.getElementById('paymentModal');
+    
+    let currentOrderItemId = null;
+    
+    paymentButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const orderItemId = this.dataset.orderItemId;
+            const buyerId = this.dataset.buyerId;
+            currentOrderItemId = orderItemId;
+            
+            // Find product name for the current order item
+            const productNameElement = this.closest('tr').querySelector('td:first-child');
+            const productName = productNameElement ? productNameElement.textContent.trim() : 'produkt';
+            
+            // Update modal title
+            document.getElementById('paymentModalItemName').textContent = productName;
+            
+            // Fetch payments for the buyer
+            fetchPaymentsForBuyer(buyerId);
+        });
+    });
+    
+    function fetchPaymentsForBuyer(buyerId) {
+        // Fetch payments related to this buyer
+        console.log("fetchPaymentsForBuyer", buyerId)
+        fetch(`/finance/get-user-payments/${buyerId}/`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok: ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Received payment data:', data); // Debug output
+                populatePaymentTable(data.payments);
+            })
+            .catch(error => {
+                console.error('Error fetching payments:', error);
+                // Show error in the table
+                const tableBody = document.getElementById('paymentTableBody');
+                tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">
+                    Błąd podczas pobierania płatności: ${error.message}
+                </td></tr>`;
+            });
+    }
+    
+    function populatePaymentTable(payments) {
+        const tableBody = document.getElementById('paymentTableBody');
+        tableBody.innerHTML = '';
+        
+        if (!payments || payments.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td colspan="6" class="text-center">Brak dostępnych płatności</td>`;
+            tableBody.appendChild(row);
+            return;
+        }
+        
+        payments.forEach(payment => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${payment.id}</td>
+                <td>${payment.payment_date}</td>
+                <td>${payment.amount} zł</td>
+                <td>${payment.sender || '-'}</td>
+                <td>${payment.description || '-'}</td>
+                <td>
+                    <button type="button" 
+                            class="btn btn-sm btn-primary assign-payment-btn" 
+                            data-payment-id="${payment.id}">
+                        Opłać
+                    </button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+        
+        // Add event listeners to the newly created buttons
+        document.querySelectorAll('.assign-payment-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const paymentId = this.dataset.paymentId;
+                assignPaymentToOrderItem(paymentId, currentOrderItemId);
+            });
+        });
+    }
+    
+    function assignPaymentToOrderItem(paymentId, orderItemId) {
+        fetch('/finance/assign-payment-to-item/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                payment_id: paymentId,
+                order_item_id: orderItemId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(paymentModal);
+                modal.hide();
+                
+                // Reload the page to see the changes
+                location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas przypisywania płatności');
+            }
+        })
+        .catch(error => {
+            console.error('Error assigning payment:', error);
+            alert('Wystąpił błąd podczas przypisywania płatności');
+        });
+    }
+});
+</script> 

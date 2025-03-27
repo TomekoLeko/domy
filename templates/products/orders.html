@@ -2,13 +2,13 @@
 {% block title %}Zamówienia{% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="container mt-4">
     <h2>Zamówienia</h2>
 
     {% if user.is_authenticated %}
         {% if user.is_staff or user.is_superuser %}
             <div class="mb-4">
-                {% csrf_token %}
                 <label class="form-label">Wybierz kupującego:</label>
                 <div class="dropdown">
                     <button class="btn btn-outline-primary dropdown-toggle" type="button" id="buyerDropdown" 
@@ -53,10 +53,11 @@
                                               {% elif order.status == 'cancelled' %}bg-danger
                                               {% elif order.status == 'shipped' %}bg-info
                                               {% else %}bg-primary{% endif %} me-3">
-                                        {% if order.status == 'accepted' %}Przyjęte
+                                        {% if order.status == 'pending' %}Oczekujące
+                                        {% elif order.status == 'accepted' %}Przyjęte
                                         {% elif order.status == 'shipped' %}Nadane
                                         {% elif order.status == 'delivered' %}Dostarczone
-                                        {% else %}Anulowane{% endif %}
+                                        {% else %}Anulowane la la{% endif %}
                                     </span>
                                     <strong>{{ order.total_cost }} zł</strong>
                                 </div>
@@ -76,6 +77,8 @@
                                         <div class="col-auto">
                                             <select class="form-select form-select-sm order-status-select" 
                                                     data-order-id="{{ order.id }}">
+                                                <option value="pending" {% if order.status == 'accepted' %}selected{% endif %}>
+                                                    Oczekujące
                                                 <option value="accepted" {% if order.status == 'accepted' %}selected{% endif %}>
                                                     Przyjęte
                                                 </option>
@@ -104,32 +107,102 @@
                                     <table class="table">
                                         <thead>
                                             <tr>
-                                                <th></th>
                                                 <th>Produkt</th>
                                                 <th>Ilość</th>
                                                 <th>Cena</th>
                                                 <th>Suma</th>
+                                                <th>Stan magazynowy</th>
+                                                <th>Płacący</th>
+                                                <th>Opłacone</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {% for item in order.items.all %}
                                                 <tr>
-                                                    <td>
-                                                        {% if item.product.images.first %}
-                                                            <img src="{{ item.product.images.first.image.url }}" 
-                                                                 alt="{{ item.product.name }}"
-                                                                 style="width: 50px; height: 50px; object-fit: contain;">
-                                                        {% endif %}
-                                                    </td>
                                                     <td>{{ item.product.name }}</td>
                                                     <td>{{ item.quantity }}</td>
                                                     <td>{{ item.price }} zł</td>
                                                     <td>{{ item.subtotal }} zł</td>
+                                                    <td>
+                                                        {% if item.stock_reductions.exists %}
+                                                            {% for reduction in item.stock_reductions.all %}
+                                                                <span class="badge bg-{% if reduction.stock_type == 'physical' %}primary{% else %}secondary{% endif %}">
+                                                                    {{ reduction.get_stock_type_display }}: {{ reduction.quantity }}
+                                                                </span>
+                                                                {% if not forloop.last %}<br>{% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <div class="btn-group btn-group-sm">
+                                                                <button type="button" 
+                                                                        class="btn btn-primary create-stock-reduction" 
+                                                                        data-order-item-id="{{ item.id }}" 
+                                                                        data-product-id="{{ item.product.id }}"
+                                                                        data-quantity="{{ item.quantity }}"
+                                                                        data-stock-type="physical">
+                                                                    Fizyczny
+                                                                </button>
+                                                                <button type="button" 
+                                                                        class="btn btn-secondary create-stock-reduction" 
+                                                                        data-order-item-id="{{ item.id }}" 
+                                                                        data-product-id="{{ item.product.id }}"
+                                                                        data-quantity="{{ item.quantity }}"
+                                                                        data-stock-type="virtual">
+                                                                    Wirtualny
+                                                                </button>
+                                                            </div>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if item.buyer %}
+                                                            {% if item.buyer.profile.is_beneficiary %}
+                                                                {{ item.buyer.profile.name|default:item.buyer.username }}
+                                                            {% elif item.buyer.profile.is_contributor %}
+                                                                {% if item.buyer.first_name and item.buyer.last_name %}
+                                                                    {{ item.buyer.first_name }} {{ item.buyer.last_name }}
+                                                                {% else %}
+                                                                    {{ item.buyer.username }}
+                                                                {% endif %}
+                                                            {% else %}
+                                                                {{ item.buyer.username }}
+                                                            {% endif %}
+                                                        {% else %}
+                                                            <select class="form-select form-select-sm buyer-select" data-order-item-id="{{ item.id }}">
+                                                                <option value="">Wybierz płacącego</option>
+                                                                <option value="{{ order.buyer.id }}">{{ order.buyer.profile.name|default:order.buyer.username }}</option>
+                                                                {% for contributor in contributors %}
+                                                                    <option value="{{ contributor.id }}">
+                                                                        {% if contributor.first_name and contributor.last_name %}
+                                                                            {{ contributor.first_name }} {{ contributor.last_name }}
+                                                                        {% else %}
+                                                                            {{ contributor.username }}
+                                                                        {% endif %}
+                                                                    </option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if item.payments.exists %}
+                                                            {% for payment in item.payments.all %}
+                                                                <span class="badge bg-success">{{ payment.id }}</span>{% if not forloop.last %}, {% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <button type="button" class="btn btn-sm btn-danger payment-button" 
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#paymentModal"
+                                                                    data-order-item-id="{{ item.id }}"
+                                                                    data-buyer-id="{{ item.buyer.id }}">
+                                                                Nieopłacone
+                                                            </button>
+                                                        {% endif %}
+                                                    </td>
                                                 </tr>
                                             {% endfor %}
                                             <tr class="table-light">
                                                 <td colspan="4" class="text-end"><strong>Razem:</strong></td>
                                                 <td><strong>{{ order.total_cost }} zł</strong></td>
+                                                <td></td>
+                                                <td></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -156,6 +229,8 @@
         </div>
     {% endif %}
 </div>
+
+{% include 'products/partials/payment_modal.html' %}
 
 <style>
     .dropdown-item:hover {
@@ -228,6 +303,28 @@ document.addEventListener('DOMContentLoaded', function() {
             location.reload();
         });
     }
+
+    // Handle stock reduction creation
+    document.querySelectorAll('.create-stock-reduction').forEach(button => {
+        button.addEventListener('click', function() {
+            const orderItemId = this.dataset.orderItemId;
+            const productId = this.dataset.productId;
+            const quantity = this.dataset.quantity;
+            const stockType = this.dataset.stockType;
+            
+            createStockReduction(orderItemId, productId, quantity, stockType);
+        });
+    });
+
+    // Handle buyer selection
+    document.querySelectorAll('.buyer-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const orderItemId = this.dataset.orderItemId;
+            const buyerId = this.value;
+            
+            assignBuyerToOrderItem(orderItemId, buyerId);
+        });
+    });
 });
 
 function changeBuyer(buyerId) {
@@ -281,6 +378,60 @@ function deleteOrder(orderId) {
     .catch(error => {
         console.error('Error:', error);
         alert('Wystąpił błąd podczas usuwania zamówienia');
+    });
+}
+
+function createStockReduction(orderItemId, productId, quantity, stockType) {
+    fetch('/stock/create-reduction/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            order_item_id: orderItemId,
+            product_id: productId,
+            quantity: quantity,
+            stock_type: stockType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert(data.message || 'Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+    });
+}
+
+function assignBuyerToOrderItem(orderItemId, buyerId) {
+    fetch('/orders/assign-buyer/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            order_item_id: orderItemId,
+            buyer_id: buyerId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert(data.message || 'Wystąpił błąd podczas przypisywania płacącego');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas przypisywania płacącego');
     });
 }
 </script>

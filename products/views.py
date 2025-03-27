@@ -8,6 +8,8 @@ import json
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
 from stock.models import StockEntry, StockReduction
+from django.utils import timezone
+from finance.models import MonthlyContributionUsage
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -223,7 +225,6 @@ def home(request):
                 except User.DoesNotExist:
                     pass
         else:
-            # Regular user is their own buyer
             context['selected_buyer'] = request.user
             buyer_price_list = request.user.profile.price_list
             if buyer_price_list:
@@ -234,163 +235,17 @@ def home(request):
                 product_prices = {price.product_id: price.gross_price for price in prices}
                 context['product_prices'] = product_prices
 
+        if selected_buyer:
+            current_date = timezone.now()
+            monthly_usage = selected_buyer.profile.get_or_create_monthly_usage(
+                year=current_date.year,
+                month=current_date.month
+            )
+        else:
+            monthly_usage = None
+        context['monthly_usage'] = monthly_usage
+
     return render(request, 'home.html', context)
-
-@require_POST
-def add_to_cart(request):
-    data = json.loads(request.body)
-    product_id = data.get('product_id')
-    quantity = int(data.get('quantity', 1))
-    buyer_id = data.get('buyer_id')
-
-    if not all([product_id, quantity, buyer_id]):
-        return JsonResponse({'error': 'Missing required fields'}, status=400)
-
-    try:
-        product = Product.objects.get(id=product_id)
-        buyer = get_user_model().objects.get(id=buyer_id)
-        
-        # Verify this is the currently selected buyer
-        if str(buyer_id) != str(request.session.get('selected_buyer_id')):
-            return JsonResponse({'error': 'Invalid buyer selected'}, status=400)
-
-        # Get or create cart for this specific buyer
-        cart, created = Cart.objects.get_or_create(
-            user=request.user,
-            buyer=buyer
-        )
-
-        # Get price for the buyer
-        price_list = buyer.profile.price_list
-        if not price_list:
-            return JsonResponse({'error': 'No price list assigned to buyer'}, status=400)
-
-        price = Price.objects.get(price_list=price_list, product=product)
-
-        # Add or update cart item
-        cart_item = CartItem.objects.filter(
-            cart=cart,
-            product=product
-        ).first()
-
-        if cart_item:
-            cart_item.quantity += quantity
-            cart_item.save()
-        else:
-            cart_item = CartItem.objects.create(
-                cart=cart,
-                product=product,
-                quantity=quantity,
-                price=price.gross_price
-            )
-
-        # Prepare cart data for response
-        cart_data = {
-            'items': [{
-                'id': item.id,
-                'name': item.product.name,
-                'quantity': item.quantity,
-                'price': str(item.price),
-                'subtotal': str(item.subtotal),
-                'image_url': item.product.images.first().image.url if item.product.images.exists() else None
-            } for item in cart.items.all()],
-            'total_cost': str(cart.total_cost)
-        }
-
-        return JsonResponse({
-            'status': 'success',
-            'cart_count': cart.total_items,
-            'cart_total': str(cart.total_cost),
-            'cart_data': cart_data
-        })
-
-    except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist) as e:
-        return JsonResponse({'error': str(e)}, status=404)
-    except Exception as e:
-        print(f"Error in add_to_cart: {str(e)}")  # Add debugging
-        return JsonResponse({'error': str(e)}, status=500)
-
-@require_POST
-def update_cart(request):
-    data = json.loads(request.body)
-    item_id = data.get('item_id')
-    quantity = int(data.get('quantity', 0))
-
-    try:
-        cart_item = CartItem.objects.get(id=item_id)
-
-        if quantity > 0:
-            cart_item.quantity = quantity
-            cart_item.save()
-        else:
-            cart_item.delete()
-
-        cart = cart_item.cart
-
-        return JsonResponse({
-            'status': 'success',
-            'cart_count': cart.total_items,
-            'cart_total': str(cart.total_cost),
-            'item_subtotal': str(cart_item.subtotal) if quantity > 0 else '0'
-        })
-
-    except CartItem.DoesNotExist:
-        return JsonResponse({'error': 'Cart item not found'}, status=404)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-@require_POST
-def create_order(request):
-    try:
-        # Get the selected buyer's ID from session
-        selected_buyer_id = request.session.get('selected_buyer_id')
-        if not selected_buyer_id:
-            return JsonResponse({
-                'status': 'error', 
-                'message': 'No buyer selected'
-            }, status=400)
-
-        # Get the specific cart for the current user and selected buyer
-        cart = Cart.objects.get(
-            user=request.user,
-            buyer_id=selected_buyer_id
-        )
-
-        # Create order
-        order = Order.objects.create(
-            user=request.user,
-            buyer=cart.buyer,
-            total_cost=cart.total_cost
-        )
-
-        # Create order items
-        for cart_item in cart.items.all():
-            OrderItem.objects.create(
-                order=order,
-                product=cart_item.product,
-                quantity=cart_item.quantity,
-                price=cart_item.price,
-                subtotal=cart_item.subtotal
-            )
-
-        # Clear the cart
-        cart.delete()
-
-        return JsonResponse({
-            'status': 'success',
-            'order_id': order.id
-        })
-
-    except Cart.DoesNotExist:
-        return JsonResponse({
-            'status': 'error', 
-            'message': 'No active cart found'
-        }, status=404)
-    except Exception as e:
-        return JsonResponse({
-            'status': 'error', 
-            'message': str(e)
-        }, status=500)
 
 @require_POST
 @require_authenticated_staff_or_superuser
@@ -443,6 +298,10 @@ def orders(request):
             beneficiaries = User.objects.filter(profile__is_beneficiary=True)
             context['beneficiaries'] = beneficiaries
             
+            # Get all contributor users for staff/superuser
+            contributors = User.objects.filter(profile__is_contributor=True)
+            context['contributors'] = contributors
+            
             # Get selected buyer or default to None
             selected_buyer_id = request.session.get('selected_buyer_id')
             if selected_buyer_id:
@@ -461,6 +320,10 @@ def orders(request):
                 'items__product__images'
             ).order_by('-created_at')
             context['orders'] = orders
+            
+            # Regular users might also need the contributors list for the dropdown
+            contributors = User.objects.filter(profile__is_contributor=True)
+            context['contributors'] = contributors
 
     return render(request, 'products/orders.html', context)
 
@@ -513,4 +376,37 @@ def delete_order(request, order_id):
             'status': 'error',
             'message': 'Zamówienie nie zostało znalezione'
         }, status=404)
+
+@require_POST
+def assign_buyer_to_order_item(request):
+    try:
+        data = json.loads(request.body)
+        order_item_id = data.get('order_item_id')
+        buyer_id = data.get('buyer_id')
+        
+        if not order_item_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'ID elementu zamówienia jest wymagane'
+            }, status=400)
+            
+        order_item = get_object_or_404(OrderItem, id=order_item_id)
+        
+        if buyer_id:
+            buyer = get_object_or_404(get_user_model(), id=buyer_id)
+            order_item.buyer = buyer
+        else:
+            order_item.buyer = None
+            
+        order_item.save()
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Płacący został przypisany pomyślnie'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 

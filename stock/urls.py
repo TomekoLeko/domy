@@ -10,4 +10,5 @@ urlpatterns = [
     path('supply-orders/add/', views.add_supply_order, name='add_supply_order'),
     path('supply-orders/assign-invoice/', views.assign_invoice, name='assign_invoice'),
     path('supply-orders/delete/<int:supply_order_id>/', views.delete_supply_order, name='delete_supply_order'),
+    path('create-reduction/', views.create_stock_reduction, name='create_stock_reduction'),
 ] 

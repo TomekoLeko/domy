@@ -4,7 +4,8 @@ from django.views.decorators.http import require_POST
 from domy.decorators import require_authenticated_staff_or_superuser
 from .models import Supplier, SupplyOrder, StockEntry
 from finance.models import Invoice
-from products.models import Product
+from products.models import Product, OrderItem
+from stock.models import StockReduction
 from decimal import Decimal
 from django.db.models import F, ExpressionWrapper, DecimalField
 import json
@@ -174,4 +175,34 @@ def delete_supply_order(request, supply_order_id):
         return JsonResponse({
             'status': 'error',
             'message': str(e)
-        }, status=400) 
+        }, status=400)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def create_stock_reduction(request):
+    try:
+        data = json.loads(request.body)
+        order_item_id = data.get('order_item_id')
+        product_id = data.get('product_id')
+        quantity = data.get('quantity')
+        stock_type = data.get('stock_type')
+        
+        # Ensure quantity is an integer
+        if isinstance(quantity, str):
+            quantity = int(quantity)  # Convert to integer if it's a string
+        
+        # Get the order item
+        order_item = get_object_or_404(OrderItem, id=order_item_id)
+        
+        # Create the stock reduction
+        stock_reduction = StockReduction.objects.create(
+            product_id=product_id,
+            order=order_item.order,
+            order_item=order_item,
+            quantity=quantity,
+            stock_type=stock_type
+        )
+        
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}) 
