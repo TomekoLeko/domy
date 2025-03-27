@@ -105,26 +105,3 @@
         {% endif %}
     </div>
 </div>
-
-<!-- Cart Sidebar JavaScript -->
-<script>
-    function updateCartIcon(count) {
-        const cartIcon = document.querySelector('.cart-icon i');
-        const cartCount = document.querySelector('.cart-count');
-
-        if (count > 0) {
-            cartIcon.className = 'bi bi-cart-fill text-success fs-4';
-            if (cartCount) {
-                cartCount.textContent = count;
-            } else {
-                const span = document.createElement('span');
-                span.className = 'cart-count';
-                span.textContent = count;
-                document.querySelector('.cart-icon').appendChild(span);
-            }
-        } else {
-            cartIcon.className = 'bi bi-cart text-secondary fs-4';
-            if (cartCount) cartCount.remove();
-        }
-    }
-</script> 
