@@ -103,12 +103,15 @@
                                 <a class="nav-link" href="/logout/">Logout</a>
                             </li>
                             <li class="nav-item">
-                                <div class="cart-icon ms-3" onclick="toggleCart()">
-                                    <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-white{% endif %} fs-4"></i>
-                                    {% if cart and cart.total_items > 0 %}
-                                        <span class="cart-count">{{ cart.total_items }}</span>
-                                    {% endif %}
-                                </div>
+                                <form action="{% url 'toggle_cart' %}" method="post" class="m-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="cart-icon ms-3 btn p-0">
+                                        <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-white{% endif %} fs-4"></i>
+                                        {% if cart and cart.total_items > 0 %}
+                                            <span class="cart-count">{{ cart.total_items }}</span>
+                                        {% endif %}
+                                    </button>
+                                </form>
                             </li>
                         {% else %}
                             <li class="nav-item">

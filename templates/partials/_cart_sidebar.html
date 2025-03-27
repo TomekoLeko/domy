@@ -41,10 +41,13 @@
 </style>
 
 <!-- Cart Sidebar HTML -->
-<div id="cartSidebar">
+<div id="cartSidebar" class="{% if request.session.cart_open %}show{% endif %}">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">Koszyk</h5>
-        <button type="button" class="btn-close" onclick="toggleCart()"></button>
+        <form action="{% url 'toggle_cart' %}" method="post" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn-close"></button>
+        </form>
     </div>
     <div id="cartContent">
         {% if cart and cart.items.exists %}
@@ -105,11 +108,6 @@
 
 <!-- Cart Sidebar JavaScript -->
 <script>
-    function toggleCart() {
-        const sidebar = document.getElementById('cartSidebar');
-        sidebar.classList.toggle('show');
-    }
-
     function updateCartIcon(count) {
         const cartIcon = document.querySelector('.cart-icon i');
         const cartCount = document.querySelector('.cart-count');

@@ -62,6 +62,8 @@ def add_to_cart(request):
                 price=price.gross_price
             )
 
+        request.session['cart_open'] = True
+        request.session.modified = True
         messages.success(request, 'Produkt dodany do koszyka')
         return redirect('home')
 
@@ -86,6 +88,8 @@ def update_cart(request):
         else:
             cart_item.delete()
 
+        request.session['cart_open'] = True
+        request.session.modified = True
         messages.success(request, 'Koszyk zaktualizowany')
         return redirect('home')
 
@@ -131,12 +135,20 @@ def create_order(request):
         # Clear the cart
         cart.delete()
 
+        request.session['cart_open'] = False  # Close cart after successful order
+        request.session.modified = True
         messages.success(request, 'Zamówienie zostało złożone pomyślnie!')
         return redirect('home')
 
     except Cart.DoesNotExist:
         messages.error(request, 'Nie znaleziono koszyka')
-        return redirect('home')
+        return redirect(request.META.get('HTTP_REFERER', 'home') + '?cart=open')
     except Exception as e:
         messages.error(request, f'Wystąpił błąd: {str(e)}')
-        return redirect('home')
+        return redirect(request.META.get('HTTP_REFERER', 'home') + '?cart=open')
+
+@require_POST
+def toggle_cart(request):
+    request.session['cart_open'] = not request.session.get('cart_open', False)
+    request.session.modified = True
+    return redirect('home')
