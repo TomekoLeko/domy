@@ -185,7 +185,6 @@
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Reload the entire page to re-render with new buyer
                 location.reload();
             }
         })

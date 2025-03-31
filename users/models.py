@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from products.models import PriceList
+from datetime import datetime
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -36,6 +37,9 @@ class Profile(models.Model):
             defaults={'limit': self.monthly_limit}
         )
         return usage
+
+    def get_or_create_current_monthly_usage(self):
+        return self.get_or_create_monthly_usage(datetime.now().year, datetime.now().month)
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
