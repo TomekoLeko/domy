@@ -12,6 +12,82 @@ from django.utils import timezone
 from finance.models import MonthlyContributionUsage
 from django.contrib import messages
 
+def handle_cart_modification(request, product_id=None, item_id=None, quantity=0, buyer_id=None):
+    try:
+        # For add_to_cart
+        if product_id and buyer_id:
+            # Verify buyer is currently selected
+            if str(buyer_id) != str(request.session.get('selected_buyer_id')):
+                messages.error(request, 'Nieprawidłowy kupujący')
+                return redirect('home')
+
+            buyer = get_user_model().objects.get(id=buyer_id)
+            product = Product.objects.get(id=product_id)
+ 
+            # Get or create cart for this specific buyer
+            cart, created = Cart.objects.get_or_create(
+                user=request.user,
+                buyer=buyer
+            )
+
+            # Get price for the buyer
+            price_list = buyer.profile.price_list
+            if not price_list:
+                messages.error(request, 'Brak cennika dla kupującego')
+                return redirect('home')
+
+            price = Price.objects.get(price_list=price_list, product=product)
+
+            # Check if product already in cart
+            cart_item = CartItem.objects.filter(
+                cart=cart,
+                product=product
+            ).first()
+
+            if cart_item:
+                # Update existing item
+                cart_item.quantity += quantity  # Add to existing quantity
+                cart_item.save()
+            else:
+                # Create new item
+                cart_item = CartItem.objects.create(
+                    cart=cart,
+                    product=product,
+                    quantity=quantity,
+                    price=price.gross_price
+                )
+
+            messages.success(request, 'Produkt dodany do koszyka')
+
+        # For update_cart
+        elif item_id:
+            cart_item = CartItem.objects.get(id=item_id)
+
+            if quantity > 0:
+                cart_item.quantity = quantity
+                cart_item.save()
+            else:
+                cart_item.delete()
+
+            messages.success(request, 'Koszyk zaktualizowany')
+
+        else:
+            messages.error(request, 'Nieprawidłowe parametry')
+            return redirect('home')
+
+        # Set the cart open in session
+        request.session['cart_open'] = True
+        request.session.modified = True
+
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
+
+    except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist, CartItem.DoesNotExist) as e:
+        messages.error(request, str(e))
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
+    except Exception as e:
+        messages.error(request, f'Wystąpił błąd: {str(e)}')
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
+
 @require_POST
 def add_to_cart(request):
     product_id = request.POST.get('product_id')
@@ -22,83 +98,27 @@ def add_to_cart(request):
         messages.error(request, 'Brak wymaganych danych')
         return redirect('home')
 
-    try:
-        product = Product.objects.get(id=product_id)
-        buyer = get_user_model().objects.get(id=buyer_id)
-        
-        # Verify this is the currently selected buyer
-        if str(buyer_id) != str(request.session.get('selected_buyer_id')):
-            messages.error(request, 'Nieprawidłowy kupujący')
-            return redirect('home')
-
-        # Get or create cart for this specific buyer
-        cart, created = Cart.objects.get_or_create(
-            user=request.user,
-            buyer=buyer
-        )
-
-        # Get price for the buyer
-        price_list = buyer.profile.price_list
-        if not price_list:
-            messages.error(request, 'Brak cennika dla kupującego')
-            return redirect('home')
-
-        price = Price.objects.get(price_list=price_list, product=product)
-
-        # Add or update cart item
-        cart_item = CartItem.objects.filter(
-            cart=cart,
-            product=product
-        ).first()
-
-        if cart_item:
-            cart_item.quantity += quantity
-            cart_item.save()
-        else:
-            cart_item = CartItem.objects.create(
-                cart=cart,
-                product=product,
-                quantity=quantity,
-                price=price.gross_price
-            )
-
-        request.session['cart_open'] = True
-        request.session.modified = True
-        messages.success(request, 'Produkt dodany do koszyka')
-        return redirect('home')
-
-    except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist) as e:
-        messages.error(request, str(e))
-        return redirect('home')
-    except Exception as e:
-        messages.error(request, f'Wystąpił błąd: {str(e)}')
-        return redirect('home')
+    return handle_cart_modification(
+        request=request, 
+        product_id=product_id, 
+        quantity=quantity, 
+        buyer_id=buyer_id
+    )
 
 @require_POST
 def update_cart(request):
     item_id = request.POST.get('item_id')
     quantity = int(request.POST.get('quantity', 0))
 
-    try:
-        cart_item = CartItem.objects.get(id=item_id)
-
-        if quantity > 0:
-            cart_item.quantity = quantity
-            cart_item.save()
-        else:
-            cart_item.delete()
-
-        request.session['cart_open'] = True
-        request.session.modified = True
-        messages.success(request, 'Koszyk zaktualizowany')
+    if not item_id:
+        messages.error(request, 'Brak ID przedmiotu')
         return redirect('home')
 
-    except CartItem.DoesNotExist:
-        messages.error(request, 'Nie znaleziono pozycji w koszyku')
-        return redirect('home')
-    except Exception as e:
-        messages.error(request, f'Wystąpił błąd: {str(e)}')
-        return redirect('home')
+    return handle_cart_modification(
+        request=request,
+        item_id=item_id,
+        quantity=quantity
+    )
 
 @require_POST
 def create_order(request):
