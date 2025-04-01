@@ -120,51 +120,55 @@
                 </div>
                 
                 {% if temporary_array %}
-                <div class="expanded-items-table">
-                    <h6 class="mt-2 mb-2">Rozbicie pozycji:</h6>
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Produkt</th>
-                                <th class="text-end">Cena</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in temporary_array %}
-                            <tr>
-                                <td>{{ item.product_name }}</td>
-                                <td class="text-end">{{ item.price }} zł</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                    {% if request.user.is_staff or request.user.is_superuser %}
+                    <div class="expanded-items-table">
+                        <h6 class="mt-2 mb-2">Rozbicie pozycji:</h6>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Produkt</th>
+                                    <th class="text-end">Cena</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in temporary_array %}
+                                <tr>
+                                    <td>{{ item.product_name }}</td>
+                                    <td class="text-end">{{ item.price }} zł</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
                 {% endif %}
                 
                 {% if contribution_usage_array %}
-                <div class="expanded-items-table">
-                    <h6 class="mt-2 mb-2">Kontrybucja:</h6>
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Produkt</th>
-                                <th class="text-end">Cena</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in contribution_usage_array %}
-                            <tr>
-                                <td>{{ item.product_name }}</td>
-                                <td class="text-end">{{ item.price }} zł</td>
-                            </tr>
-                            {% endfor %}
-                            <tr class="table-success">
-                                <td><strong>Suma kontrybucji:</strong></td>
-                                <td class="text-end"><strong>{{ total_contribution }} zł</strong></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                    {% if request.user.is_staff or request.user.is_superuser %}
+                    <div class="expanded-items-table">
+                        <h6 class="mt-2 mb-2">Kontrybucja:</h6>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Produkt</th>
+                                    <th class="text-end">Cena</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in contribution_usage_array %}
+                                <tr>
+                                    <td>{{ item.product_name }}</td>
+                                    <td class="text-end">{{ item.price }} zł</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="table-success">
+                                    <td><strong>Suma kontrybucji:</strong></td>
+                                    <td class="text-end"><strong>{{ total_contribution }} zł</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
                 {% endif %}
                 
                 <form action="{% url 'create_order' %}" method="post">
