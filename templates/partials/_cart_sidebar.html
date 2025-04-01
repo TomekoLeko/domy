@@ -59,14 +59,9 @@
 <!-- Cart Sidebar HTML -->
 <div id="cartSidebar" class="{% if request.session.cart_open %}show{% endif %}">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Koszyk</h5>
-        {% comment %} {% if selected_buyer %}
-            <span class="text-muted">
-                Buyer: {{ selected_buyer.profile.name }} <br>
-                Limit: {{ selected_buyer.profile.get_or_create_current_monthly_usage.limit}} zł
-                id: {{ selected_buyer.profile.get_or_create_current_monthly_usage.id}}
-            </span>
-        {% endif %} {% endcomment %}
+        <div>
+            <h5 class="mb-0">Koszyk</h5>
+        </div>
         <form action="{% url 'toggle_cart' %}" method="post" class="m-0">
             {% csrf_token %}
             <button type="submit" class="btn-close"></button>
@@ -118,7 +113,27 @@
                     <strong>Razem:</strong>
                     <strong class="cart-total">{{ cart.total_cost }} zł</strong>
                 </div>
-                
+                {% if remaining_limit > 0 %}
+                    <div>
+                        <small>
+                            Gratisy {{ contribution_usage_sum|floatformat:2 }} zł
+                            z {{ remaining_limit|floatformat:2 }} zł
+                        </small>
+                    </div>
+                    <div class="progress mt-1 w-[100%] mb-3" style="height: 1rem;" title="Wykorzystanie limitu">
+                        <div class="progress-bar {% if contribution_percentage < 50 %}bg-warning{% elif contribution_percentage < 80 %}bg-info{% else %}bg-success{% endif %}" 
+                            role="progressbar"
+                            style="width: {{ contribution_percentage }}%;"
+                            aria-valuenow="{{ contribution_usage_sum }}"
+                            aria-valuemin="0"
+                            aria-valuemax="{{ remaining_limit }}">
+                        </div>
+                    </div>
+                {% endif %}
+                <div class="d-flex justify-content-between mb-3">
+                    <strong>Do zapłaty:</strong>
+                    <strong class="cart-total">{{ remaining_cost|floatformat:2 }} zł</strong>
+                </div>
                 {% if temporary_array %}
                     {% if request.user.is_staff or request.user.is_superuser %}
                     <div class="expanded-items-table">
