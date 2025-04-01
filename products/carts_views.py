@@ -137,17 +137,27 @@ def determine_contribution_usage(buyer_id):
         # Using descending sort to get closest to the limit with fewer items
         sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
 
-        # Create the contribution_usage_array while respecting limits
-        current_sum = 0.0
-        for item in sorted_temp_array:
-            item_price = float(item['price'])
-            if current_sum + item_price <= effective_limit:
-                contribution_usage_array.append(item)
-                current_sum += item_price
+        contribution_usage_array, current_sum = assign_greedy(temporary_array, effective_limit)
+
 
         return temporary_array, contribution_usage_array
     except (Cart.DoesNotExist, MonthlyContributionUsage.DoesNotExist):
         return [], []
+        
+
+def assign_greedy(temporary_array, effective_limit):
+    sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
+
+    current_sum = 0.0
+    contribution_usage_array = []
+
+    for item in sorted_temp_array:
+        item_price = float(item['price'])
+        if current_sum + item_price <= effective_limit:
+            contribution_usage_array.append(item)
+            current_sum += item_price
+
+    return contribution_usage_array, current_sum
 
 @require_POST
 def add_to_cart(request):
