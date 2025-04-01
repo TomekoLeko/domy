@@ -62,6 +62,7 @@ def handle_cart_modification(request, product_id=None, item_id=None, quantity=0,
         # For update_cart
         elif item_id:
             cart_item = CartItem.objects.get(id=item_id)
+            buyer_id = cart_item.cart.buyer_id
 
             if quantity > 0:
                 cart_item.quantity = quantity
@@ -87,6 +88,66 @@ def handle_cart_modification(request, product_id=None, item_id=None, quantity=0,
     except Exception as e:
         messages.error(request, f'Wystąpił błąd: {str(e)}')
         return redirect(request.META.get('HTTP_REFERER', 'home'))
+
+def determine_contribution_usage(buyer_id):
+    try:
+        #  get buyer's cart
+        cart = Cart.objects.get(buyer_id=buyer_id)
+        # get cart items
+        cart_items = CartItem.objects.filter(cart=cart)
+
+        # Create temporary array with individual entries for each product unit
+        temporary_array = []
+        for cart_item in cart_items:
+            # Get product details
+            product_id = cart_item.product.id
+            product_name = cart_item.product.name
+            price = str(cart_item.price)  # Convert Decimal to string for safe serialization
+
+            # Add an entry to the temporary array for each unit of quantity
+            for _ in range(cart_item.quantity):
+                temporary_array.append({
+                    'product_id': product_id,
+                    'product_name': product_name,
+                    'price': price
+                })
+
+        # Get the latest monthly_contribution_usage for the user
+        buyer = cart.buyer
+        monthly_contribution_usage = MonthlyContributionUsage.objects.filter(
+            profile__user=buyer
+        ).order_by('-year', '-month').first()
+
+        if not monthly_contribution_usage:
+            return temporary_array, []
+
+        remaining_limit = monthly_contribution_usage.remaining_limit
+
+        # Create contribution_usage_array based on the requirements
+        contribution_usage_array = []
+
+        # Calculate the total value of temporary_array to determine 50% limit
+        total_cart_value = sum(float(item['price']) for item in temporary_array)
+        fifty_percent_limit = total_cart_value * 0.5
+ 
+        # Determine the effective limit (the lower of the two limits)
+        effective_limit = min(float(remaining_limit), fifty_percent_limit)
+
+        # Sort temporary_array by price (descending) to optimize usage of the limit
+        # Using descending sort to get closest to the limit with fewer items
+        sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
+
+        # Create the contribution_usage_array while respecting limits
+        current_sum = 0.0
+        for item in sorted_temp_array:
+            item_price = float(item['price'])
+            if current_sum + item_price <= effective_limit:
+                contribution_usage_array.append(item)
+                current_sum += item_price
+
+        return temporary_array, contribution_usage_array
+    except (Cart.DoesNotExist, MonthlyContributionUsage.DoesNotExist):
+        return [], []
 
 @require_POST
 def add_to_cart(request):
@@ -162,13 +223,13 @@ def create_order(request):
 
     except Cart.DoesNotExist:
         messages.error(request, 'Nie znaleziono koszyka')
-        return redirect(request.META.get('HTTP_REFERER', 'home') + '?cart=open')
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
     except Exception as e:
         messages.error(request, f'Wystąpił błąd: {str(e)}')
-        return redirect(request.META.get('HTTP_REFERER', 'home') + '?cart=open')
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
 
 @require_POST
 def toggle_cart(request):
     request.session['cart_open'] = not request.session.get('cart_open', False)
     request.session.modified = True
-    return redirect('home')
+    return redirect(request.META.get('HTTP_REFERER', 'home'))

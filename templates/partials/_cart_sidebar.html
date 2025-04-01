@@ -13,6 +13,7 @@
         transition: right 0.3s ease;
         z-index: 1050;
         padding: 20px;
+        overflow-y: auto;
     }
 
     #cartSidebar.show {
@@ -38,12 +39,34 @@
         align-items: center;
         justify-content: center;
     }
+    
+    .expanded-items-table {
+        font-size: 0.85rem;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        border-top: 1px dashed #ccc;
+        border-bottom: 1px dashed #ccc;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    
+    .expanded-items-table th, 
+    .expanded-items-table td {
+        padding: 4px 8px;
+    }
 </style>
 
 <!-- Cart Sidebar HTML -->
 <div id="cartSidebar" class="{% if request.session.cart_open %}show{% endif %}">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">Koszyk</h5>
+        {% comment %} {% if selected_buyer %}
+            <span class="text-muted">
+                Buyer: {{ selected_buyer.profile.name }} <br>
+                Limit: {{ selected_buyer.profile.get_or_create_current_monthly_usage.limit}} zł
+                id: {{ selected_buyer.profile.get_or_create_current_monthly_usage.id}}
+            </span>
+        {% endif %} {% endcomment %}
         <form action="{% url 'toggle_cart' %}" method="post" class="m-0">
             {% csrf_token %}
             <button type="submit" class="btn-close"></button>
@@ -95,6 +118,55 @@
                     <strong>Razem:</strong>
                     <strong class="cart-total">{{ cart.total_cost }} zł</strong>
                 </div>
+                
+                {% if temporary_array %}
+                <div class="expanded-items-table">
+                    <h6 class="mt-2 mb-2">Rozbicie pozycji:</h6>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Produkt</th>
+                                <th class="text-end">Cena</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in temporary_array %}
+                            <tr>
+                                <td>{{ item.product_name }}</td>
+                                <td class="text-end">{{ item.price }} zł</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+                
+                {% if contribution_usage_array %}
+                <div class="expanded-items-table">
+                    <h6 class="mt-2 mb-2">Kontrybucja:</h6>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Produkt</th>
+                                <th class="text-end">Cena</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in contribution_usage_array %}
+                            <tr>
+                                <td>{{ item.product_name }}</td>
+                                <td class="text-end">{{ item.price }} zł</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="table-success">
+                                <td><strong>Suma kontrybucji:</strong></td>
+                                <td class="text-end"><strong>{{ total_contribution }} zł</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+                
                 <form action="{% url 'create_order' %}" method="post">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success w-100">Zamów</button>
