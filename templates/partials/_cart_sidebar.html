@@ -5,8 +5,8 @@
     #cartSidebar {
         position: fixed;
         top: 0;
-        right: -400px;
-        width: 400px;
+        right: -440px;
+        width: 440px;
         height: 100vh;
         background: white;
         box-shadow: -2px 0 5px rgba(0,0,0,0.2);
@@ -75,25 +75,42 @@
                     <div class="d-flex align-items-center">
                         {% if item.product.images.first %}
                         <img src="{{ item.product.images.first.image.url }}" 
-                             alt="{{ item.product.name }}" 
-                             style="width: 50px; height: 50px; object-fit: cover;"
+                             alt="{{ item.product.name }}"
+                             style="width: 50px; height: 50px; object-fit: cover; object-fit: contain;"
                              class="me-2">
                         {% endif %}
                         <div class="flex-grow-1">
                             <h6 class="mb-0">{{ item.product.name }}</h6>
                             <div class="d-flex align-items-center mt-2">
-                                <form action="{% url 'update_cart' %}" method="post" class="d-flex align-items-center" style="flex-grow: 1;">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                                    <input type="number" 
-                                           name="quantity"
-                                           class="form-control form-control-sm w-25 me-2" 
-                                           value="{{ item.quantity }}"
-                                           min="1"
-                                           onchange="this.form.submit()">
-                                    <span class="text-muted">× {{ item.price }} zł</span>
+                                <div class="d-flex align-items-center me-2" style="flex-grow: 1;">
+                                    <!-- Decrease quantity button -->
+                                    <form action="{% url 'update_cart' %}" method="post" class="me-1">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                                        <input type="hidden" name="quantity" value="{{ item.quantity|add:'-1' }}">
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-dash"></i>
+                                        </button>
+                                    </form>
+                                    
+                                    <!-- Current quantity display -->
+                                    <span class="mx-2">{{ item.quantity }}</span>
+                                    
+                                    <!-- Increase quantity button -->
+                                    <form action="{% url 'update_cart' %}" method="post" class="me-3">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                                        <input type="hidden" name="quantity" value="{{ item.quantity|add:'1' }}">
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    </form>
+                                    
+                                    <span class="text-muted">× {{ item.price }} zł =</span>
                                     <span class="ms-auto item-subtotal">{{ item.subtotal }} zł</span>
-                                </form>
+                                </div>
+                                
+                                <!-- Delete item button -->
                                 <form action="{% url 'update_cart' %}" method="post" class="ms-2">
                                     {% csrf_token %}
                                     <input type="hidden" name="item_id" value="{{ item.id }}">
@@ -185,7 +202,6 @@
                     </div>
                     {% endif %}
                 {% endif %}
-                
                 <form action="{% url 'create_order' %}" method="post">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success w-100">Zamów</button>
