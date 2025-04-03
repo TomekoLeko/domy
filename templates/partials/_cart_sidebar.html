@@ -83,8 +83,9 @@
                                     <!-- Decrease quantity button -->
                                     <form action="{% url 'update_cart' %}" method="post" class="me-1">
                                         {% csrf_token %}
-                                        <input type="hidden" name="item_id" value="{{ item.id }}">
-                                        <input type="hidden" name="quantity" value="{{ item.quantity|add:'-1' }}">
+                                        <input type="hidden" name="product_id" value="{{ item.product.id }}">
+                                        <input type="hidden" name="quantity" value="{{ '-1' }}">
+                                        <input type="hidden" name="buyer_id" value="{{ cart.buyer_id }}">
                                         <button type="submit" class="btn btn-sm btn-danger">
                                             <i class="bi bi-dash"></i>
                                         </button>
@@ -96,8 +97,9 @@
                                     <!-- Increase quantity button -->
                                     <form action="{% url 'update_cart' %}" method="post" class="me-3">
                                         {% csrf_token %}
-                                        <input type="hidden" name="item_id" value="{{ item.id }}">
-                                        <input type="hidden" name="quantity" value="{{ item.quantity|add:'1' }}">
+                                        <input type="hidden" name="product_id" value="{{ item.product.id }}">
+                                        <input type="hidden" name="quantity" value="{{ '1' }}">
+                                        <input type="hidden" name="buyer_id" value="{{ cart.buyer_id }}">
                                         <button type="submit" class="btn btn-sm btn-success">
                                             <i class="bi bi-plus"></i>
                                         </button>
@@ -108,10 +110,10 @@
                                 </div>
                                 
                                 <!-- Delete item button -->
-                                <form action="{% url 'update_cart' %}" method="post" class="ms-2">
+                                <form action="{% url 'remove_cart_item' %}" method="post" class="ms-2">
                                     {% csrf_token %}
-                                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                                    <input type="hidden" name="quantity" value="0">
+                                    <input type="hidden" name="product_id" value="{{ item.product.id }}">
+                                    <input type="hidden" name="buyer_id" value="{{ cart.buyer_id }}">
                                     <button type="submit" class="btn btn-link text-danger p-0">
                                         <i class="bi bi-trash"></i>
                                     </button>

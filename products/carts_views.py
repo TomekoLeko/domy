@@ -13,32 +13,32 @@ from django.utils import timezone
 from finance.models import MonthlyContributionUsage
 from django.contrib import messages
 
-def handle_cart_modification(request, product_id=None, item_id=None, quantity=0, buyer_id=None):
+@require_POST
+def update_cart(request):
+    product_id = request.POST.get('product_id')
+    quantity = int(request.POST.get('quantity', 1))
+    buyer_id = request.POST.get('buyer_id')
+
     try:
-        # For add_to_cart
         if product_id and buyer_id:
             # Verify buyer is currently selected
             if str(buyer_id) != str(request.session.get('selected_buyer_id')):
                 messages.error(request, 'Nieprawidłowy kupujący')
                 return redirect('home')
-
             buyer = get_user_model().objects.get(id=buyer_id)
             product = Product.objects.get(id=product_id)
- 
+
             # Get or create cart for this specific buyer
             cart, created = Cart.objects.get_or_create(
                 user=request.user,
                 buyer=buyer
             )
-
             # Get price for the buyer
             price_list = buyer.profile.price_list
             if not price_list:
                 messages.error(request, 'Brak cennika dla kupującego')
                 return redirect('home')
-
             price = Price.objects.get(price_list=price_list, product=product)
-
             # Check if product already in cart
             cart_item = CartItem.objects.filter(
                 cart=cart,
@@ -46,9 +46,13 @@ def handle_cart_modification(request, product_id=None, item_id=None, quantity=0,
             ).first()
 
             if cart_item:
-                # Update existing item
-                cart_item.quantity += quantity  # Add to existing quantity
-                cart_item.save()
+                cart_item.quantity = cart_item.quantity + quantity
+                if cart_item.quantity > 0:
+                    cart_item.save()
+                else:
+                    cart_item.delete()
+
+                messages.success(request, 'Koszyk zaktualizowany')
             else:
                 # Create new item
                 cart_item = CartItem.objects.create(
@@ -59,19 +63,6 @@ def handle_cart_modification(request, product_id=None, item_id=None, quantity=0,
                 )
 
             messages.success(request, 'Produkt dodany do koszyka')
-
-        # For update_cart
-        elif item_id:
-            cart_item = CartItem.objects.get(id=item_id)
-            buyer_id = cart_item.cart.buyer_id
-
-            if quantity > 0:
-                cart_item.quantity = quantity
-                cart_item.save()
-            else:
-                cart_item.delete()
-
-            messages.success(request, 'Koszyk zaktualizowany')
 
         else:
             messages.error(request, 'Nieprawidłowe parametry')
@@ -85,6 +76,7 @@ def handle_cart_modification(request, product_id=None, item_id=None, quantity=0,
     except Exception as e:
         messages.error(request, f'Wystąpił błąd: {str(e)}')
         return redirect(request.META.get('HTTP_REFERER', 'home'))
+
 
 def determine_contribution_usage(buyer_id):
     try:
@@ -157,36 +149,53 @@ def assign_greedy(temporary_array, effective_limit):
     return contribution_usage_array, current_sum
 
 @require_POST
-def add_to_cart(request):
+def remove_cart_item(request):
     product_id = request.POST.get('product_id')
-    quantity = int(request.POST.get('quantity', 1))
     buyer_id = request.POST.get('buyer_id')
 
-    if not all([product_id, quantity, buyer_id]):
-        messages.error(request, 'Brak wymaganych danych')
-        return redirect('home')
+    try:
+        if product_id and buyer_id:
+            # Verify buyer is currently selected
+            if str(buyer_id) != str(request.session.get('selected_buyer_id')):
+                messages.error(request, 'Nieprawidłowy kupujący')
+                return redirect('home')
+            buyer = get_user_model().objects.get(id=buyer_id)
+            product = Product.objects.get(id=product_id)
 
-    return handle_cart_modification(
-        request=request, 
-        product_id=product_id, 
-        quantity=quantity, 
-        buyer_id=buyer_id
-    )
+            # Get or create cart for this specific buyer
+            cart = Cart.objects.get(
+                user=request.user,
+                buyer=buyer
+            )
 
-@require_POST
-def update_cart(request):
-    item_id = request.POST.get('item_id')
-    quantity = int(request.POST.get('quantity', 0))
+            # Check if product already in cart
+            cart_item = CartItem.objects.filter(
+                cart=cart,
+                product=product
+            ).first()
 
-    if not item_id:
-        messages.error(request, 'Brak ID przedmiotu')
-        return redirect('home')
+            if cart_item:
+                cart_item.delete()
 
-    return handle_cart_modification(
-        request=request,
-        item_id=item_id,
-        quantity=quantity
-    )
+                messages.success(request, 'Koszyk zaktualizowany')
+            else:
+                messages.error(request, 'Nie ma takiego produktu w koszyku')
+                
+
+            messages.success(request, 'Produkt usunięty z koszyka')
+
+        else:
+            messages.error(request, 'Nieprawidłowe parametry')
+            return redirect('home')
+
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
+
+    except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist, CartItem.DoesNotExist) as e:
+        messages.error(request, str(e))
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
+    except Exception as e:
+        messages.error(request, f'Wystąpił błąd: {str(e)}')
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
 
 @require_POST
 def create_order(request):
