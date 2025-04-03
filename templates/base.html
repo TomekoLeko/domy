@@ -103,15 +103,12 @@
                                 <a class="nav-link" href="/logout/">Logout</a>
                             </li>
                             <li class="nav-item">
-                                <form action="{% url 'toggle_cart' %}" method="post" class="m-0">
-                                    {% csrf_token %}
-                                    <button type="submit" class="cart-icon ms-3 btn p-0">
-                                        <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-white{% endif %} fs-4"></i>
-                                        {% if cart and cart.total_items > 0 %}
-                                            <span class="cart-count">{{ cart.total_items }}</span>
-                                        {% endif %}
-                                    </button>
-                                </form>
+                                <button id="toggleCartButton" class="cart-icon ms-3 btn p-0">
+                                    <i class="bi bi-cart{% if cart and cart.total_items > 0 %}-fill text-success{% else %} text-white{% endif %} fs-4"></i>
+                                    {% if cart and cart.total_items > 0 %}
+                                        <span class="cart-count">{{ cart.total_items }}</span>
+                                    {% endif %}
+                                </button>
                             </li>
                         {% else %}
                             <li class="nav-item">
@@ -145,6 +142,37 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle cart toggle in navbar
+            const toggleCartButton = document.getElementById('toggleCartButton');
+            if (toggleCartButton) {
+                toggleCartButton.addEventListener('click', function() {
+                    // Send AJAX request to toggle cart
+                    fetch('{% url "toggle_cart" %}', {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Toggle cart sidebar visibility
+                            const cartSidebar = document.getElementById('cartSidebar');
+                            if (cartSidebar) {
+                                if (data.cart_open) {
+                                    cartSidebar.classList.add('show');
+                                } else {
+                                    cartSidebar.classList.remove('show');
+                                }
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                });
+            }
+        });
     </script>
 </body>
 </html>

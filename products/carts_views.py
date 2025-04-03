@@ -4,6 +4,7 @@ from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 import json
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
@@ -75,10 +76,6 @@ def handle_cart_modification(request, product_id=None, item_id=None, quantity=0,
         else:
             messages.error(request, 'Nieprawidłowe parametry')
             return redirect('home')
-
-        # Set the cart open in session
-        request.session['cart_open'] = True
-        request.session.modified = True
 
         return redirect(request.META.get('HTTP_REFERER', 'home'))
 
@@ -238,8 +235,9 @@ def create_order(request):
         messages.error(request, f'Wystąpił błąd: {str(e)}')
         return redirect(request.META.get('HTTP_REFERER', 'home'))
 
+@csrf_exempt
 @require_POST
 def toggle_cart(request):
     request.session['cart_open'] = not request.session.get('cart_open', False)
     request.session.modified = True
-    return redirect(request.META.get('HTTP_REFERER', 'home'))
+    return JsonResponse({'status': 'success', 'cart_open': request.session['cart_open']})
