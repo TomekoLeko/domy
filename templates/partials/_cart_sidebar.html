@@ -62,183 +62,244 @@
         <div>
             <h5 class="mb-0">Koszyk</h5>
         </div>
-        <button id="closeCartButton" class="btn-close"></button>
+        <button id="closeCartButton" class="btn-close" onclick="closeCart()"></button>
     </div>
     <div id="cartContent">
-        {% if cart and cart.items.exists %}
-            {% for item in cart.items.all %}
-            <div class="card mb-2" data-item-id="{{ item.id }}">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        {% if item.product.images.first %}
-                        <img src="{{ item.product.images.first.image.url }}" 
-                             alt="{{ item.product.name }}"
-                             style="width: 50px; height: 50px; object-fit: cover; object-fit: contain;"
-                             class="me-2">
-                        {% endif %}
-                        <div class="flex-grow-1">
-                            <h6 class="mb-0">{{ item.product.name }}</h6>
-                            <div class="d-flex align-items-center mt-2">
-                                <div class="d-flex align-items-center me-2" style="flex-grow: 1;">
-                                    <!-- Decrease quantity button -->
-                                    <form action="{% url 'update_cart' %}" method="post" class="me-1">
-                                        {% csrf_token %}
-                                        <input type="hidden" name="product_id" value="{{ item.product.id }}">
-                                        <input type="hidden" name="quantity" value="{{ '-1' }}">
-                                        <input type="hidden" name="buyer_id" value="{{ cart.buyer_id }}">
-                                        <button type="submit" class="btn btn-sm btn-danger">
-                                            <i class="bi bi-dash"></i>
-                                        </button>
-                                    </form>
-                                    
-                                    <!-- Current quantity display -->
-                                    <span class="mx-2">{{ item.quantity }}</span>
-                                    
-                                    <!-- Increase quantity button -->
-                                    <form action="{% url 'update_cart' %}" method="post" class="me-3">
-                                        {% csrf_token %}
-                                        <input type="hidden" name="product_id" value="{{ item.product.id }}">
-                                        <input type="hidden" name="quantity" value="{{ '1' }}">
-                                        <input type="hidden" name="buyer_id" value="{{ cart.buyer_id }}">
-                                        <button type="submit" class="btn btn-sm btn-success">
-                                            <i class="bi bi-plus"></i>
-                                        </button>
-                                    </form>
-                                    
-                                    <span class="text-muted">× {{ item.price }} zł =</span>
-                                    <span class="ms-auto item-subtotal">{{ item.subtotal }} zł</span>
-                                </div>
-                                
-                                <!-- Delete item button -->
-                                <form action="{% url 'remove_cart_item' %}" method="post" class="ms-2">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="product_id" value="{{ item.product.id }}">
-                                    <input type="hidden" name="buyer_id" value="{{ cart.buyer_id }}">
-                                    <button type="submit" class="btn btn-link text-danger p-0">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    </div>
+    <div id="cartContribution">
+        <h6>Kontrybucja</h6>
+
+        <div class="border-top pt-3 mt-3">
+            <div class="d-flex justify-content-between mb-3">
+                <strong>Razem:</strong>
+                <strong class="cart-total">{{ cart.total_cost }} zł</strong>
             </div>
-            {% endfor %}
-            <div class="border-top pt-3 mt-3">
-                <div class="d-flex justify-content-between mb-3">
-                    <strong>Razem:</strong>
-                    <strong class="cart-total">{{ cart.total_cost }} zł</strong>
+            {% if remaining_limit > 0 %}
+                <div>
+                    <small>
+                        Gratisy {{ contribution_usage_sum|floatformat:2 }} zł
+                        z {{ remaining_limit|floatformat:2 }} zł
+                    </small>
                 </div>
-                {% if remaining_limit > 0 %}
-                    <div>
-                        <small>
-                            Gratisy {{ contribution_usage_sum|floatformat:2 }} zł
-                            z {{ remaining_limit|floatformat:2 }} zł
-                        </small>
+                <div class="progress mt-1 w-[100%] mb-3" style="height: 1rem;" title="Wykorzystanie limitu">
+                    <div class="progress-bar {% if contribution_percentage < 50 %}bg-warning{% elif contribution_percentage < 80 %}bg-info{% else %}bg-success{% endif %}" 
+                        role="progressbar"
+                        style="width: {{ contribution_percentage }}%;"
+                        aria-valuenow="{{ contribution_usage_sum }}"
+                        aria-valuemin="0"
+                        aria-valuemax="{{ remaining_limit }}">
                     </div>
-                    <div class="progress mt-1 w-[100%] mb-3" style="height: 1rem;" title="Wykorzystanie limitu">
-                        <div class="progress-bar {% if contribution_percentage < 50 %}bg-warning{% elif contribution_percentage < 80 %}bg-info{% else %}bg-success{% endif %}" 
-                            role="progressbar"
-                            style="width: {{ contribution_percentage }}%;"
-                            aria-valuenow="{{ contribution_usage_sum }}"
-                            aria-valuemin="0"
-                            aria-valuemax="{{ remaining_limit }}">
-                        </div>
-                    </div>
-                {% endif %}
-                <div class="d-flex justify-content-between mb-3">
-                    <strong>Do zapłaty:</strong>
-                    <strong class="cart-total">{{ remaining_cost|floatformat:2 }} zł</strong>
                 </div>
-                {% if temporary_array %}
-                    {% if request.user.is_staff or request.user.is_superuser %}
-                    <div class="expanded-items-table">
-                        <h6 class="mt-2 mb-2">Rozbicie pozycji:</h6>
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Produkt</th>
-                                    <th class="text-end">Cena</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in temporary_array %}
-                                <tr>
-                                    <td>{{ item.product_name }}</td>
-                                    <td class="text-end">{{ item.price }} zł</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% endif %}
-                {% endif %}
-                
-                {% if contribution_usage_array %}
-                    {% if request.user.is_staff or request.user.is_superuser %}
-                    <div class="expanded-items-table">
-                        <h6 class="mt-2 mb-2">Kontrybucja:</h6>
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Produkt</th>
-                                    <th class="text-end">Cena</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in contribution_usage_array %}
-                                <tr>
-                                    <td>{{ item.product_name }}</td>
-                                    <td class="text-end">{{ item.price }} zł</td>
-                                </tr>
-                                {% endfor %}
-                                <tr class="table-success">
-                                    <td><strong>Suma kontrybucji:</strong></td>
-                                    <td class="text-end"><strong>{{ total_contribution }} zł</strong></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    {% endif %}
-                {% endif %}
-                <form action="{% url 'create_order' %}" method="post">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-success w-100">Zamów</button>
-                </form>
+            {% endif %}
+            <div class="d-flex justify-content-between mb-3">
+                <strong>Do zapłaty:</strong>
+                <strong class="cart-total">{{ remaining_cost|floatformat:2 }} zł</strong>
             </div>
-        {% else %}
-            <p class="text-center text-muted">Koszyk jest pusty</p>
-        {% endif %}
+            {% if temporary_array %}
+                {% if request.user.is_staff or request.user.is_superuser %}
+                <div class="expanded-items-table">
+                    <h6 class="mt-2 mb-2">Rozbicie pozycji:</h6>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Produkt</th>
+                                <th class="text-end">Cena</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in temporary_array %}
+                            <tr>
+                                <td>{{ item.product_name }}</td>
+                                <td class="text-end">{{ item.price }} zł</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            {% endif %}
+            
+            {% if contribution_usage_array %}
+                {% if request.user.is_staff or request.user.is_superuser %}
+                <div class="expanded-items-table">
+                    <h6 class="mt-2 mb-2">Kontrybucja:</h6>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Produkt</th>
+                                <th class="text-end">Cena</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in contribution_usage_array %}
+                            <tr>
+                                <td>{{ item.product_name }}</td>
+                                <td class="text-end">{{ item.price }} zł</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="table-success">
+                                <td><strong>Suma kontrybucji:</strong></td>
+                                <td class="text-end"><strong>{{ total_contribution }} zł</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            {% endif %}
+            <form action="{% url 'create_order' %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success w-100">Zamów</button>
+            </form>
+        </div> 
+
+
+
     </div>
 </div>
 
 <!-- Cart Sidebar JavaScript -->
+
+<script src="{% static 'js/cart_sidebar_script.js' %}"></script>
+
 <script>
+    const cart_buyer_id = '{{ cart.buyer_id }}';
+
+    let cart = {
+        cartTotal: 0,
+        cartItems: [],
+    }
+
+    let cartContribution = {
+        contributionTotal: 0,
+        contributionItems: []
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        // Handle sidebar close button
-        const closeCartButton = document.getElementById('closeCartButton');
-        if (closeCartButton) {
-            closeCartButton.addEventListener('click', function() {
-                // Send AJAX request to toggle cart
-                fetch('{% url "toggle_cart" %}', {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        // Always close the cart when clicking the close button
-                        const cartSidebar = document.getElementById('cartSidebar');
-                        if (cartSidebar) {
-                            cartSidebar.classList.remove('show');
-                        }
-                    }
-                })
-                .catch(error => console.error('Error:', error));
-            });
-        }
+        getCartItems().then(data => renderCartItems(data));
     });
+
+    async function renderCartItems(data) {
+        console.log('Rendering cart items:', data);
+        const cartContent = document.getElementById('cartContent');
+        if (!cartContent) return;
+
+        // Clear existing content
+        cartContent.innerHTML = '';
+
+        console.log("!data.cart_items: ", !data.cart_items);
+        console.log("data.cart_items.length === 0: ", data.cart_items === 0);
+
+        if (!data.cart_items || data.cart_items.length === 0) {
+
+            cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
+            console.log('Cart is empty');
+            return;
+        }
+
+        // Update cart data
+        cart.cartItems = data.cart_items;
+        cart.cartTotal = data.cart_total;
+
+        // Generate cart items
+        data.cart_items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card mb-2';
+            card.setAttribute('data-item-id', item.id);
+
+            card.innerHTML = `
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        ${item.image_url 
+                            ? `<img src="${item.image_url}" 
+                                alt="${item.product_name}"
+                                style="width: 50px; height: 50px; object-fit: cover; object-fit: contain;"
+                                class="me-2">`
+                            : ''}
+                        <div class="flex-grow-1">
+                            <h6 class="mb-0">${item.product_name}</h6>
+                            <div class="d-flex align-items-center mt-2">
+                                <div class="d-flex align-items-center me-2" style="flex-grow: 1;">
+                                    <button type="button" class="btn btn-sm btn-danger"
+                                        onclick="updateCart(${item.product_id}, -1, ${cart_buyer_id})"
+                                        data-product-id="${item.product_id}"
+                                        data-buyer-id="${cart_buyer_id}">
+                                        <i class="bi bi-dash"></i>
+                                    </button>
+
+                                    <span class="mx-2">${item.quantity}</span>
+
+                                    <button type="button" class="btn btn-sm btn-success"
+                                        onclick="updateCart(${item.product_id}, 1, ${cart_buyer_id})"
+                                        data-product-id="${item.product_id}"
+                                        data-buyer-id="${cart_buyer_id}">
+                                        <i class="bi bi-plus"></i>
+                                    </button>
+                                    <span class="text-muted">× ${item.price} zł =</span>
+                                    <span class="ms-auto item-subtotal">${item.subtotal} zł</span>
+                                </div>
+                                <input type="hidden" name="product_id" value="${item.product_id}">
+                                <input type="hidden" name="buyer_id" value="${cart_buyer_id}">
+                                <button
+                                    class="btn btn-link text-danger p-0"
+                                    onclick="removeCartItem(${item.product_id}, ${cart_buyer_id})"
+                                >
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            cartContent.appendChild(card);
+        });
+    }
+
+    function getCartItems() {
+        return fetchData('{% url "get_cart_items" %}', { buyer_id: cart_buyer_id })
+        .then(data => {
+            console.log('Cart data received:', data);
+            if (data?.status === 'success') {
+            }
+            return data;
+        });
+    }
+
+    function updateCart(product_id, quantity, buyer_id) {
+        return fetchData('{% url "update_cart" %}', {
+            product_id: product_id,
+            quantity: quantity,
+            buyer_id: buyer_id
+        })
+        .then(data => {
+            console.log('Cart data received:', data);
+            if (data?.status === 'success') {
+                getCartItems().then(data => renderCartItems(data));
+            }
+        });
+    }
+
+    function closeCart() {
+        fetchData('{% url "toggle_cart" %}')
+        .then(data => {
+            const cartSidebar = document.getElementById('cartSidebar');
+            if (cartSidebar) {
+                cartSidebar.classList.remove('show');
+            }
+        })
+    }
+
+    function removeCartItem(product_id, buyer_id) {
+        console.log('Removing cart item:', product_id, buyer_id);
+        fetchData('{% url "remove_cart_item" %}', {
+            product_id: product_id,
+            buyer_id: buyer_id
+        }).then(data => {
+            console.log('Cart data received:', data);
+            if (data?.status === 'success') {
+                getCartItems().then(data => renderCartItems(data));
+            }
+        });
+        
+    }
 </script>

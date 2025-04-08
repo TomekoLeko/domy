@@ -13,11 +13,13 @@ from django.utils import timezone
 from finance.models import MonthlyContributionUsage
 from django.contrib import messages
 
+@csrf_exempt
 @require_POST
 def update_cart(request):
     product_id = request.POST.get('product_id')
     quantity = int(request.POST.get('quantity', 1))
     buyer_id = request.POST.get('buyer_id')
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     try:
         if product_id and buyer_id:
@@ -68,7 +70,10 @@ def update_cart(request):
             messages.error(request, 'Nieprawidłowe parametry')
             return redirect('home')
 
-        return redirect(request.META.get('HTTP_REFERER', 'home'))
+        if is_ajax:
+            return JsonResponse({'status': 'success', 'message': 'Produkt dodany do koszyka'})
+        else:
+            return redirect(request.META.get('HTTP_REFERER', 'home'))
 
     except (Product.DoesNotExist, get_user_model().DoesNotExist, Price.DoesNotExist, CartItem.DoesNotExist) as e:
         messages.error(request, str(e))
@@ -77,10 +82,13 @@ def update_cart(request):
         messages.error(request, f'Wystąpił błąd: {str(e)}')
         return redirect(request.META.get('HTTP_REFERER', 'home'))
 
+@csrf_exempt
 @require_POST
 def remove_cart_item(request):
     product_id = request.POST.get('product_id')
     buyer_id = request.POST.get('buyer_id')
+
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     try:
         if product_id and buyer_id:
@@ -111,7 +119,10 @@ def remove_cart_item(request):
                 messages.error(request, 'Nie ma takiego produktu w koszyku')
                 
 
-            messages.success(request, 'Produkt usunięty z koszyka')
+            if is_ajax:
+                return JsonResponse({'status': 'success', 'message': 'Produkt usunięty z koszyka'})
+            else:
+                messages.success(request, 'Produkt usunięty z koszyka')
 
         else:
             messages.error(request, 'Nieprawidłowe parametry')
@@ -180,6 +191,51 @@ def toggle_cart(request):
     request.session.modified = True
     return JsonResponse({'status': 'success', 'cart_open': request.session['cart_open']})
 
+@csrf_exempt
+@require_POST
+def get_cart_items(request):
+    print('get_cart_items Django method')
+    try:
+        buyer_id = request.POST.get('buyer_id')
+        if not buyer_id:
+            return JsonResponse({'status': 'error', 'message': 'Nie wybrano kupującego'})
+
+        # get cart items
+        cart_items = CartItem.objects.filter(cart__buyer_id=buyer_id)
+ 
+        # Format cart items for JSON response
+        items_data = []
+        total_cost = 0
+
+        for item in cart_items:
+            item_data = {
+                'id': item.id,
+                'product_id': item.product.id,
+                'product_name': item.product.name,
+                'price': str(item.price),
+                'quantity': item.quantity,
+                'subtotal': str(item.subtotal)
+            }
+
+            # Add image URL if available
+            if item.product.images.exists():
+                item_data['image_url'] = item.product.images.first().image.url
+
+            items_data.append(item_data)
+            total_cost += float(item.subtotal)
+
+        # Get cart total
+        cart = Cart.objects.filter(buyer_id=buyer_id).first()
+        cart_total = str(cart.total_cost) if cart else str(total_cost)
+
+        return JsonResponse({
+            'status': 'success', 
+            'cart_items': items_data,
+            'cart_total': cart_total
+        })
+    except Exception as e:
+        print(f"Error in get_cart_items: {str(e)}")
+        return JsonResponse({'status': 'error', 'message': str(e)})
 
 def determine_contribution_usage(buyer_id):
     try:
