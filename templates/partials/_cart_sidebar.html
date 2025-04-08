@@ -256,7 +256,7 @@
     }
 
     function getCartItems() {
-        return fetchData('{% url "get_cart_items" %}', { buyer_id: cart_buyer_id })
+        return postRequest('{% url "get_cart_items" %}', { buyer_id: cart_buyer_id })
         .then(data => {
             console.log('Cart data received:', data);
             if (data?.status === 'success') {
@@ -266,7 +266,7 @@
     }
 
     function updateCart(product_id, quantity, buyer_id) {
-        return fetchData('{% url "update_cart" %}', {
+        return postRequest('{% url "update_cart" %}', {
             product_id: product_id,
             quantity: quantity,
             buyer_id: buyer_id
@@ -280,7 +280,7 @@
     }
 
     function closeCart() {
-        fetchData('{% url "toggle_cart" %}')
+        postRequest('{% url "toggle_cart" %}')
         .then(data => {
             const cartSidebar = document.getElementById('cartSidebar');
             if (cartSidebar) {
@@ -291,7 +291,7 @@
 
     function removeCartItem(product_id, buyer_id) {
         console.log('Removing cart item:', product_id, buyer_id);
-        fetchData('{% url "remove_cart_item" %}', {
+        postRequest('{% url "remove_cart_item" %}', {
             product_id: product_id,
             buyer_id: buyer_id
         }).then(data => {

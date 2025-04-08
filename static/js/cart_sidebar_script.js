@@ -4,7 +4,7 @@
 
 
 //  get methods
-function fetchData(url, formFields = {}) {
+function postRequest(url, formFields = {}) {
     const formData = new FormData();
     for (const key in formFields) {
         formData.append(key, formFields[key]);
