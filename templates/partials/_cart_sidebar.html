@@ -164,41 +164,24 @@
 <script>
     const cart_buyer_id = '{{ cart.buyer_id }}';
 
-    let cart = {
-        cartTotal: 0,
-        cartItems: [],
-    }
-
-    let cartContribution = {
-        contributionTotal: 0,
-        contributionItems: []
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
         getCartItems().then(data => renderCartItems(data));
     });
 
     async function renderCartItems(data) {
-        console.log('Rendering cart items:', data);
         const cartContent = document.getElementById('cartContent');
         if (!cartContent) return;
 
         // Clear existing content
         cartContent.innerHTML = '';
 
-        console.log("!data.cart_items: ", !data.cart_items);
-        console.log("data.cart_items.length === 0: ", data.cart_items === 0);
-
         if (!data.cart_items || data.cart_items.length === 0) {
 
             cartContent.innerHTML = '<p class="text-center text-muted">Koszyk jest pusty</p>';
-            console.log('Cart is empty');
             return;
         }
 
         // Update cart data
-        cart.cartItems = data.cart_items;
-        cart.cartTotal = data.cart_total;
 
         // Generate cart items
         data.cart_items.forEach(item => {
@@ -258,7 +241,6 @@
     function getCartItems() {
         return postRequest('{% url "get_cart_items" %}', { buyer_id: cart_buyer_id })
         .then(data => {
-            console.log('Cart data received:', data);
             if (data?.status === 'success') {
             }
             return data;
@@ -272,7 +254,6 @@
             buyer_id: buyer_id
         })
         .then(data => {
-            console.log('Cart data received:', data);
             if (data?.status === 'success') {
                 getCartItems().then(data => renderCartItems(data));
             }
@@ -290,12 +271,10 @@
     }
 
     function removeCartItem(product_id, buyer_id) {
-        console.log('Removing cart item:', product_id, buyer_id);
         postRequest('{% url "remove_cart_item" %}', {
             product_id: product_id,
             buyer_id: buyer_id
         }).then(data => {
-            console.log('Cart data received:', data);
             if (data?.status === 'success') {
                 getCartItems().then(data => renderCartItems(data));
             }
