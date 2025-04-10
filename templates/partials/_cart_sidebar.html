@@ -181,9 +181,6 @@
             return;
         }
 
-        // Update cart data
-
-        // Generate cart items
         data.cart_items.forEach(item => {
             const card = document.createElement('div');
             card.className = 'card mb-2';
@@ -255,7 +252,7 @@
         })
         .then(data => {
             if (data?.status === 'success') {
-                getCartItems().then(data => renderCartItems(data));
+                getCartItems().then(data => updateRender(data));
             }
         });
     }
@@ -276,9 +273,39 @@
             buyer_id: buyer_id
         }).then(data => {
             if (data?.status === 'success') {
-                getCartItems().then(data => renderCartItems(data));
+                getCartItems().then(data => updateRender(data));
             }
         });
-        
+    }
+
+    function updateRender(data) {
+        renderCartItems(data);
+        updateCartCount(data.cart_items.length);
+    }
+
+    function updateCartCount(count) {
+        const cartIcon = document.querySelector('#toggleCartButton i');
+        const cartCountElement = document.querySelector('#toggleCartButton .cart-count');
+
+        if (cartIcon) {
+            if (count > 0) {
+                cartIcon.className = 'bi bi-cart-fill text-success fs-4';
+            } else {
+                cartIcon.className = 'bi bi-cart text-white fs-4';
+            }
+        }
+
+        if (count > 0) {
+            if (cartCountElement) {
+                cartCountElement.textContent = count;
+            } else {
+                const newCartCount = document.createElement('span');
+                newCartCount.className = 'cart-count';
+                newCartCount.textContent = count;
+                document.getElementById('toggleCartButton').appendChild(newCartCount);
+            }
+        } else if (cartCountElement) {
+            cartCountElement.remove();
+        }
     }
 </script>

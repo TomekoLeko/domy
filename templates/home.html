@@ -69,19 +69,21 @@
                             {% if product_prices and product_prices|get_item:product.id %}
                                 <div class="add-to-cart-overlay">
                                     <div class="add-to-cart-input-group">
-                                        <form action="{% url 'update_cart' %}" method="post" class="d-flex">
-                                            {% csrf_token %}
-                                            <input type="hidden" name="product_id" value="{{ product.id }}">
-                                            <input type="hidden" name="buyer_id" value="{{ request.session.selected_buyer_id }}">
-                                            <input type="number" 
-                                                   name="quantity"
-                                                   class="form-control form-control-sm" 
-                                                   value="1" 
-                                                   min="1">
-                                            <button type="submit" class="btn btn-success btn-sm">
-                                                <i class="bi bi-plus-lg"></i>
-                                            </button>
-                                        </form>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                                        <input type="hidden" name="buyer_id" value="{{ request.session.selected_buyer_id }}">
+                                        <input type="number"
+                                                name="quantity"
+                                                class="form-control form-control-sm" 
+                                                value="1"
+                                                min="1">
+                                        <button
+                                            type="submit"
+                                            class="btn btn-success btn-sm"
+                                            onclick="updateCart({{ product.id }}, parseInt(this.previousElementSibling.value), {{ request.session.selected_buyer_id }})"
+                                        >
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
                                     </div>
                                 </div>
                             {% endif %}
