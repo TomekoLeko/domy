@@ -70,10 +70,6 @@
         <h6>Kontrybucja</h6>
 
         <div class="border-top pt-3 mt-3">
-            <div class="d-flex justify-content-between mb-3">
-                <strong>Razem:</strong>
-                <strong class="cart-total">{{ cart.total_cost }} zł</strong>
-            </div>
             {% if remaining_limit > 0 %}
                 <div>
                     <small>
@@ -118,7 +114,7 @@
                 </div>
                 {% endif %}
             {% endif %}
-            
+
             {% if contribution_usage_array %}
                 {% if request.user.is_staff or request.user.is_superuser %}
                 <div class="expanded-items-table">
@@ -233,6 +229,17 @@
 
             cartContent.appendChild(card);
         });
+
+        // Add the total cost section
+        const totalSection = document.createElement('div');
+        totalSection.className = 'border-top pt-3 mt-3';
+        totalSection.innerHTML = `
+            <div class="d-flex justify-content-between mb-3">
+                <strong>Razem:</strong>
+                <strong class="cart-total">${data.cart_total || '0.00'} zł</strong>
+            </div>
+        `;
+        cartContent.appendChild(totalSection);
     }
 
     function getCartItems() {
