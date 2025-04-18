@@ -15,14 +15,15 @@
         #cartSidebar {
             position: fixed;
             top: 0;
-            right: -400px;
-            width: 400px;
+            right: -440px;
+            width: 440px;
             height: 100vh;
             background: white;
             box-shadow: -2px 0 5px rgba(0,0,0,0.2);
             transition: right 0.3s ease;
             z-index: 1050;
             padding: 20px;
+            overflow-y: auto;
         }
 
         #cartSidebar.show {
@@ -47,6 +48,21 @@
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        .cart-expanded-items-table {
+            font-size: 0.85rem;
+            margin-top: 15px;
+            margin-bottom: 15px;
+            border-top: 1px dashed #ccc;
+            border-bottom: 1px dashed #ccc;
+            padding-top: 10px;
+            padding-bottom: 10px;
+        }
+
+        .cart-expanded-items-table th,
+        .cart-expanded-items-table td {
+            padding: 4px 8px;
         }
     </style>
 

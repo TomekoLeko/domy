@@ -1,5 +1,5 @@
 from .models import Cart
-from .carts_views import determine_contribution_usage
+from .carts_views import determine_contribution_usage_old
 
 def cart_processor(request):
     """
@@ -17,7 +17,7 @@ def cart_processor(request):
                 context['cart'] = cart
                 
                 # Generate the expanded cart items array
-                temporary_array, contribution_usage_array = determine_contribution_usage(selected_buyer_id)
+                temporary_array, contribution_usage_array = determine_contribution_usage_old(selected_buyer_id)
                 context['temporary_array'] = temporary_array or []
                 context['contribution_usage_array'] = contribution_usage_array or []
                 
