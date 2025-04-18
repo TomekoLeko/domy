@@ -23,8 +23,7 @@
 <script src="{% static 'js/cart_sidebar_script.js' %}"></script>
 
 <script>
-    const cart_buyer_id = '{{ cart.buyer_id }}';
-
+    const cart_buyer_id = '{{ request.session.selected_buyer_id }}';
     document.addEventListener('DOMContentLoaded', function() {
         getCartItems().then(data => {
             renderCartItems(data);
