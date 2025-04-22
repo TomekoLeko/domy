@@ -207,28 +207,32 @@
             cartContribution.appendChild(newHeader);
         }
 
+        // Get the cart_contribution object from the response
+        const contribution = data.cart_contribution;
+        if (!contribution) return;
+
         const contributionSection = document.createElement('div');
         contributionSection.className = 'border-top pt-3 mt-3';
         
         // Remaining limit section with progress bar
-        if (data.remaining_limit > 0) {
+        if (parseFloat(contribution.remaining_limit) > 0) {
             const remainingLimitDiv = document.createElement('div');
-            const contributionPercentage = (data.current_sum / data.remaining_limit * 100).toFixed(0);
+            const contributionPercentage = (contribution.current_sum / parseFloat(contribution.remaining_limit) * 100).toFixed(0);
             
             remainingLimitDiv.innerHTML = `
                 <div>
                     <small>
-                        Gratisy ${parseFloat(data.current_sum).toFixed(2)} zł
-                        z ${parseFloat(data.remaining_limit).toFixed(2)} zł
+                        Gratisy ${parseFloat(contribution.current_sum).toFixed(2)} zł
+                        z ${parseFloat(contribution.remaining_limit).toFixed(2)} zł
                     </small>
                 </div>
                 <div class="progress mt-1 w-[100%] mb-3" style="height: 1rem;" title="Wykorzystanie limitu">
                     <div class="progress-bar ${contributionPercentage < 50 ? 'bg-warning' : contributionPercentage < 80 ? 'bg-info' : 'bg-success'}" 
                         role="progressbar"
                         style="width: ${contributionPercentage}%;"
-                        aria-valuenow="${data.current_sum}"
+                        aria-valuenow="${contribution.current_sum}"
                         aria-valuemin="0"
-                        aria-valuemax="${data.remaining_limit}">
+                        aria-valuemax="${contribution.remaining_limit}">
                     </div>
                 </div>
             `;
@@ -236,8 +240,8 @@
         }
         
         // Amount to pay after contribution
-        const totalCost = data.temporary_array_of_all_items.reduce((sum, item) => sum + parseFloat(item.price), 0);
-        const remainingCost = totalCost - data.current_sum;
+        const totalCost = contribution.temporary_array_of_all_items.reduce((sum, item) => sum + parseFloat(item.price), 0);
+        const remainingCost = totalCost - contribution.current_sum;
         
         const paymentDiv = document.createElement('div');
         paymentDiv.className = 'd-flex justify-content-between mb-3';
@@ -248,7 +252,7 @@
         contributionSection.appendChild(paymentDiv);
         
         // Show all items table for staff/superuser 
-        if (data.temporary_array_of_all_items && data.temporary_array_of_all_items.length > 0) {
+        if (contribution.temporary_array_of_all_items && contribution.temporary_array_of_all_items.length > 0) {
             {% if request.user.is_staff or request.user.is_superuser %}
             const allItemsTable = document.createElement('div');
             allItemsTable.className = 'cart-expanded-items-table';
@@ -265,7 +269,7 @@
                     <tbody>
             `;
             
-            data.temporary_array_of_all_items.forEach(item => {
+            contribution.temporary_array_of_all_items.forEach(item => {
                 tableHTML += `
                     <tr>
                         <td>${item.product_name}</td>
@@ -285,7 +289,7 @@
         }
         
         // Show contribution items table for staff/superuser
-        if (data.contribution_usage_array && data.contribution_usage_array.length > 0) {
+        if (contribution.contribution_usage_array && contribution.contribution_usage_array.length > 0) {
             {% if request.user.is_staff or request.user.is_superuser %}
             const contributionTable = document.createElement('div');
             contributionTable.className = 'cart-expanded-items-table';
@@ -302,7 +306,7 @@
                     <tbody>
             `;
             
-            data.contribution_usage_array.forEach(item => {
+            contribution.contribution_usage_array.forEach(item => {
                 tableHTML += `
                     <tr>
                         <td>${item.product_name}</td>
@@ -314,7 +318,7 @@
             tableHTML += `
                     <tr class="table-success">
                         <td><strong>Suma kontrybucji:</strong></td>
-                        <td class="text-end"><strong>${data.current_sum.toFixed(2)} zł</strong></td>
+                        <td class="text-end"><strong>${contribution.current_sum.toFixed(2)} zł</strong></td>
                     </tr>
                 </tbody>
             </table>
