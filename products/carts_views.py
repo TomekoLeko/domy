@@ -265,16 +265,7 @@ def determine_contribution_usage(request):
                     'price': price
                 })
 
-        # Get the latest monthly_contribution_usage for the user
-        buyer = cart.buyer
-        monthly_contribution_usage = MonthlyContributionUsage.objects.filter(
-            profile__user=buyer
-        ).order_by('-year', '-month').first()
-
-        if not monthly_contribution_usage:
-            return temporary_array, []
-
-        remaining_limit = monthly_contribution_usage.remaining_limit
+        remaining_limit = determine_remaining_available_limit(cart.buyer)
 
         # Create contribution_usage_array based on the requirements
         contribution_usage_array = []
@@ -282,11 +273,8 @@ def determine_contribution_usage(request):
         # Calculate the total value of temporary_array to determine 50% limit
         total_cart_value = sum(float(item['price']) for item in temporary_array)
         fifty_percent_limit = total_cart_value * 0.5
- 
-        # Determine the effective limit (the lower of the two limits)
-        effective_limit = min(float(remaining_limit), fifty_percent_limit)
-        # Round down to the nearest tens
-        effective_limit = int(effective_limit / 10) * 10
+
+        effective_limit = determine_current_effective_limit(cart.buyer, remaining_limit, fifty_percent_limit)
 
         # Sort temporary_array by price (descending) to optimize usage of the limit
         # Using descending sort to get closest to the limit with fewer items
@@ -320,6 +308,34 @@ def determine_contribution_usage(request):
             'message': 'Cart or contribution usage not found'
         })
 
+def determine_remaining_available_limit(buyer):
+    monthly_contribution_usage = MonthlyContributionUsage.objects.filter(
+        profile__user=buyer
+    ).order_by('-year', '-month').first()
+
+    remaining_available_limit = min(monthly_contribution_usage.remaining_limit, determine_sum_of_available_contributions())
+
+    return remaining_available_limit
+
+def determine_current_effective_limit(buyer, remaining_limit, fifty_percent_limit):
+    monthly_contribution_usage = MonthlyContributionUsage.objects.filter(
+        profile__user=buyer
+    ).order_by('-year', '-month').first()
+    if not monthly_contribution_usage:
+        return 0
+
+    remaining_limit = monthly_contribution_usage.remaining_limit
+    effective_limit = min(float(remaining_limit), fifty_percent_limit)
+
+    #  get sum of all the contributions
+    effective_limit = int(effective_limit / 10) * 10
+    return effective_limit
+
+
+def determine_sum_of_available_contributions():
+    # hardcoded for now (do not change withoud an explicit command)
+    return 500
+
 def assign_greedy(temporary_array, effective_limit):
     sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
 
@@ -335,7 +351,6 @@ def assign_greedy(temporary_array, effective_limit):
     return contribution_usage_array, current_sum
 
 def assign_optimal(temporary_array, effective_limit):
-    print('assign_optimal Django method')
     n = len(temporary_array)
     prices = [float(item['price']) for item in temporary_array]
 

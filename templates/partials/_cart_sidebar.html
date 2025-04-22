@@ -31,12 +31,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         getCartItems().then(data => {
             renderCartItems(data);
-            {% if request.session.cart_contribution %}
-                const cartContributionData = JSON.parse(document.getElementById('cart-contribution-data').textContent);
-                renderContribution({ status: 'success', cart_contribution: cartContributionData });
-            {% else %}
-                determineContributionUsage();
-            {% endif %}
+            determineContributionUsage();
         });
     });
 
