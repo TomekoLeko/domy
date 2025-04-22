@@ -173,6 +173,8 @@ def create_order(request):
         cart.delete()
 
         request.session['cart_open'] = False  # Close cart after successful order
+        if 'cart_contribution' in request.session:
+            del request.session['cart_contribution']  # Clear cart contribution
         request.session.modified = True
         messages.success(request, 'Zamówienie zostało złożone pomyślnie!')
         return redirect('home')
@@ -283,14 +285,17 @@ def determine_contribution_usage(request):
  
         # Determine the effective limit (the lower of the two limits)
         effective_limit = min(float(remaining_limit), fifty_percent_limit)
+        # Round down to the nearest tens
+        effective_limit = int(effective_limit / 10) * 10
 
         # Sort temporary_array by price (descending) to optimize usage of the limit
         # Using descending sort to get closest to the limit with fewer items
         sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
 
         contribution_usage_array, current_sum = assign_greedy(temporary_array, effective_limit)
-        
-        # Create cart_contribution dictionary with all variables
+        if current_sum != effective_limit:
+            contribution_usage_array, current_sum = assign_optimal(temporary_array, effective_limit)
+
         cart_contribution = {
             'contribution_usage_array': contribution_usage_array,
             'temporary_array_of_all_items': temporary_array,
@@ -299,11 +304,11 @@ def determine_contribution_usage(request):
             'remaining_limit': str(remaining_limit),
             'fifty_percent_limit': fifty_percent_limit
         }
-        
+
         # Save cart_contribution in the session
         request.session['cart_contribution'] = cart_contribution
         request.session.modified = True
-        
+
         return JsonResponse({
             'status': 'success',
             'cart_contribution': cart_contribution
@@ -328,4 +333,35 @@ def assign_greedy(temporary_array, effective_limit):
             current_sum += item_price
 
     return contribution_usage_array, current_sum
+
+def assign_optimal(temporary_array, effective_limit):
+    print('assign_optimal Django method')
+    n = len(temporary_array)
+    prices = [float(item['price']) for item in temporary_array]
+
+    # dp[i] = best sum achievable <= i
+    dp = [0.0] * (int(effective_limit * 100) + 1)  # scale to avoid floating point errors
+    item_trace = [None] * len(dp)  # remember the last item used to get this sum
+
+    for idx, price in enumerate(prices):
+        price_cents = int(price * 100)
+        for i in range(len(dp) - 1, price_cents - 1, -1):
+            if dp[i - price_cents] + price > dp[i]:
+                dp[i] = dp[i - price_cents] + price
+                item_trace[i] = idx
+
+    # Find the best total
+    best_sum_index = max(range(len(dp)), key=lambda i: dp[i])
+    best_sum = dp[best_sum_index]
+
+    # Reconstruct the items used
+    contribution_usage_array = []
+    i = best_sum_index
+    while i > 0 and item_trace[i] is not None:
+        idx = item_trace[i]
+        contribution_usage_array.append(temporary_array[idx])
+        price_cents = int(prices[idx] * 100)
+        i -= price_cents
+
+    return contribution_usage_array[::-1], best_sum
 

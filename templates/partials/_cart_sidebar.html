@@ -18,6 +18,10 @@
     </div>
 </div>
 
+{% if request.session.cart_contribution %}
+    {{ request.session.cart_contribution|json_script:"cart-contribution-data" }}
+{% endif %}
+
 <!-- Cart Sidebar JavaScript -->
 
 <script src="{% static 'js/cart_sidebar_script.js' %}"></script>
@@ -27,7 +31,12 @@
     document.addEventListener('DOMContentLoaded', function() {
         getCartItems().then(data => {
             renderCartItems(data);
-            determineContributionUsage();
+            {% if request.session.cart_contribution %}
+                const cartContributionData = JSON.parse(document.getElementById('cart-contribution-data').textContent);
+                renderContribution({ status: 'success', cart_contribution: cartContributionData });
+            {% else %}
+                determineContributionUsage();
+            {% endif %}
         });
     });
 
@@ -204,7 +213,6 @@
         } else {
             const newHeader = document.createElement('h6');
             newHeader.textContent = 'Kontrybucja';
-            cartContribution.appendChild(newHeader);
         }
 
         // Get the cart_contribution object from the response
@@ -259,6 +267,11 @@
             
             let tableHTML = `
                 <h6 class="mt-2 mb-2">Rozbicie pozycji:</h6>
+                <div>
+                    <small>
+                        Limit: ${contribution.effective_limit} zł
+                    </small>
+                </div>
                 <table class="table table-sm">
                     <thead>
                         <tr>
