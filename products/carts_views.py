@@ -140,65 +140,41 @@ def remove_cart_item(request):
         messages.error(request, f'Wystąpił błąd: {str(e)}')
         return redirect(request.META.get('HTTP_REFERER', 'home'))
 
-
-def map_available_contributions_to_contribution_usage_array(contribution_usage_array, temporary_array_of_all_items):
+def assign_payments_to_contribution_items(contribution_usage_array):
     available_contributions = Payment.get_available_contributions()
     order_items_payed_by_contributions_array = []
-    # map temporary_array_of_all_items and give it buyer_id (empyt for now)
-    temporary_array_of_all_items = [{**item, 'payment_id': ''} for item in temporary_array_of_all_items]
-
-    # pprint(temporary_array_of_all_items)
-    # PRÓBUJEMY ZUZYĆ CAŁĄ KONTRYBUCJĘ I JEELI SIE NIE DA TO PRZEGHODZIMY DO KOLEJNEJ (FIFO)
-    # NA TEN MOMENT ZRÓBMY KOLEKCJĘ, POTEM ORDER ITEMS
 
     for contribution in available_contributions:
         available_amount = contribution.available_amount
-        contribution_usage_array_sum = sum(float(item['price']) for item in contribution_usage_array)
-        print('First contribution available_amount: ' + str(available_amount))
-        print('First contribution contribution_usage_array_sum: ' + str(contribution_usage_array_sum))
-
+        contribution_usage_array_sum = find_sum_of_all_items_with_empty_payment_id(contribution_usage_array)
         if  available_amount >= contribution_usage_array_sum:
-            for item in contribution_usage_array:
-                temporary_array_of_all_items = find_item_and_assign_payment_id(temporary_array_of_all_items, item, contribution.id)
-            print('Ended with one payment')
-            for item in temporary_array_of_all_items:
-                print(item)
-            print('///////////////////////////////////////////')
-
+            contribution_usage_array = assign_payment_id_to_all_with_empty_payment_id(contribution_usage_array, contribution.id)
             break
         else:
-            print('Using the: ' + str(contribution.id) + ' payment to the round number')
-            temporary_array_of_all_items = try_to_use_contribution_to_the_round_number(available_amount, contribution.id, temporary_array_of_all_items)
-            #try tu use the whole contribution to the round number
-            # take available amount, payment_id, temporary_array_of_all_items, assign payemtns, return new temporary_array_of_all_items
-            for item in temporary_array_of_all_items:
-                print(item)
-            print('--------------------------------')
+            contribution_usage_array = try_to_use_contribution_to_the_round_number(available_amount, contribution.id, contribution_usage_array)
 
+    return contribution_usage_array
 
+def map_all_items_to_contribution_items(temporary_array_of_all_items, contribution_usage_array):
+    # Create a copy of the temporary array to avoid modifying the original
+    result_array = [item.copy() for item in temporary_array_of_all_items]
+    
+    # For each item in contribution_usage_array
+    for contribution_item in contribution_usage_array:
+        product_id = contribution_item['product_id']
+        payment_id = contribution_item['payment_id']
+        
+        # Find a matching item in temporary_array with empty payment_id
+        for item in result_array:
+            if (item['product_id'] == product_id and 
+                item.get('payment_id', '') == ''):
+                # Assign the payment_id from contribution_item
+                item['payment_id'] = payment_id
+                # Break after finding and updating the first match
+                break
+    
+    return result_array
 
-
-
-
-
-
-
-
-        # for item in contribution_usage_array:
-        #     if available_amount >= Decimal(item['price']):
-        #         order_item = {
-        #             'product_id': item['product_id'],
-        #             'product_name': item['product_name'],
-        #             'price': item['price'],
-        #             'quantity': 1,
-        #             'payment_id': contribution.id
-        #         }
-        #         order_items_payed_by_contributions_array.append(order_item)
-        #         contribution_usage_array.remove(item)
-        #         available_amount -= Decimal(item['price'])
-        #     else:
-        #         break
-               
 def try_to_use_contribution_to_the_round_number(available_amount, payment_id, temporary_array_of_all_items):
     # 1. Find all items with empty payment_id
     items_without_payment = [item.copy() for item in temporary_array_of_all_items if item.get('payment_id', '') == '']
@@ -282,15 +258,21 @@ def try_to_use_contribution_to_the_round_number(available_amount, payment_id, te
     # 4. Return the updated array
     return result
 
-def find_item_and_assign_payment_id(temporary_array_of_all_items, item, contribution_id):
+def assign_payment_id_to_all_with_empty_payment_id(temporary_array_of_all_items, contribution_id):
     used_amount = 0
     for item in temporary_array_of_all_items:
-        if item['product_id'] == item['product_id'] and item['payment_id'] == '':
+        if item['payment_id'] == '':
             item['payment_id'] = contribution_id
             used_amount += Decimal(item['price'])
-
     print(">> used amount: " + str(used_amount)+ "<<")        
     return temporary_array_of_all_items
+
+def find_sum_of_all_items_with_empty_payment_id(temporary_array_of_all_items):
+    sum = 0
+    for item in temporary_array_of_all_items:
+        if item['payment_id'] == '':
+            sum += Decimal(item['price'])
+    return sum
 
 @require_POST
 def create_order(request):
@@ -301,10 +283,12 @@ def create_order(request):
     if selected_buyer.profile.is_beneficiary and cart_contribution:
         # get the cart_contribution from the session
 
-        map_available_contributions_to_contribution_usage_array(
-            cart_contribution.get('contribution_usage_array'), cart_contribution.get('temporary_array_of_all_items')
-        )
-
+        contribution_items_with_assigned_payments = assign_payments_to_contribution_items(cart_contribution.get('contribution_usage_array'))
+        temporary_array_of_all_items = cart_contribution.get('temporary_array_of_all_items')
+        temporary_array_of_all_items_with_assigned_payments = map_all_items_to_contribution_items(temporary_array_of_all_items, contribution_items_with_assigned_payments)
+        print("temporary_array_of_all_items_with_assigned_payments:")
+        for item in temporary_array_of_all_items_with_assigned_payments:
+            print(item)
 
         #  MAP AVAILABLE CONTRIBUTIONS TO CONTRIBUTION USAGE ARRAY
 
@@ -437,7 +421,8 @@ def determine_contribution_usage(request):
                 temporary_array.append({
                     'product_id': product_id,
                     'product_name': product_name,
-                    'price': price
+                    'price': price,
+                    'payment_id': ''
                 })
 
         remaining_limit = determine_remaining_available_limit(cart.buyer)
