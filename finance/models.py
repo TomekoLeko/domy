@@ -6,6 +6,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 from users.models import Profile
 from products.models import OrderItem
+from pprint import pprint
 
 class Payment(models.Model):
     PAYMENT_TYPES = [
@@ -80,6 +81,15 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"{self.get_payment_type_display()}: {self.amount} zł"
+
+    @property
+    def available_amount(self):
+        used_amount = sum(item.subtotal for item in self.related_order_items.all())
+        return self.amount - used_amount
+
+    @classmethod
+    def get_available_contributions(cls):
+        return cls.objects.filter(payment_type='contribution').order_by('payment_date')
 
 class Invoice(models.Model):
     invoice_number = models.CharField(max_length=50, unique=True)
