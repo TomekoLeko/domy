@@ -16,7 +16,6 @@ from django.contrib import messages
 from decimal import Decimal
 from pprint import pprint
 
-
 @require_POST
 def create_order(request):
     selected_buyer_id = request.session.get('selected_buyer_id')
@@ -32,65 +31,86 @@ def create_order(request):
             temporary_array_of_all_items, contribution_items_with_assigned_payments
         )
 
-        print("temporary_array_of_all_items_with_assigned_payments:")
-        for item in temporary_array_of_all_items_with_assigned_payments:
-            print(item)
+        # print("temporary_array_of_all_items_with_assigned_payments:")
+        # for item in temporary_array_of_all_items_with_assigned_payments:
+        #     print(item)
 
         grouped_items = group_items_by_payment_id_and_product_id(temporary_array_of_all_items_with_assigned_payments)
-        print("grouped items:")
-        for item in grouped_items:
-            print(item)
+        # print("grouped items:")
+        # for item in grouped_items:
+        #     print(item)
 
-    else:
-        print('selected_buyer is not beneficiary')
-    return redirect(request.META.get('HTTP_REFERER', 'home'))
 
-    # try:
-    #     # Get the selected buyer's ID from session
-    #     selected_buyer_id = request.session.get('selected_buyer_id')
-    #     if not selected_buyer_id:
-    #         messages.error(request, 'Nie wybrano kupującego')
-    #         return redirect('home')
+    try:
+        # Get the selected buyer's ID from session
+        selected_buyer_id = request.session.get('selected_buyer_id')
+        if not selected_buyer_id:
+            messages.error(request, 'Nie wybrano kupującego')
+            return redirect('home')
 
-    #     # Get the specific cart for the current user and selected buyer
-    #     cart = Cart.objects.get(
-    #         user=request.user,
-    #         buyer_id=selected_buyer_id
-    #     )
+        # Get the specific cart for the current user and selected buyer
+        cart = Cart.objects.get(
+            user=request.user,
+            buyer_id=selected_buyer_id
+        )
 
-    #     # Create order
-    #     order = Order.objects.create(
-    #         user=request.user,
-    #         buyer=cart.buyer,
-    #         total_cost=cart.total_cost
-    #     )
+        # Create order
+        order = Order.objects.create(
+            user=request.user,
+            buyer=cart.buyer,
+            total_cost=cart.total_cost
+        )
 
-    #     # Create order items
-    #     for cart_item in cart.items.all():
-    #         OrderItem.objects.create(
-    #             order=order,
-    #             product=cart_item.product,
-    #             quantity=cart_item.quantity,
-    #             price=cart_item.price,
-    #             subtotal=cart_item.subtotal
-    #         )
+        # Create order items
+        if grouped_items:
+            print("grouped items:")
+            for item in grouped_items:
+                product = Product.objects.get(id=item['product_id'])
+                payment = Payment.objects.get(id=item['payment_id'])
+                subtotal = item['quantity'] * item['price']
+                print("subtotal: " + str(subtotal))
 
-    #     # Clear the cart
-    #     cart.delete()
+                try:
+                    OrderItem.objects.create(
+                        order=order,
+                        product=product,
+                        quantity=item['quantity'],
+                        price=item['price'],
+                        payment=payment,
+                        subtotal=subtotal
+                        )
+                except Exception as e:
+                    print("error creating order item: " + str(e))
+                
+                print("order item created: " + str(order_item.id))
+        else:
+            print("cart items:")
+            for cart_item in cart.items.all():
+                OrderItem.objects.create(
+                    order=order,
+                    product=cart_item.product,
+                    quantity=cart_item.quantity,
+                    price=cart_item.price,
+                subtotal=cart_item.subtotal
+            )
 
-    #     request.session['cart_open'] = False  # Close cart after successful order
-    #     if 'cart_contribution' in request.session:
-    #         del request.session['cart_contribution']  # Clear cart contribution
-    #     request.session.modified = True
-    #     messages.success(request, 'Zamówienie zostało złożone pomyślnie!')
-    #     return redirect('home')
+        # Clear the cart
+        print("clearing cart")
+        cart.delete()
 
-    # except Cart.DoesNotExist:
-    #     messages.error(request, 'Nie znaleziono koszyka')
-    #     return redirect(request.META.get('HTTP_REFERER', 'home'))
-    # except Exception as e:
-    #     messages.error(request, f'Wystąpił błąd: {str(e)}')
-    #     return redirect(request.META.get('HTTP_REFERER', 'home'))
+        request.session['cart_open'] = False  # Close cart after successful order
+        if 'cart_contribution' in request.session:
+            del request.session['cart_contribution']  # Clear cart contribution
+        request.session.modified = True
+        messages.success(request, 'Zamówienie zostało złożone pomyślnie!')
+        return redirect('home')
+
+    except Cart.DoesNotExist:
+        messages.error(request, 'Nie znaleziono koszyka')
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
+    except Exception as e:
+        messages.error(request, f'Wystąpił błąd: {str(e)}')
+        return redirect(request.META.get('HTTP_REFERER', 'home'))
 
 
 
