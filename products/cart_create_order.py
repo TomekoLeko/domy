@@ -36,10 +36,10 @@ def create_order(request):
         for item in temporary_array_of_all_items_with_assigned_payments:
             print(item)
 
-        # grouped_items = group_items_by_payment_id_and_product_id(temporary_array_of_all_items_with_assigned_payments)
-        # print("grouped items:")
-        # for item in grouped_items:
-        #     print(item)
+        grouped_items = group_items_by_payment_id_and_product_id(temporary_array_of_all_items_with_assigned_payments)
+        print("grouped items:")
+        for item in grouped_items:
+            print(item)
 
     else:
         print('selected_buyer is not beneficiary')
@@ -228,5 +228,22 @@ def find_sum_of_all_items_with_empty_payment_id(temporary_array_of_all_items):
             sum += Decimal(item['price'])
     return sum
 
-# def group_items_by_payment_id_and_product_id(temporary_array_of_all_items):
-    
+def group_items_by_payment_id_and_product_id(temporary_array_of_all_items):
+    grouped_items = {}
+    result = []
+
+    for item in temporary_array_of_all_items:
+        product_id = item['product_id']
+        payment_id = item['payment_id']
+
+        key = f"{product_id}_{payment_id}"
+
+        if key not in grouped_items:
+            grouped_items[key] = item.copy()
+        else:
+            grouped_items[key]['quantity'] += item['quantity']
+
+    for grouped_item in grouped_items.values():
+        result.append(grouped_item)
+
+    return result
