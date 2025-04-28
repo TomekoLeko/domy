@@ -218,15 +218,15 @@
         contributionSection.className = 'border-top pt-3 mt-3';
         
         // Remaining limit section with progress bar
-        if (parseFloat(contribution.remaining_limit) > 0) {
+        if (parseFloat(contribution.remaining_available_limit) > 0) {
             const remainingLimitDiv = document.createElement('div');
-            const contributionPercentage = (contribution.current_sum / parseFloat(contribution.remaining_limit) * 100).toFixed(0);
+            const contributionPercentage = (contribution.current_sum / parseFloat(contribution.remaining_available_limit) * 100).toFixed(0);
             
             remainingLimitDiv.innerHTML = `
                 <div>
                     <small>
                         Gratisy ${parseFloat(contribution.current_sum).toFixed(2)} zł
-                        z ${parseFloat(contribution.remaining_limit).toFixed(2)} zł
+                        z ${parseFloat(contribution.remaining_available_limit).toFixed(2)} zł
                     </small>
                 </div>
                 <div class="progress mt-1 w-[100%] mb-3" style="height: 1rem;" title="Wykorzystanie limitu">
@@ -235,7 +235,7 @@
                         style="width: ${contributionPercentage}%;"
                         aria-valuenow="${contribution.current_sum}"
                         aria-valuemin="0"
-                        aria-valuemax="${contribution.remaining_limit}">
+                        aria-valuemax="${contribution.remaining_available_limit}">
                     </div>
                 </div>
             `;

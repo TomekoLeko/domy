@@ -14,7 +14,6 @@ from django.utils import timezone
 from finance.models import MonthlyContributionUsage
 from django.contrib import messages
 from decimal import Decimal
-from pprint import pprint
 
 @require_POST
 def create_order(request):
@@ -25,21 +24,11 @@ def create_order(request):
     temporary_array_of_all_items = cart_contribution.get('temporary_array_of_all_items')
 
     if selected_buyer.profile.is_beneficiary and cart_contribution:
-
         contribution_items_with_assigned_payments = assign_payments_to_contribution_items(contribution_usage_array)
         temporary_array_of_all_items_with_assigned_payments = map_all_items_to_contribution_items(
             temporary_array_of_all_items, contribution_items_with_assigned_payments
         )
-
-        # print("temporary_array_of_all_items_with_assigned_payments:")
-        # for item in temporary_array_of_all_items_with_assigned_payments:
-        #     print(item)
-
         grouped_items = group_items_by_payment_id_and_product_id(temporary_array_of_all_items_with_assigned_payments)
-        # print("grouped items:")
-        # for item in grouped_items:
-        #     print(item)
-
 
     try:
         # Get the selected buyer's ID from session
@@ -63,28 +52,25 @@ def create_order(request):
 
         # Create order items
         if grouped_items:
-            print("grouped items:")
             for item in grouped_items:
                 product = Product.objects.get(id=item['product_id'])
-                payment = Payment.objects.get(id=item['payment_id'])
-                subtotal = item['quantity'] * item['price']
-                print("subtotal: " + str(subtotal))
-
+                subtotal = Decimal(item['quantity']) * Decimal(item['price'])
                 try:
-                    OrderItem.objects.create(
+                    order_item = OrderItem.objects.create(
                         order=order,
                         product=product,
-                        quantity=item['quantity'],
-                        price=item['price'],
-                        payment=payment,
+                        quantity=Decimal(item['quantity']),
+                        price=Decimal(item['price']),
                         subtotal=subtotal
-                        )
+                    )
+                    if item['payment_id']:
+                        payment = Payment.objects.get(id=item['payment_id'])
+                        payment.related_order_items.add(order_item)
                 except Exception as e:
-                    print("error creating order item: " + str(e))
-                
-                print("order item created: " + str(order_item.id))
+                    messages.error(request, f'Wystąpił błąd: {str(e)}')
+                    return redirect(request.META.get('HTTP_REFERER', 'home'))
+
         else:
-            print("cart items:")
             for cart_item in cart.items.all():
                 OrderItem.objects.create(
                     order=order,
@@ -94,8 +80,6 @@ def create_order(request):
                 subtotal=cart_item.subtotal
             )
 
-        # Clear the cart
-        print("clearing cart")
         cart.delete()
 
         request.session['cart_open'] = False  # Close cart after successful order
@@ -112,10 +96,9 @@ def create_order(request):
         messages.error(request, f'Wystąpił błąd: {str(e)}')
         return redirect(request.META.get('HTTP_REFERER', 'home'))
 
-
-
 def assign_payments_to_contribution_items(contribution_usage_array):
     available_contributions = Payment.get_available_contributions()
+
     order_items_payed_by_contributions_array = []
 
     for contribution in available_contributions:
@@ -132,12 +115,11 @@ def assign_payments_to_contribution_items(contribution_usage_array):
 def map_all_items_to_contribution_items(temporary_array_of_all_items, contribution_usage_array):
     # Create a copy of the temporary array to avoid modifying the original
     result_array = [item.copy() for item in temporary_array_of_all_items]
-    
+
     # For each item in contribution_usage_array
     for contribution_item in contribution_usage_array:
         product_id = contribution_item['product_id']
         payment_id = contribution_item['payment_id']
-        
         # Find a matching item in temporary_array with empty payment_id
         for item in result_array:
             if (item['product_id'] == product_id and 
@@ -146,7 +128,7 @@ def map_all_items_to_contribution_items(temporary_array_of_all_items, contributi
                 item['payment_id'] = payment_id
                 # Break after finding and updating the first match
                 break
-    
+
     return result_array
 
 def try_to_use_contribution_to_the_round_number(available_amount, payment_id, temporary_array_of_all_items):
@@ -238,7 +220,6 @@ def assign_payment_id_to_all_with_empty_payment_id(temporary_array_of_all_items,
         if item['payment_id'] == '':
             item['payment_id'] = contribution_id
             used_amount += Decimal(item['price'])
-    print(">> used amount: " + str(used_amount)+ "<<")        
     return temporary_array_of_all_items
 
 def find_sum_of_all_items_with_empty_payment_id(temporary_array_of_all_items):
