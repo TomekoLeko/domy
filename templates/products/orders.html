@@ -119,19 +119,13 @@
                                                         {% else %}
                                                             <div class="btn-group btn-group-sm">
                                                                 <button type="button" 
-                                                                        class="btn btn-primary create-stock-reduction" 
-                                                                        data-order-item-id="{{ item.id }}" 
-                                                                        data-product-id="{{ item.product.id }}"
-                                                                        data-quantity="{{ item.quantity }}"
-                                                                        data-stock-type="physical">
+                                                                        class="btn btn-primary" 
+                                                                        onclick="createStockReduction('{{ item.id }}', '{{ item.product.id }}', '{{ item.quantity }}', 'physical')">
                                                                     Fizyczny
                                                                 </button>
                                                                 <button type="button" 
-                                                                        class="btn btn-secondary create-stock-reduction" 
-                                                                        data-order-item-id="{{ item.id }}" 
-                                                                        data-product-id="{{ item.product.id }}"
-                                                                        data-quantity="{{ item.quantity }}"
-                                                                        data-stock-type="virtual">
+                                                                        class="btn btn-secondary" 
+                                                                        onclick="createStockReduction('{{ item.id }}', '{{ item.product.id }}', '{{ item.quantity }}', 'virtual')">
                                                                     Wirtualny
                                                                 </button>
                                                             </div>
@@ -258,18 +252,6 @@ document.addEventListener('DOMContentLoaded', function() {
             location.reload();
         });
     }
-
-    // Handle stock reduction creation
-    document.querySelectorAll('.create-stock-reduction').forEach(button => {
-        button.addEventListener('click', function() {
-            const orderItemId = this.dataset.orderItemId;
-            const productId = this.dataset.productId;
-            const quantity = this.dataset.quantity;
-            const stockType = this.dataset.stockType;
-            
-            createStockReduction(orderItemId, productId, quantity, stockType);
-        });
-    });
 });
 
 function deleteOrder(orderId) {
