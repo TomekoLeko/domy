@@ -9,7 +9,6 @@ function postRequest(url, formFields = {}, csrfToken = null) {
     for (const key in formFields) {
         formData.append(key, formFields[key]);
     }
-    console.log("postRequest function called");
 
     return fetch(url, {
         method: 'POST',
