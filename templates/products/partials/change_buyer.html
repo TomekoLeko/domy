@@ -1,0 +1,56 @@
+{% csrf_token %}
+<div class="col-md-6">
+    <label class="form-label">Wybierz kupującego:</label>
+    <div class="dropdown">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" id="buyerDropdown" 
+                data-bs-toggle="dropdown" aria-expanded="false">
+            {% if selected_buyer %}
+                {{ selected_buyer.profile.name|default:selected_buyer.username }}
+            {% else %}
+                Wybierz kupującego
+            {% endif %}
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="buyerDropdown">
+            {% for beneficiary in beneficiaries %}
+                <li>
+                    <a class="dropdown-item {% if selected_buyer.id == beneficiary.id %}active{% endif %}" 
+                       href="#" 
+                       onclick="changeBuyer('{{ beneficiary.id }}'); return false;">
+                        {{ beneficiary.profile.name|default:beneficiary.username }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<script>
+function changeBuyer(buyerId) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    if (!csrfToken) {
+        console.error('CSRF token not found');
+        return;
+    }
+
+    fetch('/change-buyer/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            buyer_id: buyerId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Wystąpił błąd podczas zmiany kupującego');
+    });
+}
+</script> 
