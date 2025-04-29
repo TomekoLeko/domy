@@ -200,6 +200,8 @@ def home(request):
     context = {
         'products': products,
     }
+    
+    selected_buyer = None  # Initialize the variable
 
     if request.user.is_authenticated:
         if request.user.is_staff or request.user.is_superuser:
@@ -225,7 +227,8 @@ def home(request):
                 except User.DoesNotExist:
                     pass
         else:
-            context['selected_buyer'] = request.user
+            selected_buyer = request.user
+            context['selected_buyer'] = selected_buyer
             buyer_price_list = request.user.profile.price_list
             if buyer_price_list:
                 prices = Price.objects.filter(
