@@ -253,8 +253,8 @@ def home(request):
 @require_POST
 @require_authenticated_staff_or_superuser
 def change_buyer(request):
-    data = json.loads(request.body)
-    buyer_id = data.get('buyer_id')
+    buyer_id = request.POST.get('buyer_id')
+
 
     if buyer_id:
         request.session['selected_buyer_id'] = buyer_id

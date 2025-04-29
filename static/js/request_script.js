@@ -4,16 +4,18 @@
 
 
 //  get methods
-function postRequest(url, formFields = {}) {
+function postRequest(url, formFields = {}, csrfToken = null) {
     const formData = new FormData();
     for (const key in formFields) {
         formData.append(key, formFields[key]);
     }
+    console.log("postRequest function called");
 
     return fetch(url, {
         method: 'POST',
         headers: {
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrfToken
         },
         body: formData
     })

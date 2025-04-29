@@ -1,3 +1,4 @@
+{% load static %}
 {% csrf_token %}
 <div class="col-md-6">
     <label class="form-label">Wybierz kupującego:</label>
@@ -24,6 +25,8 @@
     </div>
 </div>
 
+
+<script src="{% static 'js/request_script.js' %}"></script>
 <script>
 function changeBuyer(buyerId) {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -32,25 +35,13 @@ function changeBuyer(buyerId) {
         return;
     }
 
-    fetch('/change-buyer/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken
-        },
-        body: JSON.stringify({
-            buyer_id: buyerId
-        })
-    })
-    .then(response => response.json())
+
+    return postRequest('{% url "change_buyer" %}', { buyer_id: buyerId }, csrfToken)
     .then(data => {
-        if (data.status === 'success') {
+        if (data?.status === 'success') {
             location.reload();
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Wystąpił błąd podczas zmiany kupującego');
+        return data;
     });
 }
 </script> 
