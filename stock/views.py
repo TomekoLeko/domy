@@ -7,7 +7,7 @@ from finance.models import Invoice
 from products.models import Product, OrderItem
 from stock.models import StockReduction
 from decimal import Decimal
-from django.db.models import F, ExpressionWrapper, DecimalField
+from django.db.models import F, ExpressionWrapper, DecimalField, Sum
 import json
 
 @require_authenticated_staff_or_superuser
@@ -211,3 +211,40 @@ def create_stock_reduction(request):
 def stock_levels(request):
     """View to display the current stock levels of products"""
     return render(request, 'stock/stock_levels.html') 
+
+@require_authenticated_staff_or_superuser
+def api_products(request):
+    """API endpoint to get products with stock level data for the Vue app"""
+    products = Product.objects.filter(is_active=True).prefetch_related('images')
+    
+    # Get stock information for each product
+    product_data = []
+    for product in products:
+        # Get physical stock
+        physical_entries = StockEntry.objects.filter(
+            product=product,
+            stock_type='physical'
+        ).aggregate(
+            total=Sum('remaining_quantity')
+        )['total'] or 0
+        
+        # Get virtual stock
+        virtual_entries = StockEntry.objects.filter(
+            product=product,
+            stock_type='virtual'
+        ).aggregate(
+            total=Sum('remaining_quantity')
+        )['total'] or 0
+        
+        product_info = {
+            'id': product.id,
+            'name': product.name,
+            'ean': product.ean,
+            'physical_stock': physical_entries,
+            'virtual_stock': virtual_entries,
+            'unit': product.get_volume_unit_display()
+        }
+        
+        product_data.append(product_info)
+        
+    return JsonResponse({'products': product_data}) 

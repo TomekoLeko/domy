@@ -12,4 +12,5 @@ urlpatterns = [
     path('supply-orders/delete/<int:supply_order_id>/', views.delete_supply_order, name='delete_supply_order'),
     path('create-reduction/', views.create_stock_reduction, name='create_stock_reduction'),
     path('stock-levels/', views.stock_levels, name='stock_levels'),
+    path('api/products/', views.api_products, name='api_products'),
 ] 
