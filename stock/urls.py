@@ -14,4 +14,5 @@ urlpatterns = [
     path('stock-levels/', views.stock_levels, name='stock_levels'),
     path('api/products/', views.api_products, name='api_products'),
     path('product-stock-levels/<int:product_id>/', views.product_stock_levels, name='product_stock_levels'),
+    path('api/product-stock-data/<int:product_id>/', views.api_product_stock_data, name='api_product_stock_data'),
 ] 

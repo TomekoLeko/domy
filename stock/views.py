@@ -256,4 +256,51 @@ def product_stock_levels(request, product_id):
     
     return render(request, 'stock/product_stock_levels.html', {
         'product': product,
-    }) 
+    })
+
+@require_authenticated_staff_or_superuser
+def api_product_stock_data(request, product_id):
+    """API endpoint to get detailed stock data for a specific product"""
+    product = get_object_or_404(Product, id=product_id)
+    
+    # Get stock entries
+    stock_entries = StockEntry.objects.filter(product=product).select_related('supply_order', 'supply_order__supplier')
+    
+    # Get stock reductions
+    stock_reductions = StockReduction.objects.filter(product=product).select_related('order', 'order_item')
+    
+    entries_data = []
+    for entry in stock_entries:
+        entries_data.append({
+            'id': entry.id,
+            'type': 'entry',
+            'date': entry.created_at.strftime('%Y-%m-%d %H:%M'),
+            'quantity': entry.quantity,
+            'remaining_quantity': entry.remaining_quantity,
+            'supplier': entry.supply_order.supplier.name if entry.supply_order.supplier else 'N/A',
+            'stock_type': entry.get_stock_type_display(),
+            'order_number': entry.supply_order.order_number if entry.supply_order.order_number else 'N/A',
+        })
+    
+    reductions_data = []
+    for reduction in stock_reductions:
+        reductions_data.append({
+            'id': reduction.id,
+            'type': 'reduction',
+            'date': reduction.created_at.strftime('%Y-%m-%d %H:%M'),
+            'quantity': reduction.quantity,
+            'order_id': reduction.order.id if reduction.order else 'N/A',
+            'stock_type': reduction.get_stock_type_display(),
+        })
+    
+    # Combine and sort by date (newest first)
+    all_items = entries_data + reductions_data
+    
+    product_data = {
+        'id': product.id,
+        'name': product.name,
+        'ean': product.ean,
+        'stock_items': all_items
+    }
+    
+    return JsonResponse(product_data) 
