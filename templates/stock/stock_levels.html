@@ -50,7 +50,11 @@
                         </thead>
                         <tbody>
                             <tr v-for="product in sortedProducts" :key="product.id">
-                                <td>{% verbatim %}{{ product.name }}{% endverbatim %}</td>
+                                <td>
+                                    <a :href="'/stock/product-stock-levels/' + product.id + '/'">
+                                        {% verbatim %}{{ product.name }}{% endverbatim %}
+                                    </a>
+                                </td>
                                 <td>{% verbatim %}{{ product.ean || '-' }}{% endverbatim %}</td>
                                 <td>{% verbatim %}{{ product.physical_stock }}{% endverbatim %}</td>
                                 <td>{% verbatim %}{{ product.virtual_stock }}{% endverbatim %}</td>

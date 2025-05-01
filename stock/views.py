@@ -248,3 +248,12 @@ def api_products(request):
         product_data.append(product_info)
         
     return JsonResponse({'products': product_data}) 
+
+@require_authenticated_staff_or_superuser
+def product_stock_levels(request, product_id):
+    """View to display detailed stock information for a specific product"""
+    product = get_object_or_404(Product, id=product_id)
+    
+    return render(request, 'stock/product_stock_levels.html', {
+        'product': product,
+    }) 

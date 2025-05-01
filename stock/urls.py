@@ -13,4 +13,5 @@ urlpatterns = [
     path('create-reduction/', views.create_stock_reduction, name='create_stock_reduction'),
     path('stock-levels/', views.stock_levels, name='stock_levels'),
     path('api/products/', views.api_products, name='api_products'),
+    path('product-stock-levels/<int:product_id>/', views.product_stock_levels, name='product_stock_levels'),
 ] 
