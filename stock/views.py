@@ -205,4 +205,9 @@ def create_stock_reduction(request):
         
         return JsonResponse({'status': 'success'})
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}) 
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+@require_authenticated_staff_or_superuser
+def stock_levels(request):
+    """View to display the current stock levels of products"""
+    return render(request, 'stock/stock_levels.html') 
