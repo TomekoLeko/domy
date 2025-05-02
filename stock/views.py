@@ -9,6 +9,7 @@ from stock.models import StockReduction
 from decimal import Decimal
 from django.db.models import F, ExpressionWrapper, DecimalField, Sum
 import json
+from pprint import pprint
 
 @require_authenticated_staff_or_superuser
 def suppliers(request):
@@ -212,6 +213,42 @@ def stock_levels(request):
     """View to display the current stock levels of products"""
     return render(request, 'stock/stock_levels.html') 
 
+def calculate_physical_stock_level(product):
+    """Calculate physical stock level for a product (entries minus reductions)"""
+    physical_entries_total = StockEntry.objects.filter(
+        product=product,
+        stock_type='physical'
+    ).aggregate(
+        total=Sum('remaining_quantity')
+    )['total'] or 0
+    
+    physical_reductions_total = StockReduction.objects.filter(
+        product=product,
+        stock_type='physical'
+    ).aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+    
+    return physical_entries_total - physical_reductions_total
+
+def calculate_virtual_stock_level(product):
+    """Calculate virtual stock level for a product (entries minus reductions)"""
+    virtual_entries_total = StockEntry.objects.filter(
+        product=product,
+        stock_type='virtual'
+    ).aggregate(
+        total=Sum('remaining_quantity')
+    )['total'] or 0
+    
+    virtual_reductions_total = StockReduction.objects.filter(
+        product=product,
+        stock_type='virtual'
+    ).aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+    
+    return virtual_entries_total - virtual_reductions_total
+
 @require_authenticated_staff_or_superuser
 def api_products(request):
     """API endpoint to get products with stock level data for the Vue app"""
@@ -269,6 +306,10 @@ def api_product_stock_data(request, product_id):
     # Get stock reductions
     stock_reductions = StockReduction.objects.filter(product=product).select_related('order', 'order_item')
     
+    # Calculate stock levels using the separate methods
+    physical_stock_level = calculate_physical_stock_level(product)
+    virtual_stock_level = calculate_virtual_stock_level(product)
+    
     entries_data = []
     for entry in stock_entries:
         entries_data.append({
@@ -300,7 +341,11 @@ def api_product_stock_data(request, product_id):
         'id': product.id,
         'name': product.name,
         'ean': product.ean,
+        'physical_stock_level': physical_stock_level,
+        'virtual_stock_level': virtual_stock_level,
         'stock_items': all_items
     }
+    print("product_data: ")
+    pprint(product_data)
     
     return JsonResponse(product_data) 
