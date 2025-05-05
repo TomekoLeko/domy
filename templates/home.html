@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
 {% load product_tags %}
+{% load static %}
 
 {% block content %}
 <div class="container">
@@ -8,28 +9,7 @@
         {% if user.is_staff or user.is_superuser %}
             <div class="mb-4">
                 {% csrf_token %}
-                <label class="form-label">Wybierz kupującego:</label>
-                <div class="dropdown">
-                    <button class="btn btn-outline-primary dropdown-toggle" type="button" id="buyerDropdown" 
-                            data-bs-toggle="dropdown" aria-expanded="false">
-                        {% if selected_buyer %}
-                            {{ selected_buyer.profile.name|default:selected_buyer.username }}
-                        {% else %}
-                            Wybierz kupującego
-                        {% endif %}
-                    </button>
-                    <ul class="dropdown-menu" aria-labelledby="buyerDropdown">
-                        {% for beneficiary in beneficiaries %}
-                            <li>
-                                <a class="dropdown-item {% if selected_buyer.id == beneficiary.id %}active{% endif %}" 
-                                   href="#" 
-                                   onclick="changeBuyer('{{ beneficiary.id }}'); return false;">
-                                    {{ beneficiary.profile.name|default:beneficiary.username }}
-                                </a>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                </div>
+                {% include "products/partials/change_buyer.html" %}
             </div>
         {% endif %}
         <div class="row">
@@ -69,19 +49,21 @@
                             {% if product_prices and product_prices|get_item:product.id %}
                                 <div class="add-to-cart-overlay">
                                     <div class="add-to-cart-input-group">
-                                        <form action="{% url 'add_to_cart' %}" method="post" class="d-flex">
-                                            {% csrf_token %}
-                                            <input type="hidden" name="product_id" value="{{ product.id }}">
-                                            <input type="hidden" name="buyer_id" value="{{ request.session.selected_buyer_id }}">
-                                            <input type="number" 
-                                                   name="quantity"
-                                                   class="form-control form-control-sm" 
-                                                   value="1" 
-                                                   min="1">
-                                            <button type="submit" class="btn btn-success btn-sm">
-                                                <i class="bi bi-plus-lg"></i>
-                                            </button>
-                                        </form>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                                        <input type="hidden" name="buyer_id" value="{{ request.session.selected_buyer_id }}">
+                                        <input type="number"
+                                                name="quantity"
+                                                class="form-control form-control-sm" 
+                                                value="1"
+                                                min="1">
+                                        <button
+                                            type="submit"
+                                            class="btn btn-success btn-sm"
+                                            onclick="updateCart({{ product.id }}, parseInt(this.previousElementSibling.value), {{ request.session.selected_buyer_id }})"
+                                        >
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
                                     </div>
                                 </div>
                             {% endif %}
@@ -165,35 +147,6 @@
 
 {% block extra_js %}
 <script>
-    function changeBuyer(buyerId) {
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-        if (!csrfToken) {
-            console.error('CSRF token not found');
-            return;
-        }
-
-        fetch('/change-buyer/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({
-                buyer_id: buyerId
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                // Reload the entire page to re-render with new buyer
-                location.reload();
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Wystąpił błąd podczas zmiany kupującego');
-        });
-    }
 </script>
 {% endblock %}
 {% endblock %}

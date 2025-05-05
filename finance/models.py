@@ -6,6 +6,8 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 from users.models import Profile
 from products.models import OrderItem
+from django.db.models import Sum, F, ExpressionWrapper, DecimalField
+from django.db.models.functions import Coalesce
 
 class Payment(models.Model):
     PAYMENT_TYPES = [
@@ -80,6 +82,27 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"{self.get_payment_type_display()}: {self.amount} zł"
+
+    @property
+    def available_amount(self):
+        used_amount = sum(item.subtotal for item in self.related_order_items.all())
+        return self.amount - used_amount
+
+    @classmethod
+    def get_available_contributions(cls):
+        available_contributions = cls.objects.filter(
+            payment_type='contribution'
+        ).annotate(
+            used_amount=Coalesce(Sum('related_order_items__subtotal'), 0, output_field=DecimalField(max_digits=10, decimal_places=2))
+        ).filter(
+            amount__gt=F('used_amount')
+        ).order_by('payment_date')
+        return available_contributions
+
+    @classmethod
+    def get_available_contributions_amount(cls):
+        available_contributions = cls.get_available_contributions()
+        return sum(contribution.available_amount for contribution in available_contributions)
 
 class Invoice(models.Model):
     invoice_number = models.CharField(max_length=50, unique=True)

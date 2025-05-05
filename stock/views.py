@@ -7,8 +7,9 @@ from finance.models import Invoice
 from products.models import Product, OrderItem
 from stock.models import StockReduction
 from decimal import Decimal
-from django.db.models import F, ExpressionWrapper, DecimalField
+from django.db.models import F, ExpressionWrapper, DecimalField, Sum
 import json
+from pprint import pprint
 
 @require_authenticated_staff_or_superuser
 def suppliers(request):
@@ -205,4 +206,130 @@ def create_stock_reduction(request):
         
         return JsonResponse({'status': 'success'})
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}) 
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+@require_authenticated_staff_or_superuser
+def stock_levels(request):
+    """View to display the current stock levels of products"""
+    return render(request, 'stock/stock_levels.html') 
+
+def calculate_physical_stock_level(product):
+    physical_entries_total = StockEntry.objects.filter(
+        product=product,
+        stock_type='physical'
+    ).aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+    
+    physical_reductions_total = StockReduction.objects.filter(
+        product=product,
+        stock_type='physical'
+    ).aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+    
+    return physical_entries_total - physical_reductions_total
+
+def calculate_virtual_stock_level(product):
+    virtual_entries_total = StockEntry.objects.filter(
+        product=product,
+        stock_type='virtual'
+    ).aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+    
+    virtual_reductions_total = StockReduction.objects.filter(
+        product=product,
+        stock_type='virtual'
+    ).aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+    
+    return virtual_entries_total - virtual_reductions_total
+
+@require_authenticated_staff_or_superuser
+def api_products(request):
+    products = Product.objects.filter(is_active=True).prefetch_related('images')
+    
+    # Get stock information for each product
+    product_data = []
+    for product in products:
+        physical_stock_level = calculate_physical_stock_level(product)
+        virtual_stock_level = calculate_virtual_stock_level(product)
+
+        product_info = {
+            'id': product.id,
+            'name': product.name,
+            'ean': product.ean,
+            'physical_stock_level': physical_stock_level,
+            'virtual_stock_level': virtual_stock_level,
+            'unit': product.get_volume_unit_display()
+        }
+
+        product_data.append(product_info)
+
+    return JsonResponse({'products': product_data}) 
+
+@require_authenticated_staff_or_superuser
+def product_stock_levels(request, product_id):
+    """View to display detailed stock information for a specific product"""
+    product = get_object_or_404(Product, id=product_id)
+    
+    return render(request, 'stock/product_stock_levels.html', {
+        'product': product,
+    })
+
+@require_authenticated_staff_or_superuser
+def api_product_stock_data(request, product_id):
+    """API endpoint to get detailed stock data for a specific product"""
+    product = get_object_or_404(Product, id=product_id)
+    
+    # Get stock entries
+    stock_entries = StockEntry.objects.filter(product=product).select_related('supply_order', 'supply_order__supplier')
+    
+    # Get stock reductions
+    stock_reductions = StockReduction.objects.filter(product=product).select_related('order', 'order_item')
+    
+    # Calculate stock levels using the separate methods
+    physical_stock_level = calculate_physical_stock_level(product)
+    virtual_stock_level = calculate_virtual_stock_level(product)
+    
+    entries_data = []
+    for entry in stock_entries:
+        entries_data.append({
+            'id': entry.id,
+            'type': 'entry',
+            'date': entry.created_at.strftime('%Y-%m-%d %H:%M'),
+            'quantity': entry.quantity,
+            'remaining_quantity': entry.remaining_quantity,
+            'supplier': entry.supply_order.supplier.name if entry.supply_order.supplier else 'N/A',
+            'stock_type': entry.get_stock_type_display(),
+            'order_number': entry.supply_order.order_number if entry.supply_order.order_number else 'N/A',
+        })
+    
+    reductions_data = []
+    for reduction in stock_reductions:
+        reductions_data.append({
+            'id': reduction.id,
+            'type': 'reduction',
+            'date': reduction.created_at.strftime('%Y-%m-%d %H:%M'),
+            'quantity': reduction.quantity,
+            'order_id': reduction.order.id if reduction.order else 'N/A',
+            'stock_type': reduction.get_stock_type_display(),
+        })
+    
+    # Combine and sort by date (newest first)
+    all_items = entries_data + reductions_data
+    
+    product_data = {
+        'id': product.id,
+        'name': product.name,
+        'ean': product.ean,
+        'physical_stock_level': physical_stock_level,
+        'virtual_stock_level': virtual_stock_level,
+        'stock_items': all_items
+    }
+    print("product_data: ")
+    pprint(product_data)
+    
+    return JsonResponse(product_data) 

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Stany magazynowe{% endblock %}
+
+{% block content %}
+<div class="container my-5" id="app">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0">Stany magazynowe</h2>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <div v-if="loading" class="text-center my-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Ładowanie...</span>
+                </div>
+                <p class="mt-2">Ładowanie danych...</p>
+            </div>
+            
+            <div v-else-if="products.length === 0" class="text-center my-5">
+                <p>Brak produktów do wyświetlenia</p>
+            </div>
+            
+            <div v-else>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th @click="sortBy('name')" class="cursor-pointer">
+                                    Nazwa produktu
+                                    <i v-if="sortKey === 'name'" 
+                                       :class="sortDirection === 'asc' ? 'bi bi-sort-alpha-down' : 'bi bi-sort-alpha-up'"></i>
+                                </th>
+                                <th @click="sortBy('ean')" class="cursor-pointer">
+                                    EAN
+                                    <i v-if="sortKey === 'ean'" 
+                                       :class="sortDirection === 'asc' ? 'bi bi-sort-numeric-down' : 'bi bi-sort-numeric-up'"></i>
+                                </th>
+                                <th @click="sortBy('physical_stock')" class="cursor-pointer">
+                                    Stan fizyczny
+                                    <i v-if="sortKey === 'physical_stock'" 
+                                       :class="sortDirection === 'asc' ? 'bi bi-sort-numeric-down' : 'bi bi-sort-numeric-up'"></i>
+                                </th>
+                                <th @click="sortBy('virtual_stock')" class="cursor-pointer">
+                                    Stan wirtualny
+                                    <i v-if="sortKey === 'virtual_stock'" 
+                                       :class="sortDirection === 'asc' ? 'bi bi-sort-numeric-down' : 'bi bi-sort-numeric-up'"></i>
+                                </th>
+                                <th>Jednostka</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="product in sortedProducts" :key="product.id">
+                                <td>
+                                    <a :href="'/stock/product-stock-levels/' + product.id + '/'">
+                                        {% verbatim %}{{ product.name }}{% endverbatim %}
+                                    </a>
+                                </td>
+                                <td>{% verbatim %}{{ product.ean || '-' }}{% endverbatim %}</td>
+                                <td>{% verbatim %}{{ product.physical_stock_level }}{% endverbatim %}</td>
+                                <td>{% verbatim %}{{ product.virtual_stock_level }}{% endverbatim %}</td>
+                                <td>{% verbatim %}{{ product.unit }}{% endverbatim %}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const { createApp } = Vue
+    
+    createApp({
+        data() {
+            return {
+                products: [],
+                loading: true,
+                sortKey: 'name',
+                sortDirection: 'asc'
+            }
+        },
+        computed: {
+            sortedProducts() {
+                return this.products.sort((a, b) => {
+                    let valueA = a[this.sortKey]
+                    let valueB = b[this.sortKey]
+                    
+                    // Handle null/undefined values
+                    if (valueA === undefined || valueA === null) valueA = ''
+                    if (valueB === undefined || valueB === null) valueB = ''
+                    
+                    // Comparison based on type
+                    let comparison = 0
+                    if (typeof valueA === 'string') {
+                        comparison = valueA.localeCompare(valueB)
+                    } else {
+                        comparison = valueA - valueB
+                    }
+                    
+                    return this.sortDirection === 'asc' ? comparison : -comparison
+                })
+            }
+        },
+        methods: {
+            fetchProducts() {
+                this.loading = true
+                fetch('/stock/api/products/')
+                    .then(response => response.json())
+                    .then(data => {
+                        this.products = data.products
+                        this.loading = false
+                    })
+                    .catch(error => {
+                        console.error('Error fetching products:', error)
+                        this.loading = false
+                    })
+            },
+            sortBy(key) {
+                if (this.sortKey === key) {
+                    // Toggle sort direction if clicking the same column
+                    this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc'
+                } else {
+                    // Default to ascending for new sort column
+                    this.sortKey = key
+                    this.sortDirection = 'asc'
+                }
+            }
+        },
+        mounted() {
+            this.fetchProducts()
+        }
+    }).mount('#app')
+})
+</script>
+
+<style>
+.cursor-pointer {
+    cursor: pointer;
+}
+</style>
+{% endblock %} 

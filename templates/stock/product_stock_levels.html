@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Stan magazynowy produktu{% endblock %}
+
+{% block content %}
+<div class="container my-5" id="app">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0">
+            Stan magazynowy produktu: 
+            <span v-if="product">{% verbatim %}{{ product.name }}{% endverbatim %}</span>
+            <span v-else class="text-muted">Ładowanie...</span>
+        </h2>
+        <a href="{% url 'stock_levels' %}" class="btn btn-secondary">Wstecz</a>
+    </div>
+    
+    <div v-if="loading" class="text-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Ładowanie...</span>
+        </div>
+        <p class="mt-2">Ładowanie danych...</p>
+    </div>
+    
+    <div v-else-if="allStockItems.length === 0" class="text-center my-5">
+        <p>Brak historii magazynowej dla tego produktu</p>
+    </div>
+    
+    <div v-else>
+        <!-- Physical Stock Card -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Stan magazynowy fizyczny</h5>
+            </div>
+            <div class="card-body">
+                <product-stock-history 
+                    :stock-items="physicalStockItems"
+                    stock-type="physical">
+                </product-stock-history>
+            </div>
+        </div>
+        
+        <!-- Virtual Stock Card -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Stan magazynowy wirtualny</h5>
+            </div>
+            <div class="card-body">
+                <product-stock-history 
+                    :stock-items="virtualStockItems"
+                    stock-type="virtual">
+                </product-stock-history>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ProductStockHistory Template -->
+<script type="text/x-template" id="product-stock-history-template">
+    <div v-if="stockItems.length === 0" class="text-center my-3">
+        <p>{% verbatim %}Brak historii magazynowej {{ stockType === 'physical' ? 'fizycznej' : 'wirtualnej' }}{% endverbatim %}</p>
+    </div>
+    <div v-else class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Typ</th>
+                    <th>Ilość</th>
+                    <th>Pozostała ilość</th>
+                    <th>Dostawca/Zamówienie</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="item in sortedStockItems" :key="item.type + '-' + item.id" 
+                    :class="{'entry-row': item.type === 'entry', 'reduction-row': item.type === 'reduction'}">
+                    <td>{% verbatim %}{{ item.date }}{% endverbatim %}</td>
+                    <td>
+                        <span v-if="item.type === 'entry'" class="badge bg-success">Przyjęcie</span>
+                        <span v-else class="badge bg-danger">Wydanie</span>
+                    </td>
+                    <td>{% verbatim %}{{ item.quantity }}{% endverbatim %}</td>
+                    <td>{% verbatim %}{{ item.type === 'entry' ? item.remaining_quantity : '-' }}{% endverbatim %}</td>
+                    <td>
+                        <span v-if="item.type === 'entry'">{% verbatim %}{{ item.supplier }} ({{ item.order_number }}){% endverbatim %}</span>
+                        <span v-else>Zamówienie #{% verbatim %}{{ item.order_id }}{% endverbatim %}</span>
+                    </td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="table-secondary">
+                    <td colspan="2" class="text-end fw-bold">Razem:</td>
+                    <td class="fw-bold">{% verbatim %}{{ totalQuantity }}{% endverbatim %}</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</script>
+
+<style>
+.entry-row {
+    background-color: #d4edda !important;
+}
+.reduction-row {
+    background-color: #f8d7da !important;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const { createApp } = Vue
+    
+    // ProductStockHistory component
+    const ProductStockHistory = {
+        props: {
+            stockItems: {
+                type: Array,
+                required: true
+            },
+            stockType: {
+                type: String,
+                required: true
+            }
+        },
+        computed: {
+            sortedStockItems() {
+                // Sort by date (newest first)
+                return [...this.stockItems].sort((a, b) => {
+                    return new Date(b.date) - new Date(a.date)
+                })
+            },
+            totalQuantity() {
+                return this.stockItems.reduce((total, item) => {
+                    // Add for entries, subtract for reductions
+                    if (item.type === 'entry') {
+                        return total + item.quantity
+                    } else {
+                        return total - item.quantity
+                    }
+                }, 0)
+            }
+        },
+        template: '#product-stock-history-template'
+    }
+    
+    createApp({
+        data() {
+            return {
+                product: null,
+                allStockItems: [],
+                loading: true,
+                productId: {{ product.id }}
+            }
+        },
+        computed: {
+            physicalStockItems() {
+                return this.allStockItems.filter(item => item.stock_type === 'Fizyczny')
+            },
+            virtualStockItems() {
+                return this.allStockItems.filter(item => item.stock_type === 'Wirtualny')
+            }
+        },
+        methods: {
+            fetchProductStockData() {
+                this.loading = true
+                fetch(`/stock/api/product-stock-data/${this.productId}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        this.product = {
+                            id: data.id,
+                            name: data.name,
+                            ean: data.ean
+                        }
+                        this.allStockItems = data.stock_items
+                        this.loading = false
+                    })
+                    .catch(error => {
+                        console.error('Error fetching product stock data:', error)
+                        this.loading = false
+                    })
+            }
+        },
+        components: {
+            'product-stock-history': ProductStockHistory
+        },
+        mounted() {
+            this.fetchProductStockData()
+        }
+    }).mount('#app')
+})
+</script>
+{% endblock %} 

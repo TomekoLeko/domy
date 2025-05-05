@@ -10,6 +10,7 @@ from django.db.models import Q, Sum, F
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
 from finance.models import MonthlyContributionUsage
+from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -18,24 +19,8 @@ def products(request):
     
     # Get stock information for each product
     for product in products:
-        # Get physical stock
-        physical_entries = StockEntry.objects.filter(
-            product=product,
-            stock_type='physical'
-        ).aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
-        # Get virtual stock
-        virtual_entries = StockEntry.objects.filter(
-            product=product,
-            stock_type='virtual'
-        ).aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
-        product.physical_stock = physical_entries
-        product.virtual_stock = virtual_entries
+        product.physical_stock = calculate_physical_stock_level(product)
+        product.virtual_stock = calculate_virtual_stock_level(product)
 
     return render(request, 'products/products.html', {
         'products': products,
@@ -200,6 +185,8 @@ def home(request):
     context = {
         'products': products,
     }
+    
+    selected_buyer = None  # Initialize the variable
 
     if request.user.is_authenticated:
         if request.user.is_staff or request.user.is_superuser:
@@ -225,7 +212,8 @@ def home(request):
                 except User.DoesNotExist:
                     pass
         else:
-            context['selected_buyer'] = request.user
+            selected_buyer = request.user
+            context['selected_buyer'] = selected_buyer
             buyer_price_list = request.user.profile.price_list
             if buyer_price_list:
                 prices = Price.objects.filter(
@@ -250,8 +238,8 @@ def home(request):
 @require_POST
 @require_authenticated_staff_or_superuser
 def change_buyer(request):
-    data = json.loads(request.body)
-    buyer_id = data.get('buyer_id')
+    buyer_id = request.POST.get('buyer_id')
+
 
     if buyer_id:
         request.session['selected_buyer_id'] = buyer_id

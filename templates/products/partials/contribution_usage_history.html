@@ -1,0 +1,99 @@
+{% load static %}
+<div class="accordion" id="buyerAccordion">
+    <!-- Level 1: Buyer Name -->
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button" type="button" 
+                    data-bs-toggle="collapse" 
+                    data-bs-target="#collapseBuyer{{ selected_buyer.id }}">
+                {{ selected_buyer.profile.name|default:selected_buyer.username }}
+            </button>
+        </h2>
+        <div id="collapseBuyer{{ selected_buyer.id }}" 
+             class="accordion-collapse collapse show" 
+             data-bs-parent="#buyerAccordion">
+            <div class="accordion-body">
+                <div class="accordion" id="monthlyUsageAccordion{{ selected_buyer.id }}">
+                    <!-- Level 2: Monthly Usage -->
+                    {% for usage in selected_buyer.profile.monthly_usage.all %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" 
+                                        data-bs-toggle="collapse" 
+                                        data-bs-target="#collapseUsage{{ usage.id }}">
+                                    {{ usage.month }}/{{ usage.year }} - Limit: {{ usage.limit }} zł
+                                </button>
+                            </h2>
+                            <div id="collapseUsage{{ usage.id }}" 
+                                 class="accordion-collapse collapse" 
+                                 data-bs-parent="#monthlyUsageAccordion{{ selected_buyer.id }}">
+                                <div class="accordion-body">
+                                    <div class="accordion" id="orderItemsAccordion{{ usage.id }}">
+                                        <!-- Level 3: Order Items -->
+                                        {% for order_item in usage.order_items.all %}
+                                            <div class="accordion-item">
+                                                <h2 class="accordion-header">
+                                                    <button class="accordion-button collapsed" type="button" 
+                                                            data-bs-toggle="collapse" 
+                                                            data-bs-target="#collapseItem{{ order_item.id }}">
+                                                        {{ order_item.product.name }} - {{ order_item.quantity }} × {{ order_item.price }} zł = {{ order_item.subtotal }} zł
+                                                    </button>
+                                                </h2>
+                                                <div id="collapseItem{{ order_item.id }}" 
+                                                     class="accordion-collapse collapse" 
+                                                     data-bs-parent="#orderItemsAccordion{{ usage.id }}">
+                                                    <div class="accordion-body">
+                                                        <ul class="list-group">
+                                                            <li class="list-group-item">
+                                                                <strong>Produkt:</strong> {{ order_item.product.name }}
+                                                            </li>
+                                                            <li class="list-group-item">
+                                                                <strong>Ilość:</strong> {{ order_item.quantity }}
+                                                            </li>
+                                                            <li class="list-group-item">
+                                                                <strong>Cena:</strong> {{ order_item.price }} zł
+                                                            </li>
+                                                            <li class="list-group-item">
+                                                                <strong>Suma:</strong> {{ order_item.subtotal }} zł
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% empty %}
+                                            <div class="alert alert-info">
+                                                Brak zamówień w tym miesiącu
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="alert alert-info">
+                            Brak historii limitów
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Usage history related functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize accordion functionality
+    const accordions = document.querySelectorAll('.accordion');
+    
+    // Add any specific usage history functionality here
+    
+    // Example: Add event listeners for expanding/collapsing items
+    document.querySelectorAll('.accordion-button').forEach(button => {
+        button.addEventListener('click', function() {
+            const expanded = this.getAttribute('aria-expanded') === 'true';
+            this.setAttribute('aria-expanded', !expanded);
+        });
+    });
+});
+</script> 

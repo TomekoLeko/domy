@@ -1,0 +1,47 @@
+{% load static %}
+{% csrf_token %}
+<div class="col-md-6">
+    <label class="form-label">Wybierz kupującego:</label>
+    <div class="dropdown">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" id="buyerDropdown" 
+                data-bs-toggle="dropdown" aria-expanded="false">
+            {% if selected_buyer %}
+                {{ selected_buyer.profile.name|default:selected_buyer.username }}
+            {% else %}
+                Wybierz kupującego
+            {% endif %}
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="buyerDropdown">
+            {% for beneficiary in beneficiaries %}
+                <li>
+                    <a class="dropdown-item {% if selected_buyer.id == beneficiary.id %}active{% endif %}" 
+                       href="#" 
+                       onclick="changeBuyer('{{ beneficiary.id }}'); return false;">
+                        {{ beneficiary.profile.name|default:beneficiary.username }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+
+<script src="{% static 'js/request_script.js' %}"></script>
+<script>
+function changeBuyer(buyerId) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    if (!csrfToken) {
+        console.error('CSRF token not found');
+        return;
+    }
+
+
+    return postRequest('{% url "change_buyer" %}', { buyer_id: buyerId }, csrfToken)
+    .then(data => {
+        if (data?.status === 'success') {
+            location.reload();
+        }
+        return data;
+    });
+}
+</script> 

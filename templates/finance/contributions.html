@@ -26,11 +26,11 @@
                         {% for payment in contributor.related_payments.all %}
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="headingPayment{{ payment.id }}">
-                                <button class="accordion-button collapsed" type="button" 
+                                <button class="accordion-button collapsed {% if payment.available_amount > 0 %}bg-success bg-opacity-10{% endif %}" type="button" 
                                         data-bs-toggle="collapse" 
                                         data-bs-target="#collapsePayment{{ payment.id }}">
-                                    Contribution: {{ payment.created_at|date:"F Y" }} ({{ payment.amount }} zł) 
-                                    [ID: {{ payment.id }}, {{ payment.created_at|date:"d.m.Y" }}]
+                                    Wpłata: {{ payment.created_at|date:"F Y" }} ({{ payment.amount }} zł) 
+                                    [ID: {{ payment.id }}, {{ payment.created_at|date:"d.m.Y" }}] Pozostało: {{ payment.available_amount }} zł
                                 </button>
                             </h2>
                             <div id="collapsePayment{{ payment.id }}" 
