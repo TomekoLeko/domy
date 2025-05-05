@@ -214,12 +214,11 @@ def stock_levels(request):
     return render(request, 'stock/stock_levels.html') 
 
 def calculate_physical_stock_level(product):
-    """Calculate physical stock level for a product (entries minus reductions)"""
     physical_entries_total = StockEntry.objects.filter(
         product=product,
         stock_type='physical'
     ).aggregate(
-        total=Sum('remaining_quantity')
+        total=Sum('quantity')
     )['total'] or 0
     
     physical_reductions_total = StockReduction.objects.filter(
@@ -232,12 +231,11 @@ def calculate_physical_stock_level(product):
     return physical_entries_total - physical_reductions_total
 
 def calculate_virtual_stock_level(product):
-    """Calculate virtual stock level for a product (entries minus reductions)"""
     virtual_entries_total = StockEntry.objects.filter(
         product=product,
         stock_type='virtual'
     ).aggregate(
-        total=Sum('remaining_quantity')
+        total=Sum('quantity')
     )['total'] or 0
     
     virtual_reductions_total = StockReduction.objects.filter(
@@ -251,39 +249,25 @@ def calculate_virtual_stock_level(product):
 
 @require_authenticated_staff_or_superuser
 def api_products(request):
-    """API endpoint to get products with stock level data for the Vue app"""
     products = Product.objects.filter(is_active=True).prefetch_related('images')
     
     # Get stock information for each product
     product_data = []
     for product in products:
-        # Get physical stock
-        physical_entries = StockEntry.objects.filter(
-            product=product,
-            stock_type='physical'
-        ).aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
-        # Get virtual stock
-        virtual_entries = StockEntry.objects.filter(
-            product=product,
-            stock_type='virtual'
-        ).aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
+        physical_stock_level = calculate_physical_stock_level(product)
+        virtual_stock_level = calculate_virtual_stock_level(product)
+
         product_info = {
             'id': product.id,
             'name': product.name,
             'ean': product.ean,
-            'physical_stock': physical_entries,
-            'virtual_stock': virtual_entries,
+            'physical_stock_level': physical_stock_level,
+            'virtual_stock_level': virtual_stock_level,
             'unit': product.get_volume_unit_display()
         }
-        
+
         product_data.append(product_info)
-        
+
     return JsonResponse({'products': product_data}) 
 
 @require_authenticated_staff_or_superuser
