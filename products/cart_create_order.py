@@ -15,6 +15,42 @@ from finance.models import MonthlyContributionUsage
 from django.contrib import messages
 from decimal import Decimal
 
+def create_stock_reductions(order, items):
+    for item in items:
+        if hasattr(item, 'product'):
+            # Case for cart.items.all()
+            product = item.product
+            quantity = item.quantity
+            # Find the corresponding order item
+            order_item = OrderItem.objects.get(
+                order=order,
+                product=product,
+                quantity=quantity
+            )
+        else:
+            # Case for grouped_items
+            product = Product.objects.get(id=item['product_id'])
+            quantity = Decimal(item['quantity'])
+            # Find the corresponding order item
+            order_item = OrderItem.objects.get(
+                order=order,
+                product=product,
+                quantity=Decimal(item['quantity'])
+            )
+
+        # Create virtual stock reduction and assign to order item
+        stock_reduction = StockReduction.objects.create(
+            product=product,
+            quantity=quantity,
+            order=order,
+            created_at=timezone.now(),
+            stock_type='virtual'
+        )
+
+        # Assign the stock reduction to the order item
+        stock_reduction.order_item = order_item
+        stock_reduction.save()
+
 @require_POST
 def create_order(request):
     selected_buyer_id = request.session.get('selected_buyer_id')
@@ -69,7 +105,9 @@ def create_order(request):
                 except Exception as e:
                     messages.error(request, f'Wystąpił błąd: {str(e)}')
                     return redirect(request.META.get('HTTP_REFERER', 'home'))
-
+            
+            # Create stock reductions for grouped items
+            create_stock_reductions(order, grouped_items)
         else:
             for cart_item in cart.items.all():
                 OrderItem.objects.create(
@@ -77,8 +115,11 @@ def create_order(request):
                     product=cart_item.product,
                     quantity=cart_item.quantity,
                     price=cart_item.price,
-                subtotal=cart_item.subtotal
-            )
+                    subtotal=cart_item.subtotal
+                )
+            
+            # Create stock reductions for cart items
+            create_stock_reductions(order, cart.items.all())
 
         cart.delete()
 
