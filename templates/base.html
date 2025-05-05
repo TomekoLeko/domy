@@ -80,39 +80,47 @@
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                         <li class="nav-item">
-                            <a class="nav-link" href="/">Zakupy</a>
+                            <a class="nav-link" href="/">Kup</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/orders/">Zamówienia</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'finance:contributions' %}">Kontrybucje</a>
-                        </li>
                         {% if user.is_authenticated %}
                             {% if user.is_staff or user.is_superuser %}
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/products/">Produkty</a>
+                                <!-- Finanse dropdown -->
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle" href="#" id="financeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Finanse
+                                    </a>
+                                    <ul class="dropdown-menu" aria-labelledby="financeDropdown">
+                                        <li><a class="dropdown-item" href="{% url 'finance:contributions' %}">Kontrybucje</a></li>
+                                        <li><a class="dropdown-item" href="/prices/">Cenniki</a></li>
+                                        <li><a class="dropdown-item" href="{% url 'finance:main' %}">Historia operacji</a></li>
+                                        <li><a class="dropdown-item" href="{% url 'finance:invoices' %}">Faktury</a></li>
+                                    </ul>
                                 </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/prices/">Ceny</a>
+                                
+                                <!-- Magazyn dropdown -->
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle" href="#" id="stockDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Magazyn
+                                    </a>
+                                    <ul class="dropdown-menu" aria-labelledby="stockDropdown">
+                                        <li><a class="dropdown-item" href="/products/">Produkty</a></li>
+                                        <li><a class="dropdown-item" href="{% url 'stock_levels' %}">Stany magazynowe</a></li>
+                                        <li><a class="dropdown-item" href="{% url 'stock_main' %}">Dostawy</a></li>
+                                    </ul>
                                 </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/users/">Użytkownicy</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{% url 'finance:main' %}">Finanse</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/stock/suppliers/">Dostawcy</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{% url 'finance:invoices' %}">Faktury</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{% url 'stock_main' %}">Magazyn</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{% url 'stock_levels' %}">Stany magazynowe</a>
+                                
+                                <!-- Kontrachenci dropdown -->
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle" href="#" id="counterpartiesDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Kontrachenci
+                                    </a>
+                                    <ul class="dropdown-menu" aria-labelledby="counterpartiesDropdown">
+                                        <li><a class="dropdown-item" href="/users/">Użytkownicy</a></li>
+                                        <li><a class="dropdown-item" href="/stock/suppliers/">Dostawcy</a></li>
+                                    </ul>
                                 </li>
                             {% endif %}
                         {% endif %}
