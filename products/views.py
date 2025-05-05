@@ -10,6 +10,7 @@ from django.db.models import Q, Sum, F
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
 from finance.models import MonthlyContributionUsage
+from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -18,24 +19,8 @@ def products(request):
     
     # Get stock information for each product
     for product in products:
-        # Get physical stock
-        physical_entries = StockEntry.objects.filter(
-            product=product,
-            stock_type='physical'
-        ).aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
-        # Get virtual stock
-        virtual_entries = StockEntry.objects.filter(
-            product=product,
-            stock_type='virtual'
-        ).aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
-        product.physical_stock = physical_entries
-        product.virtual_stock = virtual_entries
+        product.physical_stock = calculate_physical_stock_level(product)
+        product.virtual_stock = calculate_virtual_stock_level(product)
 
     return render(request, 'products/products.html', {
         'products': products,
