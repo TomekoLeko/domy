@@ -315,6 +315,21 @@ def orders(request):
 
     return render(request, 'products/orders.html', context)
 
+@require_authenticated_staff_or_superuser
+def all_orders(request):
+    # Get all orders for staff/superuser
+    User = get_user_model()
+    orders = Order.objects.all().prefetch_related(
+        'items__product__images',
+        'buyer'
+    ).order_by('-created_at')
+    
+    context = {
+        'orders': orders,
+    }
+    
+    return render(request, 'products/all_orders.html', context)
+
 @require_POST
 @require_authenticated_staff_or_superuser
 def update_order_status(request):
