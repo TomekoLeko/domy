@@ -3,7 +3,330 @@
 {% block title %}Wszystkie zamówienia{% endblock %}
 
 {% block content %}
-<div class="container">
-    <h1 class="mb-4">Lista zamówień</h1>
+{% csrf_token %}
+<div class="container mt-4" id="ordersApp">
+    <h1 class="mb-4">Wszystkie zamówienia</h1>
+    
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Filtruj według kupujących</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="form-group mb-3">
+                        <label class="form-label">Wybierz kupujących:</label>
+                        <div>
+                            <div class="form-check form-check-inline" v-for="buyer in buyers">
+                                <input class="form-check-input" type="checkbox" 
+                                       :id="'buyer-' + buyer.id" 
+                                       :value="buyer.id" 
+                                       v-model="selectedBuyers">
+                                <label class="form-check-label" :for="'buyer-' + buyer.id">${ buyer.name }</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-sm btn-outline-secondary me-2" @click="selectAllBuyers">Zaznacz wszystkich</button>
+                        <button class="btn btn-sm btn-outline-secondary" @click="deselectAllBuyers">Odznacz wszystkich</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="filteredOrders.length > 0">
+        <div class="accordion" id="ordersAccordion">
+            <div class="accordion-item border border-2 mb-3 rounded" v-for="order in filteredOrders" :key="order.id">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" 
+                            :class="{
+                                'bg-success-subtle border-success': order.status === 'delivered',
+                                'bg-danger-subtle border-danger': order.status === 'cancelled',
+                                'bg-info-subtle border-info': order.status === 'shipped',
+                                'bg-primary-subtle border-primary': order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'shipped'
+                            }"
+                            type="button" 
+                            data-bs-toggle="collapse" 
+                            :data-bs-target="'#collapse' + order.id" 
+                            aria-expanded="false">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div>
+                                <span>${ order.created_at }</span>
+                                <span class="ms-3 fw-bold">${ order.buyer_name }</span>
+                            </div>
+                            <span class="badge me-3"
+                                  :class="{
+                                      'bg-success': order.status === 'delivered',
+                                      'bg-danger': order.status === 'cancelled',
+                                      'bg-info': order.status === 'shipped',
+                                      'bg-primary': order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'shipped'
+                                  }">
+                                ${ getStatusText(order.status) }
+                            </span>
+                            <strong>${ order.total_cost } zł</strong>
+                        </div>
+                    </button>
+                </h2>
+                <div :id="'collapse' + order.id" 
+                     class="accordion-collapse collapse" 
+                     data-bs-parent="#ordersAccordion">
+                    <div class="accordion-body bg-light">
+                        <!-- Status selector for staff -->
+                        <div v-if="isStaff" class="border p-4 rounded bg-white shadow-sm mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <label class="form-label mb-0"><strong>Status zamówienia:</strong></label>
+                                </div>
+                                <div class="col-auto">
+                                    <select class="form-select form-select-sm" 
+                                            @change="updateOrderStatus(order.id, $event)">
+                                        <option value="pending" :selected="order.status === 'pending'">Oczekujące</option>
+                                        <option value="accepted" :selected="order.status === 'accepted'">Przyjęte</option>
+                                        <option value="shipped" :selected="order.status === 'shipped'">Nadane</option>
+                                        <option value="delivered" :selected="order.status === 'delivered'">Dostarczone</option>
+                                        <option value="cancelled" :selected="order.status === 'cancelled'">Anulowane</option>
+                                    </select>
+                                </div>
+                                <div class="col text-end">
+                                    <button type="button" 
+                                            class="btn btn-danger btn-sm" 
+                                            @click="deleteOrder(order.id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Order items table -->
+                        <div class="border p-4 rounded bg-white shadow-sm">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Produkt</th>
+                                        <th>Ilość</th>
+                                        <th>Cena</th>
+                                        <th>Suma</th>
+                                        <th>Stan magazynowy</th>
+                                        <th>Opłacone</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in order.items" :key="item.id">
+                                        <td>${ item.product_name }</td>
+                                        <td>${ item.quantity }</td>
+                                        <td>${ item.price } zł</td>
+                                        <td>${ item.subtotal } zł</td>
+                                        <td>
+                                            <div v-if="item.stock_reductions && item.stock_reductions.length > 0">
+                                                <span v-for="reduction in item.stock_reductions" 
+                                                      :class="'badge bg-' + (reduction.stock_type === 'physical' ? 'primary' : 'secondary')">
+                                                    ${ reduction.stock_type === 'physical' ? 'Fizyczny' : 'Wirtualny' }: ${ reduction.quantity }
+                                                </span>
+                                            </div>
+                                            <div v-else class="btn-group btn-group-sm">
+                                                <button type="button" 
+                                                        class="btn btn-primary" 
+                                                        @click="createStockReduction(item.id, item.product_id, item.quantity, 'physical')">
+                                                    Fizyczny
+                                                </button>
+                                                <button type="button" 
+                                                        class="btn btn-secondary" 
+                                                        @click="createStockReduction(item.id, item.product_id, item.quantity, 'virtual')">
+                                                    Wirtualny
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div v-if="item.payments && item.payments.length > 0">
+                                                <span v-for="(payment, index) in item.payments" class="badge bg-success">
+                                                    ${ payment.id }
+                                                </span>
+                                            </div>
+                                            <button v-else type="button" 
+                                                    class="btn btn-sm btn-danger payment-button" 
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#paymentModal"
+                                                    :data-order-item-id="item.id"
+                                                    :data-buyer-id="item.buyer_id">
+                                                Nieopłacone
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr class="table-light">
+                                        <td colspan="4" class="text-end"><strong>Razem:</strong></td>
+                                        <td><strong>${ order.total_cost } zł</strong></td>
+                                        <td></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div v-else class="alert alert-info">
+        Brak zamówień do wyświetlenia.
+    </div>
 </div>
+
+{% include 'products/partials/payment_modal.html' %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+<script>
+new Vue({
+    el: '#ordersApp',
+    delimiters: ['${', '}'],
+    data: {
+        orders: [],
+        buyers: [],
+        selectedBuyers: [],
+        isStaff: false,
+        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value
+    },
+    computed: {
+        filteredOrders() {
+            if (this.selectedBuyers.length === 0) {
+                return this.orders;
+            }
+            return this.orders.filter(order => 
+                this.selectedBuyers.includes(order.buyer_id)
+            );
+        }
+    },
+    methods: {
+        getStatusText(status) {
+            switch(status) {
+                case 'pending': return 'Oczekujące';
+                case 'accepted': return 'Przyjęte';
+                case 'shipped': return 'Nadane';
+                case 'delivered': return 'Dostarczone';
+                case 'cancelled': return 'Anulowane';
+                default: return status;
+            }
+        },
+        selectAllBuyers() {
+            this.selectedBuyers = this.buyers.map(buyer => buyer.id);
+        },
+        deselectAllBuyers() {
+            this.selectedBuyers = [];
+        },
+        updateOrderStatus(orderId, event) {
+            const newStatus = event.target.value;
+            
+            fetch('/orders/update-status/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.csrfToken
+                },
+                body: JSON.stringify({
+                    order_id: orderId,
+                    status: newStatus
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update the order in the local array
+                    const orderIndex = this.orders.findIndex(order => order.id === orderId);
+                    if (orderIndex !== -1) {
+                        this.orders[orderIndex].status = newStatus;
+                    }
+                } else {
+                    alert('Wystąpił błąd: ' + data.message);
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas aktualizacji statusu');
+                location.reload();
+            });
+        },
+        deleteOrder(orderId) {
+            if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
+                return;
+            }
+
+            fetch(`/orders/delete/${orderId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': this.csrfToken,
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Remove the order from the local array
+                    this.orders = this.orders.filter(order => order.id !== orderId);
+                } else {
+                    alert('Błąd podczas usuwania zamówienia: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas usuwania zamówienia');
+            });
+        },
+        createStockReduction(orderItemId, productId, quantity, stockType) {
+            fetch('/stock/create-reduction/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.csrfToken
+                },
+                body: JSON.stringify({
+                    order_item_id: orderItemId,
+                    product_id: productId,
+                    quantity: quantity,
+                    stock_type: stockType
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+            });
+        },
+        fetchData() {
+            // Fetch orders data from the backend
+            fetch('/api/orders/')
+                .then(response => response.json())
+                .then(data => {
+                    this.orders = data.orders;
+                    this.buyers = data.buyers;
+                    this.selectedBuyers = data.buyers.map(buyer => buyer.id); // Select all by default
+                    this.isStaff = data.is_staff;
+                })
+                .catch(error => {
+                    console.error('Error fetching orders:', error);
+                    alert('Wystąpił błąd podczas pobierania zamówień');
+                });
+        }
+    },
+    mounted() {
+        this.fetchData();
+    }
+});
+</script>
+{% endblock %}
+
+<style>
+.badge {
+    margin-right: 5px;
+}
+.form-check-inline {
+    margin-right: 15px;
+}
+</style>
 {% endblock %} 

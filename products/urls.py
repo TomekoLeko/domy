@@ -19,6 +19,7 @@ urlpatterns = [
     path('cart/determine-contribution-usage/', carts_views.determine_contribution_usage, name='determine_contribution_usage'),
     path('orders/', views.orders, name='orders'),
     path('all_orders/', views.all_orders, name='all_orders'),
+    path('api/orders/', views.api_get_all_orders, name='api_get_all_orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
     path('orders/delete/<int:order_id>/', views.delete_order, name='delete_order'),
     path('orders/assign-buyer/', views.assign_buyer_to_order_item, name='assign_buyer_to_order_item'),

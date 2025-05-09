@@ -330,6 +330,75 @@ def all_orders(request):
     
     return render(request, 'products/all_orders.html', context)
 
+@require_authenticated_staff_or_superuser
+def api_get_all_orders(request):
+    User = get_user_model()
+    orders = Order.objects.all().prefetch_related(
+        'items__product',
+        'items__stock_reductions',
+        'items__payments',
+        'buyer__profile'
+    ).order_by('-created_at')
+    
+    # Format the orders for JSON response
+    orders_data = []
+    for order in orders:
+        items_data = []
+        for item in order.items.all():
+            stock_reductions = []
+            for reduction in item.stock_reductions.all():
+                stock_reductions.append({
+                    'id': reduction.id,
+                    'stock_type': reduction.stock_type,
+                    'quantity': reduction.quantity
+                })
+                
+            payments = []
+            for payment in item.payments.all():
+                payments.append({
+                    'id': payment.id
+                })
+                
+            items_data.append({
+                'id': item.id,
+                'product_id': item.product.id,
+                'product_name': item.product.name,
+                'quantity': item.quantity,
+                'price': float(item.price),
+                'subtotal': float(item.subtotal),
+                'buyer_id': item.buyer.id if item.buyer else None,
+                'stock_reductions': stock_reductions,
+                'payments': payments
+            })
+        
+        buyer_name = order.buyer.profile.name if order.buyer and hasattr(order.buyer, 'profile') and order.buyer.profile.name else order.buyer.username
+            
+        orders_data.append({
+            'id': order.id,
+            'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
+            'status': order.status,
+            'total_cost': float(order.total_cost),
+            'buyer_id': order.buyer.id,
+            'buyer_name': buyer_name,
+            'items': items_data
+        })
+    
+    # Get all buyers
+    buyers = User.objects.filter(profile__is_beneficiary=True)
+    buyers_data = []
+    for buyer in buyers:
+        buyers_data.append({
+            'id': buyer.id,
+            'name': buyer.profile.name if hasattr(buyer, 'profile') and buyer.profile.name else buyer.username
+        })
+    
+    # Return JSON response
+    return JsonResponse({
+        'orders': orders_data,
+        'buyers': buyers_data,
+        'is_staff': request.user.is_staff or request.user.is_superuser
+    })
+
 @require_POST
 @require_authenticated_staff_or_superuser
 def update_order_status(request):
