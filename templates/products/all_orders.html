@@ -189,7 +189,7 @@ new Vue({
     computed: {
         filteredOrders() {
             if (this.selectedBuyers.length === 0) {
-                return this.orders;
+                return [];
             }
             return this.orders.filter(order => 
                 this.selectedBuyers.includes(order.buyer_id)
@@ -215,7 +215,6 @@ new Vue({
         },
         updateOrderStatus(orderId, event) {
             const newStatus = event.target.value;
-            
             fetch('/orders/update-status/', {
                 method: 'POST',
                 headers: {
