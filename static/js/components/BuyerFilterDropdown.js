@@ -22,19 +22,39 @@
         .badge {
             margin-right: 5px;
         }
+        .buyer-count {
+            margin-right: 1.5rem;
+        }
+        .chevron-position {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .dropdown-toggle:hover, .btn-outline-secondary:hover {
+            background-color: var(--bs-primary) !important;
+            border-color: var(--bs-primary) !important;
+            color: white !important;
+        }
+        .form-check-input:checked {
+            background-color: var(--bs-primary);
+            border-color: var(--bs-primary);
+        }
     `;
     document.head.appendChild(style);
 })();
 
 Vue.component('buyer-filter-dropdown', {
     template: `
-        <div class="form-floating mb-3" style="border: 2px solid blue;">
+        <div class="form-floating mb-3">
             <div class="dropdown">
-                <button class="btn btn-outline-secondary dropdown-toggle w-100 d-flex justify-content-between align-items-center" 
+                <button class="btn btn-outline-secondary dropdown-toggle w-100 position-relative" 
                         type="button" 
                         id="buyerFilterDropdown" 
                         data-bs-toggle="dropdown" 
                         aria-expanded="false">
+                        <span class="buyer-count">Wybierz kupujących ({{selectedIds.length}}/{{buyers.length}})</span>
+                        <span class="chevron-position"></span>
                 </button>
                 <div class="dropdown-menu w-100 p-3" aria-labelledby="buyerFilterDropdown">
                     <div class="mb-2">
@@ -54,7 +74,7 @@ Vue.component('buyer-filter-dropdown', {
                     </div>
                 </div>
             </div>
-            <label for="buyerFilterDropdown">Wybierz kupujących ({{selectedIds.length}}/{{buyers.length}})</label>
+
         </div>
     `,
     props: {
