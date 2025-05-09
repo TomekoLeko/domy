@@ -54,7 +54,10 @@
                                   }">
                                 ${ getStatusText(order.status) }
                             </span>
-                            <strong>${ order.total_cost } zł</strong>
+                            <div>
+                                <div>Kwota: ${ order.total_cost } zł</div>
+                                <div>Pozostało: ${ calculateRemainingAmount(order) } zł</div>
+                            </div>
                         </div>
                     </button>
                 </h2>
@@ -145,7 +148,10 @@
                                     </tr>
                                     <tr class="table-light">
                                         <td colspan="4" class="text-end"><strong>Razem:</strong></td>
-                                        <td><strong>${ order.total_cost } zł</strong></td>
+                                        <td>
+                                            <div><strong>Kwota: ${ order.total_cost } zł</strong></div>
+                                            <div><strong>Pozostało: ${ calculateRemainingAmount(order) } zł</strong></div>
+                                        </td>
                                         <td></td>
                                     </tr>
                                 </tbody>
@@ -198,6 +204,19 @@ new Vue({
                 case 'cancelled': return 'Anulowane';
                 default: return status;
             }
+        },
+        calculateRemainingAmount(order) {
+            let totalPaid = 0;
+            if (order.items) {
+                order.items.forEach(item => {
+                    if (item.payments && item.payments.length > 0) {
+                        item.payments.forEach(payment => {
+                            totalPaid += parseFloat(item.subtotal || 0);
+                        });
+                    }
+                });
+            }
+            return (parseFloat(order.total_cost) - totalPaid).toFixed(2);
         },
         selectAllBuyers() {
             this.selectedBuyers = this.buyers.map(buyer => buyer.id);
