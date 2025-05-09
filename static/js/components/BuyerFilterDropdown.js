@@ -1,4 +1,31 @@
 // BuyerFilterDropdown.js - Reusable buyer filter dropdown component
+
+// Add component-specific styles
+(function() {
+    const style = document.createElement('style');
+    style.textContent = `
+        .dropdown-menu {
+            max-width: 100%;
+        }
+        .form-check {
+            margin-bottom: 0.5rem;
+            padding-left: 2rem;
+        }
+        .form-floating .dropdown button {
+            height: calc(3.5rem + 2px);
+            line-height: 1.25;
+            padding: 1rem 0.75rem;
+        }
+        .form-floating label {
+            padding: 1rem 0.75rem;
+        }
+        .badge {
+            margin-right: 5px;
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
 Vue.component('buyer-filter-dropdown', {
     template: `
         <div class="form-floating mb-3" style="border: 2px solid blue;">
@@ -8,8 +35,6 @@ Vue.component('buyer-filter-dropdown', {
                         id="buyerFilterDropdown" 
                         data-bs-toggle="dropdown" 
                         aria-expanded="false">
-                    <span>Wybierz kupujących ({{selectedIds.length}}/{{buyers.length}})</span>
-                    <span class="badge bg-primary">{{selectedIds.length}}</span>
                 </button>
                 <div class="dropdown-menu w-100 p-3" aria-labelledby="buyerFilterDropdown">
                     <div class="mb-2">
@@ -29,7 +54,7 @@ Vue.component('buyer-filter-dropdown', {
                     </div>
                 </div>
             </div>
-            <label for="buyerFilterDropdown">Kupujący</label>
+            <label for="buyerFilterDropdown">Wybierz kupujących ({{selectedIds.length}}/{{buyers.length}})</label>
         </div>
     `,
     props: {
