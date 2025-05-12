@@ -41,7 +41,14 @@
     </div>
     <div v-if="filteredOrders.length > 0">
         <div class="accordion" id="ordersAccordion">
-            <div class="accordion-item border border-2 mb-3 rounded" v-for="order in filteredOrders" :key="order.id" >
+            <div class="accordion-item border mb-3 rounded" 
+                 v-for="order in filteredOrders" 
+                 :key="order.id"
+                 :class="{
+                    'border-success border-3': parseFloat(order.unpaid_amount) === 0,
+                    'border-danger border-3': parseFloat(order.total_cost) === parseFloat(order.unpaid_amount) && parseFloat(order.unpaid_amount) > 0,
+                    'border-warning border-3': parseFloat(order.total_cost) > parseFloat(order.unpaid_amount) && parseFloat(order.unpaid_amount) > 0
+                 }">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" 
                             :class="{
@@ -70,8 +77,7 @@
                                 ${ getStatusText(order.status) }
                             </span>
                             <div>
-                                <div>Kwota: ${ order.total_cost } zł</div>
-                                <div>Pozostało: ${ order.unpaid_amount } zł</div>
+                                <span>Do zapłaty ${ order.unpaid_amount }zł z ${ order.total_cost } zł</span>
                             </div>
                         </div>
                     </button>
