@@ -131,6 +131,11 @@ class Order(models.Model):
     def __str__(self):
         return f"Order {self.id} by {self.buyer.profile.name or self.buyer.username}"
 
+    @property
+    def unpaid_amount(self):
+        unpaid_items = self.items.filter(payments=None)
+        return sum(item.subtotal for item in unpaid_items)
+
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey('Product', on_delete=models.CASCADE)

@@ -378,6 +378,7 @@ def api_get_all_orders(request):
             'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
             'status': order.status,
             'total_cost': float(order.total_cost),
+            'unpaid_amount': float(order.unpaid_amount),
             'buyer_id': order.buyer.id,
             'buyer_name': buyer_name,
             'items': items_data
