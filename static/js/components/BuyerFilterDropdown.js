@@ -31,6 +31,17 @@
             top: 50%;
             transform: translateY(-50%);
         }
+        .toggle-button {
+            margin-right: 10px;
+            padding: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .toggle-button:focus {
+            outline: none;
+            box-shadow: none;
+        }
         .dropdown-toggle:hover, .btn-outline-secondary:hover {
             background-color: var(--bs-primary) !important;
             border-color: var(--bs-primary) !important;
@@ -49,9 +60,9 @@ Vue.component('buyer-filter-dropdown', {
         <div class="form-floating mb-3">
             <div class="dropdown">
                 <button class="btn btn-outline-secondary dropdown-toggle w-100 position-relative" 
-                        type="button" 
-                        id="buyerFilterDropdown" 
-                        data-bs-toggle="dropdown" 
+                        type="button"
+                        id="buyerFilterDropdown"
+                        data-bs-toggle="dropdown"
                         aria-expanded="false">
                         <span class="buyer-count">Wybierz kupujących ({{selectedIds.length}}/{{buyers.length}})</span>
                         <span class="chevron-position"></span>
@@ -59,8 +70,8 @@ Vue.component('buyer-filter-dropdown', {
                 <div class="dropdown-menu w-100 p-3" aria-labelledby="buyerFilterDropdown">
                     <div class="mb-2">
                         <div class="d-flex justify-content-between">
-                            <button class="btn btn-sm btn-outline-secondary" @click="selectAll">Zaznacz wszystkich</button>
-                            <button class="btn btn-sm btn-outline-secondary" @click="deselectAll">Odznacz wszystkich</button>
+                            <button v-if="!areAllSelected" class="btn btn-sm btn-outline-secondary" @click="selectAll"> <i class="bi bi-check-square-fill"></i></button>
+                            <button v-else class="btn btn-sm btn-outline-secondary" @click="deselectAll"> <i class="bi bi-check-square"></i></button>
                         </div>
                     </div>
                     <div class="overflow-auto" style="max-height: 300px;">
@@ -95,6 +106,9 @@ Vue.component('buyer-filter-dropdown', {
             set(value) {
                 this.$emit('input', value);
             }
+        },
+        areAllSelected() {
+            return this.selectedIds.length === this.buyers.length;
         }
     },
     methods: {
