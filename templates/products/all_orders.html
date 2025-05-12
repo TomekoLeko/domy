@@ -9,7 +9,7 @@
     
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Filtruj według kupujących</h5>
+            <h5 class="mb-0">Filtruj zamówienia</h5>
         </div>
         <div class="card-body">
             <div class="row">
@@ -21,25 +21,33 @@
                         @deselect-all="deselectAllBuyers">
                     </buyer-filter-dropdown>
                 </div>
+                <div class="col-md-3">
+                    <status-filter-dropdown 
+                        :statuses="statusOptions" 
+                        v-model="selectedStatuses"
+                        @select-all="selectAllStatuses"
+                        @deselect-all="deselectAllStatuses">
+                    </status-filter-dropdown>
+                </div>
             </div>
         </div>
     </div>
-
     <div v-if="filteredOrders.length > 0">
         <div class="accordion" id="ordersAccordion">
-            <div class="accordion-item border border-2 mb-3 rounded" v-for="order in filteredOrders" :key="order.id">
+            <div class="accordion-item border border-2 mb-3 rounded" v-for="order in filteredOrders" :key="order.id" >
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" 
                             :class="{
                                 'bg-success-subtle border-success': order.status === 'delivered',
                                 'bg-danger-subtle border-danger': order.status === 'cancelled',
                                 'bg-info-subtle border-info': order.status === 'shipped',
-                                'bg-primary-subtle border-primary': order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'shipped'
+                                'bg-primary-subtle': order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'shipped'
                             }"
                             type="button" 
                             data-bs-toggle="collapse" 
                             :data-bs-target="'#collapse' + order.id" 
-                            aria-expanded="false">
+                            aria-expanded="false"
+                            >
                         <div class="d-flex justify-content-between align-items-center w-100">
                             <div>
                                 <span>${ order.created_at }</span>
@@ -172,6 +180,7 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
 <script src="/static/js/components/BuyerFilterDropdown.js"></script>
+<script src="/static/js/components/StatusFilterDropdown.js"></script>
 <script>
 // Main application
 new Vue({
@@ -181,16 +190,25 @@ new Vue({
         orders: [],
         buyers: [],
         selectedBuyers: [],
+        statusOptions: [
+            { value: 'pending', text: 'Oczekujące' },
+            { value: 'accepted', text: 'Przyjęte' },
+            { value: 'shipped', text: 'Nadane' },
+            { value: 'delivered', text: 'Dostarczone' },
+            { value: 'cancelled', text: 'Anulowane' }
+        ],
+        selectedStatuses: [],
         isStaff: false,
         csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value
     },
     computed: {
         filteredOrders() {
-            if (this.selectedBuyers.length === 0) {
+            if (this.selectedBuyers.length === 0 || this.selectedStatuses.length === 0) {
                 return [];
             }
             return this.orders.filter(order => 
-                this.selectedBuyers.includes(order.buyer_id)
+                this.selectedBuyers.includes(order.buyer_id) && 
+                this.selectedStatuses.includes(order.status)
             );
         }
     },
@@ -223,6 +241,12 @@ new Vue({
         },
         deselectAllBuyers() {
             this.selectedBuyers = [];
+        },
+        selectAllStatuses() {
+            this.selectedStatuses = this.statusOptions.map(status => status.value);
+        },
+        deselectAllStatuses() {
+            this.selectedStatuses = [];
         },
         updateOrderStatus(orderId, event) {
             const newStatus = event.target.value;
@@ -316,7 +340,8 @@ new Vue({
                 .then(data => {
                     this.orders = data.orders;
                     this.buyers = data.buyers;
-                    this.selectedBuyers = data.buyers.map(buyer => buyer.id); // Select all by default
+                    this.selectedBuyers = data.buyers.map(buyer => buyer.id); // Select all buyers by default
+                    this.selectedStatuses = this.statusOptions.map(status => status.value); // Select all statuses by default
                     this.isStaff = data.is_staff;
                 })
                 .catch(error => {
