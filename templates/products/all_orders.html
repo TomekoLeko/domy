@@ -29,6 +29,13 @@
                         @deselect-all="deselectAllStatuses">
                     </status-filter-dropdown>
                 </div>
+                <div class="col-md-3">
+                    <unpaid-filter-dropdown 
+                        v-model="selectedPaymentStatuses"
+                        @select-all="selectAllPaymentStatuses"
+                        @deselect-all="deselectAllPaymentStatuses">
+                    </unpaid-filter-dropdown>
+                </div>
             </div>
         </div>
     </div>
@@ -181,6 +188,7 @@
 <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
 <script src="/static/js/components/BuyerFilterDropdown.js"></script>
 <script src="/static/js/components/StatusFilterDropdown.js"></script>
+<script src="/static/js/components/UnpaidFilterDropdown.js"></script>
 <script>
 // Main application
 new Vue({
@@ -198,18 +206,40 @@ new Vue({
             { value: 'cancelled', text: 'Anulowane' }
         ],
         selectedStatuses: [],
+        selectedPaymentStatuses: ['partially_paid', 'unpaid', 'paid'],
         isStaff: false,
         csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value
     },
     computed: {
         filteredOrders() {
-            if (this.selectedBuyers.length === 0 || this.selectedStatuses.length === 0) {
+            if (this.selectedBuyers.length === 0 || this.selectedStatuses.length === 0 || this.selectedPaymentStatuses.length === 0) {
                 return [];
             }
-            return this.orders.filter(order => 
-                this.selectedBuyers.includes(order.buyer_id) && 
-                this.selectedStatuses.includes(order.status)
-            );
+            return this.orders.filter(order => {
+                // First filter by buyer and status
+                const matchesBuyerAndStatus = this.selectedBuyers.includes(order.buyer_id) && 
+                                             this.selectedStatuses.includes(order.status);
+                
+                if (!matchesBuyerAndStatus) return false;
+                
+                // Then filter by payment status
+                const totalCost = parseFloat(order.total_cost);
+                const unpaidAmount = parseFloat(order.unpaid_amount);
+                
+                if (unpaidAmount === 0 && this.selectedPaymentStatuses.includes('paid')) {
+                    return true;
+                }
+                
+                if (totalCost === unpaidAmount && this.selectedPaymentStatuses.includes('unpaid')) {
+                    return true;
+                }
+                
+                if (totalCost > unpaidAmount && unpaidAmount > 0 && this.selectedPaymentStatuses.includes('partially_paid')) {
+                    return true;
+                }
+                
+                return false;
+            });
         }
     },
     methods: {
@@ -247,6 +277,12 @@ new Vue({
         },
         deselectAllStatuses() {
             this.selectedStatuses = [];
+        },
+        selectAllPaymentStatuses() {
+            this.selectedPaymentStatuses = ['partially_paid', 'unpaid', 'paid'];
+        },
+        deselectAllPaymentStatuses() {
+            this.selectedPaymentStatuses = [];
         },
         updateOrderStatus(orderId, event) {
             const newStatus = event.target.value;
