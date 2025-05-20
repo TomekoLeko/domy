@@ -102,6 +102,11 @@
                                         <option value="cancelled" :selected="order.status === 'cancelled'">Anulowane</option>
                                     </select>
                                 </div>
+                                <div class="col-auto">
+                                <button v-if="order.unpaid_amount > 0" class='btn btn-primary'>
+                                    Rozlicz zamówienie
+                                </button>
+                                </div>
                                 <div class="col text-end">
                                     <button type="button" 
                                             class="btn btn-danger btn-sm" 
@@ -157,14 +162,10 @@
                                                     ${ payment.id }
                                                 </span>
                                             </div>
-                                            <button v-else type="button" 
-                                                    class="btn btn-sm btn-danger payment-button" 
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#paymentModal"
-                                                    :data-order-item-id="item.id"
-                                                    :data-buyer-id="item.buyer_id">
+                                            <span v-else
+                                                  class="badge bg-danger">
                                                 Nieopłacone
-                                            </button>
+                                            </span>
                                         </td>
                                     </tr>
                                     <tr class="table-light">
@@ -225,7 +226,7 @@ new Vue({
                 // First filter by buyer and status
                 const matchesBuyerAndStatus = this.selectedBuyers.includes(order.buyer_id) && 
                                              this.selectedStatuses.includes(order.status);
-                
+
                 if (!matchesBuyerAndStatus) return false;
                 
                 // Then filter by payment status
