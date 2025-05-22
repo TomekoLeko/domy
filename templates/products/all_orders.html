@@ -103,7 +103,7 @@
                                     </select>
                                 </div>
                                 <div class="col-auto">
-                                <button v-if="order.unpaid_amount > 0" class='btn btn-primary'>
+                                <button v-if="order.unpaid_amount > 0" class='btn btn-primary' @click="openPaymentModal(order)">
                                     Rozlicz zamówienie
                                 </button>
                                 </div>
@@ -215,7 +215,8 @@ new Vue({
         selectedStatuses: [],
         selectedPaymentStatuses: ['partially_paid', 'unpaid', 'paid'],
         isStaff: false,
-        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value
+        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value,
+        currentOrder: null
     },
     computed: {
         filteredOrders() {
@@ -391,7 +392,21 @@ new Vue({
                     console.error('Error fetching orders:', error);
                     alert('Wystąpił błąd podczas pobierania zamówień');
                 });
-        }
+        },
+        openPaymentModal(order) {
+            // Store the current order for the payment modal
+            this.currentOrder = order;
+            
+            // Show the modal
+            const paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+            paymentModal.show();
+            
+            // You might want to set some data in the modal
+            document.getElementById('paymentModalItemName').textContent = order.buyer_name;
+            
+            // Load available payments or other initialization if needed
+          
+        },
     },
     mounted() {
         this.fetchData();
