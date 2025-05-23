@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+{% extends "base.html" %}
+
+{% block title %}Settle Order{% endblock %}
+
+{% block content %}
+<div class="container mt-4" id="settle-order-app">
+    <div class="card">
+        <div class="card-header">
+            <h2>Settle Order</h2>
+        </div>
+        <div class="card-body">
+            <p>Order ID: ${ orderId }</p>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    new Vue({
+        el: '#settle-order-app',
+        delimiters: ['${', '}'],
+        data: {
+            orderId: {{ order_id }}
+        }
+    });
+</script>
+{% endblock %}
+{% endblock %} 

@@ -483,3 +483,17 @@ def assign_buyer_to_order_item(request):
             'message': str(e)
         }, status=500)
 
+@require_authenticated_staff_or_superuser
+def settle_order(request, order_id):
+    """
+    View for settling an order with the given order_id.
+    """
+    # Get the order or return 404
+    order = get_object_or_404(Order, id=order_id)
+    
+    context = {
+        'order_id': order_id,
+    }
+    
+    return render(request, 'products/settle_order.html', context)
+

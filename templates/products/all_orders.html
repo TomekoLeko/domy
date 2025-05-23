@@ -103,9 +103,9 @@
                                     </select>
                                 </div>
                                 <div class="col-auto">
-                                <button v-if="order.unpaid_amount > 0" class='btn btn-primary' @click="openPaymentModal(order)">
+                                <a v-if="order.unpaid_amount > 0" class='btn btn-primary' :href="'/orders/settle/' + order.id + '/'">
                                     Rozlicz zamówienie
-                                </button>
+                                </a>
                                 </div>
                                 <div class="col text-end">
                                     <button type="button" 
@@ -189,13 +189,12 @@
     </div>
 </div>
 
-{% include 'products/partials/payment_modal.html' %}
-
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
 <script src="/static/js/components/BuyerFilterDropdown.js"></script>
 <script src="/static/js/components/StatusFilterDropdown.js"></script>
 <script src="/static/js/components/UnpaidFilterDropdown.js"></script>
+<script src="/static/js/components/PaymentModal.js"></script>
 <script>
 // Main application
 new Vue({
@@ -216,7 +215,8 @@ new Vue({
         selectedPaymentStatuses: ['partially_paid', 'unpaid', 'paid'],
         isStaff: false,
         csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value,
-        currentOrder: null
+        currentOrder: null,
+        showPaymentModal: false
     },
     computed: {
         filteredOrders() {
@@ -395,17 +395,33 @@ new Vue({
         },
         openPaymentModal(order) {
             // Store the current order for the payment modal
-            this.currentOrder = order;
+            console.log('openPaymentModal');
+            console.log(order.id);
+            console.log(order.buyer_id);
             
-            // Show the modal
-            const paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
-            paymentModal.show();
+            // Set the current order first
+            this.currentOrder = {
+                id: order.id,
+                buyer_id: order.buyer_id
+            };
             
-            // You might want to set some data in the modal
-            document.getElementById('paymentModalItemName').textContent = order.buyer_name;
+            // Then set the flag to show the modal
+            this.$nextTick(() => {
+                this.showPaymentModal = true;
+            });
             
-            // Load available payments or other initialization if needed
-          
+            // Add event listener for when modal is hidden
+            const modalElement = document.getElementById('paymentModal');
+            modalElement.addEventListener('hidden.bs.modal', this.onModalHidden);
+        },
+        
+        onModalHidden() {
+            console.log('Modal hidden event triggered');
+            this.showPaymentModal = false;
+            
+            // Remove the event listener to prevent memory leaks
+            const modalElement = document.getElementById('paymentModal');
+            modalElement.removeEventListener('hidden.bs.modal', this.onModalHidden);
         },
     },
     mounted() {
