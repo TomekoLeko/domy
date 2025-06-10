@@ -6,20 +6,23 @@ def get_order_with_items(order_id):
     
     try:
         # Get the order with its related buyer
-        order = Order.objects.select_related('buyer').get(id=order_id)
+        order = Order.objects.select_related('buyer', 'buyer__profile').get(id=order_id)
         
         # Get all order items with their related products
         order_items = OrderItem.objects.filter(order=order).select_related('product')
         
+        # Get buyer name from profile or username
+        buyer_name = order.buyer.profile.name if order.buyer and hasattr(order.buyer, 'profile') and order.buyer.profile.name else order.buyer.username if order.buyer else 'Unknown'
+        
         # Create a dictionary with order and items information
         order_data = {
             'id': order.id,
-            'buyer_name':  'Unknown',
-            'buyer_id': 'Unknown',
-            'created_at': 'Unknown',
-            'status': 'Unknown',
-            'total_cost': 'Unknown',
-            'unpaid_amount': 'Unknown',
+            'buyer_name': buyer_name,
+            'buyer_id': order.buyer.id if order.buyer else 'Unknown',
+            'created_at': order.created_at.strftime('%Y-%m-%d %H:%M') if order.created_at else 'Unknown',
+            'status': order.status,
+            'total_cost': str(order.total_cost),
+            'unpaid_amount': str(order.unpaid_amount),
             'items': []
         }
 
