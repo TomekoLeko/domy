@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.db.models import Sum
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -133,8 +134,14 @@ class Order(models.Model):
 
     @property
     def unpaid_amount(self):
-        unpaid_items = self.items.filter(payments=None)
-        return sum(item.subtotal for item in unpaid_items)
+        total_unpaid = self.total_cost
+        
+        # Sum all payments related to this order
+        from finance.models import Payment
+        payments = Payment.objects.filter(related_order=self)
+        total_paid = payments.aggregate(Sum('amount'))['amount__sum'] or 0
+        
+        return max(0, total_unpaid - total_paid)
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)

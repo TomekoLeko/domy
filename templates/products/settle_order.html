@@ -4,26 +4,264 @@
 {% block title %}Settle Order{% endblock %}
 
 {% block content %}
-<div class="container mt-4" id="settle-order-app">
-    <div class="card">
-        <div class="card-header">
-            <h2>Settle Order</h2>
+{% csrf_token %}
+<div class="container mt-4" id="settleOrderApp">
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h2>Settle Order #{{ order_id }}</h2>
         </div>
         <div class="card-body">
-            <p>Order ID: ${ orderId }</p>
+            <div v-if="loading" class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading order details...</p>
+            </div>
+            <div v-else-if="error" class="alert alert-danger">
+                ${ error }
+            </div>
+            <div v-else>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5>Order Details</h5>
+                        <p><strong>Buyer:</strong> ${ order.buyer_name }</p>
+                        <p><strong>Date:</strong> ${ order.created_at }</p>
+                        <p><strong>Status:</strong> <span class="badge" :class="getStatusBadgeClass(order.status)">${ getStatusText(order.status) }</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Payment Details</h5>
+                        <p><strong>Total Amount:</strong> ${ order.total_cost } zł</p>
+                        <p><strong>Unpaid Amount:</strong> ${ order.unpaid_amount } zł</p>
+                    </div>
+                </div>
+
+                <!-- Order items table -->
+                <div class="border p-4 rounded bg-white shadow-sm">
+                    <h5 class="mb-3">Order Items</h5>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Subtotal</th>
+                                <th>Stock Reductions</th>
+                                <th>Payment Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in order.items" :key="item.id">
+                                <td>${ item.product_name }</td>
+                                <td>${ item.quantity }</td>
+                                <td>${ item.price } zł</td>
+                                <td>${ item.subtotal } zł</td>
+                                <td>
+                                    <div v-if="item.stock_reductions && item.stock_reductions.length > 0">
+                                        <span v-for="reduction in item.stock_reductions" 
+                                              :class="'badge bg-' + (reduction.stock_type === 'physical' ? 'primary' : 'secondary')">
+                                            ${ reduction.stock_type === 'physical' ? 'Fizyczny' : 'Wirtualny' }: ${ reduction.quantity }
+                                        </span>
+                                    </div>
+                                    <div v-else class="btn-group btn-group-sm">
+                                        <button type="button" 
+                                                class="btn btn-primary" 
+                                                @click="createStockReduction(item.id, item.product_id, item.quantity, 'physical')">
+                                            Fizyczny
+                                        </button>
+                                        <button type="button" 
+                                                class="btn btn-secondary" 
+                                                @click="createStockReduction(item.id, item.product_id, item.quantity, 'virtual')">
+                                            Wirtualny
+                                        </button>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div v-if="item.payments && item.payments.length > 0">
+                                        <span v-for="payment in item.payments" class="badge bg-success">
+                                            ${ payment.id }
+                                        </span>
+                                    </div>
+                                    <span v-else
+                                          class="badge bg-danger">
+                                        Nieopłacone
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr class="table-light">
+                                <td colspan="3" class="text-end"><strong>Total:</strong></td>
+                                <td colspan="3">
+                                    <div><strong>Amount: ${ order.total_cost } zł</strong></div>
+                                    <div><strong>Remaining: ${ order.unpaid_amount } zł</strong></div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Payment section -->
+                <div class="card mt-4">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Settle Payment</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add your payment form here -->
+                        <form @submit.prevent="submitPayment">
+                            <div class="mb-3">
+                                <label for="paymentAmount" class="form-label">Payment Amount (zł)</label>
+                                <input type="number" class="form-control" id="paymentAmount" v-model="paymentAmount" step="0.01" min="0.01" :max="order.unpaid_amount" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="paymentMethod" class="form-label">Payment Method</label>
+                                <select class="form-select" id="paymentMethod" v-model="paymentMethod" required>
+                                    <option value="cash">Cash</option>
+                                    <option value="bank_transfer">Bank Transfer</option>
+                                    <option value="credit_card">Credit Card</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-success" :disabled="submitting">
+                                <span v-if="submitting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Submit Payment
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-{% block scripts %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
 <script>
-    new Vue({
-        el: '#settle-order-app',
-        delimiters: ['${', '}'],
-        data: {
-            orderId: {{ order_id }}
+// Main application
+new Vue({
+    el: '#settleOrderApp',
+    delimiters: ['${', '}'],
+    data: {
+        orderId: '{{ order_id }}',
+        order: null,
+        loading: true,
+        error: null,
+        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value,
+        paymentAmount: 0,
+        paymentMethod: 'cash',
+        submitting: false
+    },
+    methods: {
+        getStatusText(status) {
+            switch(status) {
+                case 'pending': return 'Oczekujące';
+                case 'accepted': return 'Przyjęte';
+                case 'shipped': return 'Nadane';
+                case 'delivered': return 'Dostarczone';
+                case 'cancelled': return 'Anulowane';
+                default: return status;
+            }
+        },
+        getStatusBadgeClass(status) {
+            switch(status) {
+                case 'delivered': return 'bg-success';
+                case 'cancelled': return 'bg-danger';
+                case 'shipped': return 'bg-info';
+                default: return 'bg-primary';
+            }
+        },
+        fetchOrderDetails() {
+            this.loading = true;
+            fetch(`/api/orders/${this.orderId}/`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch order details');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    this.order = data;
+                    this.loading = false;
+                    if (data.unpaid_amount > 0) {
+                        this.paymentAmount = parseFloat(data.unpaid_amount);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    this.error = 'Failed to load order details. Please try again.';
+                    this.loading = false;
+                });
+        },
+        createStockReduction(orderItemId, productId, quantity, stockType) {
+            fetch('/stock/create-reduction/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.csrfToken
+                },
+                body: JSON.stringify({
+                    order_item_id: orderItemId,
+                    product_id: productId,
+                    quantity: quantity,
+                    stock_type: stockType
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Reload order details
+                    this.fetchOrderDetails();
+                } else {
+                    alert(data.message || 'Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
+            });
+        },
+        submitPayment() {
+            if (this.paymentAmount <= 0 || this.paymentAmount > parseFloat(this.order.unpaid_amount)) {
+                alert('Please enter a valid payment amount');
+                return;
+            }
+
+            this.submitting = true;
+            fetch('/api/orders/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.csrfToken
+                },
+                body: JSON.stringify({
+                    order_id: this.orderId,
+                    amount: this.paymentAmount,
+                    payment_method: this.paymentMethod
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.submitting = false;
+                if (data.status === 'success') {
+                    alert('Payment submitted successfully');
+                    this.fetchOrderDetails();
+                    this.paymentAmount = 0;
+                } else {
+                    alert(data.message || 'Error submitting payment');
+                }
+            })
+            .catch(error => {
+                this.submitting = false;
+                console.error('Error:', error);
+                alert('Error submitting payment');
+            });
         }
-    });
+    },
+    mounted() {
+        this.fetchOrderDetails();
+    }
+});
 </script>
+<style>
+.badge {
+    margin-right: 5px;
+}
+</style>
 {% endblock %}
-{% endblock %} 
+{% endblock %}

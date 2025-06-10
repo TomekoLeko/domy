@@ -5,12 +5,14 @@ from domy.decorators import require_authenticated_staff_or_superuser
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 import json
+import decimal
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
 from finance.models import MonthlyContributionUsage
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
+from .orders_api import get_order_with_items
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -496,4 +498,126 @@ def settle_order(request, order_id):
     }
     
     return render(request, 'products/settle_order.html', context)
+
+@require_authenticated_staff_or_superuser
+def api_get_order_details(request, order_id):
+    """
+    API view to get details of a specific order
+    """
+    order_data = get_order_with_items(order_id)
+    
+    if order_data is None:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Order not found'
+        }, status=404)
+    
+    return JsonResponse(order_data)
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_submit_payment(request):
+    """
+    API view to submit a payment for an order
+    """
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id')
+        amount = data.get('amount')
+        payment_method = data.get('payment_method', 'cash')
+        
+        if not all([order_id, amount]):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Missing required fields'
+            }, status=400)
+        
+        # Convert amount to Decimal
+        try:
+            amount = decimal.Decimal(str(amount))
+        except (decimal.InvalidOperation, TypeError):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid amount'
+            }, status=400)
+        
+        # Get the order
+        try:
+            order = Order.objects.prefetch_related('items').get(id=order_id)
+        except Order.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Order not found'
+            }, status=404)
+        
+        # Check if amount is valid
+        if amount <= 0 or amount > order.unpaid_amount:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid payment amount'
+            }, status=400)
+        
+        # Import Payment model
+        from finance.models import Payment
+        
+        # Create a payment record
+        payment = Payment.objects.create(
+            amount=amount,
+            payment_type='order',
+            description=f'Payment for order #{order.id}',
+            related_user=order.buyer,
+            related_order=order,
+            created_by=request.user,
+            payment_date=timezone.now().date()
+        )
+        
+        # Update the order's unpaid amount (assuming unpaid_amount is a field on the Order model)
+        # If not, you may need to add this field or calculate it differently
+        if hasattr(order, 'unpaid_amount'):
+            order.unpaid_amount -= amount
+            order.save()
+        
+        # Assign payment to unpaid order items
+        remaining_payment = amount
+        unpaid_items = []
+        
+        # First, gather all unpaid or partially paid items
+        for item in order.items.all():
+            # Calculate how much has been paid for this item
+            paid_amount = item.payments.aggregate(total=Sum('amount'))['total'] or 0
+            
+            # If item is not fully paid, add to unpaid_items list
+            if paid_amount < item.subtotal:
+                unpaid_items.append({
+                    'item': item,
+                    'unpaid': item.subtotal - paid_amount
+                })
+        
+        # Then allocate payment to items
+        for unpaid_item in unpaid_items:
+            item = unpaid_item['item']
+            unpaid_amount = unpaid_item['unpaid']
+            
+            if remaining_payment <= 0:
+                break
+                
+            # Determine how much to allocate to this item
+            to_pay = min(unpaid_amount, remaining_payment)
+            
+            # Add item to payment's related_order_items
+            payment.related_order_items.add(item)
+            
+            # Reduce remaining payment
+            remaining_payment -= to_pay
+        
+        return JsonResponse({
+            'status': 'success',
+            'payment_id': payment.id,
+            'remaining_amount': str(order.unpaid_amount if hasattr(order, 'unpaid_amount') else 0)
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 
