@@ -178,3 +178,65 @@ class MonthlyContributionUsage(models.Model):
     @property
     def remaining_limit(self):
         return self.limit - self.total_usage
+
+class PaymentAllocation(models.Model):
+    payment = models.ForeignKey(
+        Payment,
+        on_delete=models.CASCADE,
+        related_name='allocations',
+        verbose_name="Płatność"
+    )
+    order_item = models.ForeignKey(
+        'products.OrderItem',
+        on_delete=models.CASCADE,
+        related_name='payment_allocations',
+        verbose_name="Element zamówienia"
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="Kwota alokacji"
+    )
+    allocation_date = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Data alokacji"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Data utworzenia"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Data aktualizacji"
+    )
+
+    class Meta:
+        verbose_name = "Alokacja płatności"
+        verbose_name_plural = "Alokacje płatności"
+        ordering = ['-allocation_date']
+
+    def __str__(self):
+        return f"Alokacja {self.amount} zł z płatności {self.payment.id} do elementu zamówienia {self.order_item.id}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        
+        # Check if allocation amount is positive
+        if self.amount <= 0:
+            raise ValidationError("Kwota alokacji musi być większa od 0")
+            
+        # Check if allocation amount doesn't exceed payment's available amount
+        payment_allocated = self.payment.allocations.exclude(id=self.id).aggregate(
+            total=models.Sum('amount'))['total'] or 0
+        if (payment_allocated + self.amount) > self.payment.amount:
+            raise ValidationError("Suma alokacji nie może przekraczać kwoty płatności")
+            
+        # Check if allocation amount doesn't exceed order item's remaining amount
+        item_allocated = self.order_item.payment_allocations.exclude(id=self.id).aggregate(
+            total=models.Sum('amount'))['total'] or 0
+        if (item_allocated + self.amount) > self.order_item.subtotal:
+            raise ValidationError("Suma alokacji nie może przekraczać kwoty elementu zamówienia")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
