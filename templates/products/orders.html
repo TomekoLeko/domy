@@ -53,42 +53,6 @@
                              class="accordion-collapse collapse" 
                              data-bs-parent="#ordersAccordion">
                             <div class="accordion-body bg-light">
-                                <!-- Add status slider section -->
-                                {% if user.is_staff or user.is_superuser %}
-                                <div class="border p-4 rounded bg-white shadow-sm mb-3">
-                                    <div class="row align-items-center">
-                                        <div class="col-auto">
-                                            <label class="form-label mb-0"><strong>Status zamówienia:</strong></label>
-                                        </div>
-                                        <div class="col-auto">
-                                            <select class="form-select form-select-sm order-status-select" 
-                                                    data-order-id="{{ order.id }}">
-                                                <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>
-                                                    Oczekujące
-                                                <option value="accepted" {% if order.status == 'accepted' %}selected{% endif %}>
-                                                    Przyjęte
-                                                </option>
-                                                <option value="shipped" {% if order.status == 'shipped' %}selected{% endif %}>
-                                                    Nadane
-                                                </option>
-                                                <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>
-                                                    Dostarczone
-                                                </option>
-                                                <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>
-                                                    Anulowane
-                                                </option>
-                                            </select>
-                                        </div>
-                                        <div class="col text-end">
-                                            <button type="button" 
-                                                    class="btn btn-danger btn-sm" 
-                                                    onclick="deleteOrder({{ order.id }})">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
                                 <div class="border p-4 rounded bg-white shadow-sm">
                                     <table class="table">
                                         <thead>
@@ -189,121 +153,34 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const statusSelects = document.querySelectorAll('.order-status-select');
-    
-    statusSelects.forEach(select => {
-        select.addEventListener('change', function() {
-            const orderId = this.dataset.orderId;
-            const newStatus = this.value;
-            
-            updateOrderStatus(orderId, newStatus, this);
-        });
-    });
-
-    function updateOrderStatus(orderId, status, selectElement) {
-        fetch('/orders/update-status/', {
+    function createStockReduction(orderItemId, productId, quantity, stockType) {
+        fetch('/stock/create-reduction/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
             body: JSON.stringify({
-                order_id: orderId,
-                status: status
+                order_item_id: orderItemId,
+                product_id: productId,
+                quantity: quantity,
+                stock_type: stockType
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Update the badge in the accordion header
-                const accordionItem = selectElement.closest('.accordion-item');
-                const badge = accordionItem.querySelector('.badge');
-                
-                // Update badge color and text
-                badge.className = 'badge me-3 ' + 
-                    (status === 'delivered' ? 'bg-success' : 
-                     status === 'cancelled' ? 'bg-danger' : 
-                     status === 'shipped' ? 'bg-info' : 
-                     'bg-primary');
-                badge.textContent = status === 'accepted' ? 'Przyjęte' :
-                                  status === 'shipped' ? 'Nadane' :
-                                  status === 'delivered' ? 'Dostarczone' :
-                                  'Anulowane';
-
-                const accordionButton = accordionItem.querySelector('.accordion-button');
-                accordionButton.className = 'accordion-button collapsed ' + 
-                    (status === 'delivered' ? 'bg-success-subtle border-success' : 
-                     status === 'cancelled' ? 'bg-danger-subtle border-danger' : 
-                     status === 'shipped' ? 'bg-info-subtle border-info' : 
-                     'bg-primary-subtle border-primary');
-
-                const accordionItemDiv = accordionItem.querySelector('.accordion-item');
-                accordionItemDiv.className = 'accordion-item border border-2 mb-3 rounded';
-            } else {
-                alert('Wystąpił błąd: ' + data.message);
                 location.reload();
+            } else {
+                alert(data.message || 'Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Wystąpił błąd podczas aktualizacji statusu');
-            location.reload();
+            alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
         });
     }
 });
-
-function deleteOrder(orderId) {
-    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
-        return;
-    }
-
-    fetch(`/orders/delete/${orderId}/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-        },
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            location.reload();
-        } else {
-            alert('Błąd podczas usuwania zamówienia: ' + data.message);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Wystąpił błąd podczas usuwania zamówienia');
-    });
-}
-
-function createStockReduction(orderItemId, productId, quantity, stockType) {
-    fetch('/stock/create-reduction/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        },
-        body: JSON.stringify({
-            order_item_id: orderItemId,
-            product_id: productId,
-            quantity: quantity,
-            stock_type: stockType
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            location.reload();
-        } else {
-            alert(data.message || 'Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Wystąpił błąd podczas tworzenia redukcji stanu magazynowego');
-    });
-}
 </script>
 {% endblock %}
 {% endblock %} 
