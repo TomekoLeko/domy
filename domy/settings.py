@@ -38,8 +38,10 @@ DEBUG = True
 ALLOWED_HOSTS = [
     'domy-staging-22c1d452bb5a.herokuapp.com',
     'domy-production-b96b3b6b6fff.herokuapp.com',
-    '127.0.0.1'
-    ]
+    'main.d3st356dakzmcc.amplifyapp.com',
+    '127.0.0.1',
+    'localhost',
+]
 
 
 # Application definition
@@ -51,6 +53,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
+    'rest_framework',
+    'rest_framework_simplejwt',
     'users',
     'products',
     'finance',
@@ -59,6 +64,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -69,6 +75,31 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'domy.urls'
+
+# CORS: frontend (React/Vite) on different origin
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://main.d3st356dakzmcc.amplifyapp.com",
+]
+CORS_ALLOW_CREDENTIALS = True
+
+# REST Framework & JWT
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+}
+
+# Session (optional: for cookie-based auth from same app)
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG
 
 TEMPLATES = [
     {

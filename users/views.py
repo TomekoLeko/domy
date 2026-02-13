@@ -7,8 +7,14 @@ from django.contrib.auth.models import User
 from products.models import PriceList
 from domy.decorators import require_authenticated_staff_or_superuser
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 import json
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
 def register(request):
   if request.user.is_authenticated:
@@ -100,3 +106,54 @@ def update_user_profile(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
+
+
+# --- API Auth (React frontend: POST JSON email+password, JWT or session) ---
+
+@api_view(["POST"])
+def api_login(request):
+    """POST /api/auth/login/ with body { "email": "...", "password": "..." }. Returns JWT token."""
+    email = request.data.get("email")
+    password = request.data.get("password")
+    if not email or not password:
+        return Response(
+            {"detail": "Email and password required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    if not user.check_password(password):
+        return Response(
+            {"detail": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        "token": str(refresh.access_token),
+        "refresh": str(refresh),
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_logout(request):
+    """POST /api/auth/logout/. Optional: clear server session; for JWT, frontend removes token."""
+    logout(request)
+    return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_me(request):
+    """GET /api/auth/me/. Returns current user (id, username, email)."""
+    user = request.user
+    return Response({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email or "",
+    })
