@@ -35,10 +35,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-8mw@c655@)q6#&95dy=^&mtu$y
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# Backend (API): Heroku production + staging; localhost/127.0.0.1 dla dev
 ALLOWED_HOSTS = [
-    'domy-staging-22c1d452bb5a.herokuapp.com',
     'domy-production-b96b3b6b6fff.herokuapp.com',
-    'main.d3st356dakzmcc.amplifyapp.com',
+    'domy-staging-22c1d452bb5a.herokuapp.com',
     '127.0.0.1',
     'localhost',
 ]
@@ -76,12 +76,13 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'domy.urls'
 
-# CORS: frontend (React/Vite) on different origin
+# CORS: Frontend (React) – Amplify production + localhost:5173 / 127.0.0.1:5173 (dev, Vite)
 CORS_ALLOWED_ORIGINS = [
+    "https://main.d3st356dakzmcc.amplifyapp.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://main.d3st356dakzmcc.amplifyapp.com",
 ]
+# Wymagane przy cookies / credentials (np. session, JWT w cookie)
 CORS_ALLOW_CREDENTIALS = True
 
 # REST Framework & JWT
