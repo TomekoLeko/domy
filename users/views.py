@@ -136,6 +136,12 @@ def api_login(request):
     return Response({
         "token": str(refresh.access_token),
         "refresh": str(refresh),
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email or "",
+            "is_superuser": user.is_superuser,
+        },
     })
 
 
@@ -150,10 +156,11 @@ def api_logout(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_me(request):
-    """GET /api/auth/me/. Returns current user (id, username, email)."""
+    """GET /api/auth/me/. Returns current user (id, username, email, is_superuser)."""
     user = request.user
     return Response({
         "id": user.id,
         "username": user.username,
         "email": user.email or "",
+        "is_superuser": user.is_superuser,
     })
