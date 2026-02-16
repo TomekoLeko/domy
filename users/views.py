@@ -108,20 +108,26 @@ def update_user_profile(request):
         }, status=500)
 
 
-# --- API Auth (React frontend: POST JSON email+password, JWT or session) ---
+# --- API Auth (React frontend: POST JSON login/email + password, JWT in response) ---
 
 @api_view(["POST"])
 def api_login(request):
-    """POST /api/auth/login/ with body { "email": "...", "password": "..." }. Returns JWT token."""
-    email = request.data.get("email")
+    """
+    POST /api/auth/login/ with body { "login": "user@example.com" or "username", "password": "..." }.
+    Also accepts "email" instead of "login" (backward compatible). Returns JWT token and user.
+    """
+    login_value = request.data.get("login") or request.data.get("email")
     password = request.data.get("password")
-    if not email or not password:
+    if not login_value or not password:
         return Response(
-            {"detail": "Email and password required"},
+            {"detail": "Login (or email) and password required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
     try:
-        user = User.objects.get(email=email)
+        if "@" in login_value:
+            user = User.objects.get(email=login_value)
+        else:
+            user = User.objects.get(username=login_value)
     except User.DoesNotExist:
         return Response(
             {"detail": "Invalid credentials"},
