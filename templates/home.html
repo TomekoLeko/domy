@@ -10,6 +10,9 @@
             <div class="mb-4">
                 {% csrf_token %}
                 {% include "products/partials/change_buyer.html" %}
+                {% if selected_buyer %}
+                    <p class="mt-1 small text-muted">buyer_id: {{ selected_buyer.id }}</p>
+                {% endif %}
             </div>
         {% endif %}
         <div class="row">

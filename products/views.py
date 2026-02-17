@@ -1,4 +1,5 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
+from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -197,8 +198,11 @@ def api_products_list(request):
     effective_user = None
     product_prices = {}
 
+    buyer_id = request.GET.get('buyer_id')
+    # PRÓBA: na sztywno buyer_id=9 do testów – usunąć po sprawdzeniu
+    # buyer_id = buyer_id or '9'
+
     if request.user.is_authenticated:
-        buyer_id = request.GET.get('buyer_id')
         # Tylko staff może używać buyer_id; dla zwykłego użytkownika ignorujemy parametr
         if (request.user.is_staff or request.user.is_superuser) and buyer_id:
             try:
@@ -207,10 +211,27 @@ def api_products_list(request):
                 effective_user = request.user
         else:
             effective_user = request.user
+    elif buyer_id and settings.DEBUG:
+        # Gdy API wywołane bez sesji (np. z frontu React) – w DEBUG załaduj ceny dla buyer_id
+        try:
+            effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer_id)
+        except (User.DoesNotExist, ValueError):
+            effective_user = None
+    else:
+        effective_user = None
 
-        profile = getattr(effective_user, 'profile', None)
-        if profile and profile.price_list_id:
+    if effective_user:
+        try:
+            profile = effective_user.profile
+        except Exception:
+            profile = None
+        price_list = None
+        if profile and getattr(profile, 'price_list_id', None):
             price_list = profile.price_list
+        if not price_list and settings.DEBUG:
+            # Fallback: cennik standardowy, żeby ceny się wyświetlały przy testach
+            price_list = PriceList.objects.filter(is_standard=True).first()
+        if price_list:
             prices = Price.objects.filter(
                 price_list=price_list,
                 product__in=products
@@ -252,6 +273,7 @@ def api_products_list(request):
             'display_name': display_name,
         }
 
+    print('api_products_list response:', payload)  # na chwilę – do debugu
     return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
 
 
