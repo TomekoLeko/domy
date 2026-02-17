@@ -186,50 +186,36 @@ def save_price(request):
 def api_products_list(request):
     """
     API dla zewnętrznego frontendu (np. React).
-    Użytkownik z sesji/ciasteczek (front wysyła credentials: 'include').
-    Query: opcjonalnie buyer_id – tylko dla staff; ceny dla tego kupującego.
-    Odpowiedź: products (każdy z gross_price), user (display_name), price_list.
+    Wywołanie z credentials: 'include' – sesja (cookie) identyfikuje użytkownika.
+    Zalogowany: zwraca produkty z cenami (dla buyer_id lub request.user).
+    Niezalogowany: zwraca produkty bez cen (user/price_list = null).
+    buyer_id opcjonalny – brak oznacza ceny dla zalogowanego użytkownika.
     """
     User = get_user_model()
     products = Product.objects.filter(is_active=True).prefetch_related(
         'images', 'prices__price_list', 'categories'
     )
     price_list = None
-    effective_user = None
     product_prices = {}
-
-    buyer_id = request.GET.get('buyer_id')
-    # PRÓBA: na sztywno buyer_id=9 do testów – usunąć po sprawdzeniu
-    # buyer_id = buyer_id or '9'
+    effective_user = None
 
     if request.user.is_authenticated:
-        # Tylko staff może używać buyer_id; dla zwykłego użytkownika ignorujemy parametr
-        if (request.user.is_staff or request.user.is_superuser) and buyer_id:
+        buyer_id = (request.GET.get('buyer_id') or '').strip() or str(request.user.id)
+        if request.user.is_staff or request.user.is_superuser:
             try:
                 effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer_id)
             except (User.DoesNotExist, ValueError):
                 effective_user = request.user
         else:
             effective_user = request.user
-    elif buyer_id and settings.DEBUG:
-        # Gdy API wywołane bez sesji (np. z frontu React) – w DEBUG załaduj ceny dla buyer_id
-        try:
-            effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer_id)
-        except (User.DoesNotExist, ValueError):
-            effective_user = None
-    else:
-        effective_user = None
 
-    if effective_user:
         try:
             profile = effective_user.profile
         except Exception:
             profile = None
-        price_list = None
         if profile and getattr(profile, 'price_list_id', None):
             price_list = profile.price_list
         if not price_list and settings.DEBUG:
-            # Fallback: cennik standardowy, żeby ceny się wyświetlały przy testach
             price_list = PriceList.objects.filter(is_standard=True).first()
         if price_list:
             prices = Price.objects.filter(
@@ -245,7 +231,7 @@ def api_products_list(request):
         if first_image and first_image.image:
             image_url = request.build_absolute_uri(first_image.image.url)
         gross_price = product_prices.get(product.id)
-        item = {
+        product_list.append({
             'id': product.id,
             'name': product.name,
             'description': product.description or '',
@@ -256,24 +242,24 @@ def api_products_list(request):
             'volume_unit_display': product.get_volume_unit_display(),
             'ean': product.ean or None,
             'gross_price': float(gross_price) if gross_price is not None else None,
-        }
-        product_list.append(item)
+        })
 
-    payload = {
-        'products': product_list,
-        'price_list': {'id': price_list.id, 'name': price_list.name} if price_list else None,
-        'user': None,
-    }
     if effective_user:
         profile = getattr(effective_user, 'profile', None)
         display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or effective_user.username
-        payload['user'] = {
+        user_payload = {
             'id': effective_user.id,
             'username': effective_user.username,
             'display_name': display_name,
         }
+    else:
+        user_payload = None
 
-    print('api_products_list response:', payload)  # na chwilę – do debugu
+    payload = {
+        'products': product_list,
+        'price_list': {'id': price_list.id, 'name': price_list.name} if price_list else None,
+        'user': user_payload,
+    }
     return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
 
 

@@ -10,11 +10,11 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_http_methods
 import json
 
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
 
 def register(request):
   if request.user.is_authenticated:
@@ -108,13 +108,14 @@ def update_user_profile(request):
         }, status=500)
 
 
-# --- API Auth (React frontend: POST JSON login/email + password, JWT in response) ---
+# --- API Auth (React frontend: sesja + cookie, bez JWT) ---
 
 @api_view(["POST"])
 def api_login(request):
     """
     POST /api/auth/login/ with body { "login": "user@example.com" or "username", "password": "..." }.
-    Also accepts "email" instead of "login" (backward compatible). Returns JWT token and user.
+    Also accepts "email" instead of "login". On success sets session (cookie sessionid)
+    and returns only user data. Frontend must send X-CSRFToken and credentials: 'include'.
     """
     login_value = request.data.get("login") or request.data.get("email")
     password = request.data.get("password")
@@ -138,10 +139,8 @@ def api_login(request):
             {"detail": "Invalid credentials"},
             status=status.HTTP_401_UNAUTHORIZED,
         )
-    refresh = RefreshToken.for_user(user)
+    login(request, user)
     return Response({
-        "token": str(refresh.access_token),
-        "refresh": str(refresh),
         "user": {
             "id": user.id,
             "username": user.username,
@@ -154,19 +153,26 @@ def api_login(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_logout(request):
-    """POST /api/auth/logout/. Optional: clear server session; for JWT, frontend removes token."""
+    """POST /api/auth/logout/. Clears server session. Send credentials: 'include' and X-CSRFToken."""
     logout(request)
     return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
+@ensure_csrf_cookie
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
 def api_me(request):
-    """GET /api/auth/me/. Returns current user (id, username, email, is_superuser)."""
+    """
+    GET /api/auth/me/. Sets csrftoken cookie (for SPA). Returns current user or null.
+    Call this first (with credentials: 'include') so frontend can read csrftoken and send X-CSRFToken on POST/PUT/PATCH/DELETE.
+    """
+    if not request.user.is_authenticated:
+        return Response({"user": None})
     user = request.user
     return Response({
-        "id": user.id,
-        "username": user.username,
-        "email": user.email or "",
-        "is_superuser": user.is_superuser,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email or "",
+            "is_superuser": user.is_superuser,
+        },
     })

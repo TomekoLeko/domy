@@ -85,16 +85,11 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True  # wymagane przy sesji/cookie
 
-# REST Framework & JWT
+# REST Framework – autentykacja tylko sesją (cookie) dla API z Reacta
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
-}
-
-from datetime import timedelta
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
 }
 
 # Session / cookie (auth dla API z frontu React).
@@ -103,6 +98,16 @@ SIMPLE_JWT = {
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
+
+# CSRF: cookie csrftoken – frontend (React) odczytuje i wysyła w nagłówku X-CSRFToken przy POST/PUT/PATCH/DELETE.
+# HttpOnly=False, żeby JS mógł odczytać cookie i ustawić X-CSRFToken.
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_TRUSTED_ORIGINS = [
+    "https://main.d3st356dakzmcc.amplifyapp.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 TEMPLATES = [
     {
