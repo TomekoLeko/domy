@@ -76,14 +76,14 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'domy.urls'
 
-# CORS: Frontend (React) – Amplify production + localhost:5173 / 127.0.0.1:5173 (dev, Vite)
+# CORS: Frontend (React) – domena frontu (nie * przy credentials).
+# Przy credentials: 'include' front musi być w CORS_ALLOWED_ORIGINS.
 CORS_ALLOWED_ORIGINS = [
     "https://main.d3st356dakzmcc.amplifyapp.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-# Wymagane przy cookies / credentials (np. session, JWT w cookie)
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = True  # wymagane przy sesji/cookie
 
 # REST Framework & JWT
 REST_FRAMEWORK = {
@@ -97,7 +97,9 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
 }
 
-# Session (optional: for cookie-based auth from same app)
+# Session / cookie (auth dla API z frontu React).
+# Lax: cookie wysyłane przy same-origin i top-level GET; dla localhost:5173 -> :8000 zwykle OK.
+# Gdy front na innej domenie (np. production): ustaw SESSION_COOKIE_SAMESITE = 'None' i SESSION_COOKIE_SECURE = True.
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG

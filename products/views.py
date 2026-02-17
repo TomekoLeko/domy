@@ -3,7 +3,8 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_exempt
 import json
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
@@ -179,6 +180,81 @@ def save_price(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
 
+
+@require_GET
+def api_products_list(request):
+    """
+    API dla zewnętrznego frontendu (np. React).
+    Użytkownik z sesji/ciasteczek (front wysyła credentials: 'include').
+    Query: opcjonalnie buyer_id – tylko dla staff; ceny dla tego kupującego.
+    Odpowiedź: products (każdy z gross_price), user (display_name), price_list.
+    """
+    User = get_user_model()
+    products = Product.objects.filter(is_active=True).prefetch_related(
+        'images', 'prices__price_list', 'categories'
+    )
+    price_list = None
+    effective_user = None
+    product_prices = {}
+
+    if request.user.is_authenticated:
+        buyer_id = request.GET.get('buyer_id')
+        # Tylko staff może używać buyer_id; dla zwykłego użytkownika ignorujemy parametr
+        if (request.user.is_staff or request.user.is_superuser) and buyer_id:
+            try:
+                effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer_id)
+            except (User.DoesNotExist, ValueError):
+                effective_user = request.user
+        else:
+            effective_user = request.user
+
+        profile = getattr(effective_user, 'profile', None)
+        if profile and profile.price_list_id:
+            price_list = profile.price_list
+            prices = Price.objects.filter(
+                price_list=price_list,
+                product__in=products
+            ).values('product_id', 'gross_price')
+            product_prices = {p['product_id']: p['gross_price'] for p in prices}
+
+    product_list = []
+    for product in products:
+        first_image = product.images.first()
+        image_url = None
+        if first_image and first_image.image:
+            image_url = request.build_absolute_uri(first_image.image.url)
+        gross_price = product_prices.get(product.id)
+        item = {
+            'id': product.id,
+            'name': product.name,
+            'description': product.description or '',
+            'image_url': image_url,
+            'categories': [{'id': c.id, 'name': c.name} for c in product.categories.all()],
+            'volume_value': float(product.volume_value),
+            'volume_unit': product.volume_unit,
+            'volume_unit_display': product.get_volume_unit_display(),
+            'ean': product.ean or None,
+            'gross_price': float(gross_price) if gross_price is not None else None,
+        }
+        product_list.append(item)
+
+    payload = {
+        'products': product_list,
+        'price_list': {'id': price_list.id, 'name': price_list.name} if price_list else None,
+        'user': None,
+    }
+    if effective_user:
+        profile = getattr(effective_user, 'profile', None)
+        display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or effective_user.username
+        payload['user'] = {
+            'id': effective_user.id,
+            'username': effective_user.username,
+            'display_name': display_name,
+        }
+
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
 def home(request):
     products = Product.objects.filter(is_active=True).prefetch_related('images', 'prices')
     User = get_user_model()
@@ -234,6 +310,60 @@ def home(request):
         context['monthly_usage'] = monthly_usage
 
     return render(request, 'home.html', context)
+
+@require_GET
+def api_buyers_list(request):
+    """
+    Lista kupujących (beneficjentów) do dropdownu dla staff.
+    Tylko dla zalogowanych staff/superuser. Zwraca id, display_name (profile.name lub username).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Staff required'}, status=403)
+    User = get_user_model()
+    beneficiaries = User.objects.filter(profile__is_beneficiary=True).select_related('profile')
+    buyers = []
+    for u in beneficiaries:
+        profile = getattr(u, 'profile', None)
+        display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or u.username
+        buyers.append({'id': u.id, 'username': u.username, 'display_name': display_name})
+    return JsonResponse({'buyers': buyers}, json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+def api_cart_change_buyer(request):
+    """
+    POST /api/cart/change-buyer/ – ustawia w sesji wybranego kupującego (selected_buyer_id).
+    Body JSON: { "buyer_id": <id> }. Tylko staff. Front wywołuje przed dodaniem do koszyka.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Staff required'}, status=403)
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+    buyer_id = body.get('buyer_id')
+    if buyer_id is not None:
+        User = get_user_model()
+        try:
+            buyer = User.objects.get(pk=buyer_id)
+            request.session['selected_buyer_id'] = int(buyer_id)
+            profile = getattr(buyer, 'profile', None)
+            display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or buyer.username
+            return JsonResponse({
+                'status': 'success',
+                'user': {'id': buyer.id, 'username': buyer.username, 'display_name': display_name},
+            }, json_dumps_params={'ensure_ascii': False})
+        except (User.DoesNotExist, ValueError):
+            return JsonResponse({'detail': 'Invalid buyer_id'}, status=400)
+    request.session.pop('selected_buyer_id', None)
+    return JsonResponse({'status': 'success', 'user': None})
+
 
 @require_POST
 @require_authenticated_staff_or_superuser

@@ -4,7 +4,10 @@ from . import carts_views
 from . import cart_create_order
 
 urlpatterns = [
-    path ('', views.home, name='home'),
+    path('', views.home, name='home'),
+    path('api/products/', views.api_products_list, name='api_products_list'),
+    path('api/buyers/', views.api_buyers_list, name='api_buyers_list'),
+    path('api/cart/change-buyer/', views.api_cart_change_buyer, name='api_cart_change_buyer'),
     path('products/', views.products, name='products'),
     path('add/', views.add_product, name='add_product'),
     path('edit/<int:product_id>/', views.edit_product, name='edit_product'),
