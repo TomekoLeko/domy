@@ -263,6 +263,60 @@ def api_products_list(request):
     return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
 
 
+def api_get_cart_items(request):
+    """
+    API dla zewnętrznego frontendu (np. React) – lista pozycji koszyka.
+    Wywołanie z credentials: 'include' (sesja/cookie).
+    GET /api/cart/items/?buyer_id=<id>
+    - Zalogowany: zwraca pozycje koszyka dla podanego kupującego (buyer_id).
+    - Staff/superuser: może podać dowolny buyer_id (koszyk prowadzony przez request.user dla tego kupującego).
+    - Nie-staff: buyer_id musi być id zalogowanego użytkownika (własny koszyk).
+    - Brak buyer_id: 400.
+    Zwraca: { "cart_items": [...], "cart_total": "123.45" } lub pusty koszyk.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    if not buyer_id:
+        return JsonResponse({'detail': 'buyer_id is required'}, status=400)
+
+    User = get_user_model()
+    try:
+        buyer = User.objects.get(pk=buyer_id)
+    except (User.DoesNotExist, ValueError):
+        return JsonResponse({'detail': 'Invalid buyer_id'}, status=400)
+
+    if not (request.user.is_staff or request.user.is_superuser) and str(request.user.id) != str(buyer_id):
+        return JsonResponse({'detail': 'Forbidden'}, status=403)
+
+    cart = Cart.objects.filter(user=request.user, buyer=buyer).prefetch_related('items__product', 'items__product__images').first()
+    items_data = []
+    cart_total = '0.00'
+
+    if cart:
+        for item in cart.items.all():
+            first_image = item.product.images.first()
+            image_url = None
+            if first_image and first_image.image:
+                image_url = request.build_absolute_uri(first_image.image.url)
+            items_data.append({
+                'id': item.id,
+                'product_id': item.product.id,
+                'product_name': item.product.name,
+                'price': str(item.price),
+                'quantity': item.quantity,
+                'subtotal': str(item.subtotal),
+                'image_url': image_url,
+            })
+        cart_total = str(cart.total_cost)
+
+    return JsonResponse({
+        'cart_items': items_data,
+        'cart_total': cart_total,
+    }, json_dumps_params={'ensure_ascii': False})
+
+
 def home(request):
     products = Product.objects.filter(is_active=True).prefetch_related('images', 'prices')
     User = get_user_model()
