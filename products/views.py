@@ -187,42 +187,44 @@ def api_products_list(request):
     """
     API dla zewnętrznego frontendu (np. React).
     Wywołanie z credentials: 'include' – sesja (cookie) identyfikuje użytkownika.
-    Zalogowany: zwraca produkty z cenami (dla buyer_id lub request.user).
-    Niezalogowany: zwraca produkty bez cen (user/price_list = null).
-    buyer_id opcjonalny – brak oznacza ceny dla zalogowanego użytkownika.
+    Wymaga autentykacji i parametru buyer_id.
+    - Brak buyer_id: 400 "Nie wybrano kupującego"
+    - Kupujący bez przypisanego cennika: 400 "Kupujący nie ma przypisanego cennika"
+    - W przeciwnym razie: lista produktów z cenami (dla cennika przypisanego kupującemu).
     """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    if not buyer_id:
+        return JsonResponse({'detail': 'Nie wybrano kupującego'}, status=400)
+
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
     User = get_user_model()
+    effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer.id)
+
+    try:
+        profile = effective_user.profile
+    except Exception:
+        profile = None
+    price_list = None
+    if profile and getattr(profile, 'price_list_id', None):
+        price_list = profile.price_list
+
+    if not price_list:
+        return JsonResponse({'detail': 'Kupujący nie ma przypisanego cennika'}, status=400)
+
     products = Product.objects.filter(is_active=True).prefetch_related(
         'images', 'prices__price_list', 'categories'
     )
-    price_list = None
-    product_prices = {}
-    effective_user = None
-
-    if request.user.is_authenticated:
-        buyer_id = (request.GET.get('buyer_id') or '').strip() or str(request.user.id)
-        if request.user.is_staff or request.user.is_superuser:
-            try:
-                effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer_id)
-            except (User.DoesNotExist, ValueError):
-                effective_user = request.user
-        else:
-            effective_user = request.user
-
-        try:
-            profile = effective_user.profile
-        except Exception:
-            profile = None
-        if profile and getattr(profile, 'price_list_id', None):
-            price_list = profile.price_list
-        if not price_list and settings.DEBUG:
-            price_list = PriceList.objects.filter(is_standard=True).first()
-        if price_list:
-            prices = Price.objects.filter(
-                price_list=price_list,
-                product__in=products
-            ).values('product_id', 'gross_price')
-            product_prices = {p['product_id']: p['gross_price'] for p in prices}
+    prices = Price.objects.filter(
+        price_list=price_list,
+        product__in=products
+    ).values('product_id', 'gross_price')
+    product_prices = {p['product_id']: p['gross_price'] for p in prices}
 
     product_list = []
     for product in products:
