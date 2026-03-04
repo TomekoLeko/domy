@@ -427,6 +427,136 @@ def api_remove_cart_item(request):
     return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
 
 
+def modify_cart_item_quantity_by(cart, product_id, quantity, operation):
+    """
+    Modyfikuje ilość sztuk produktu w koszyku.
+    operation: "decrease" – zmniejsza o quantity; "increase" – zwiększa o quantity.
+    quantity – dodatnia liczba (delta).
+    Zwraca: nowa liczba sztuk (int) lub None, gdy pozycja nie istnieje w koszyku.
+    """
+    cart_item = CartItem.objects.filter(cart=cart, product_id=product_id).first()
+    if not cart_item:
+        return None
+
+    if operation == 'decrease':
+        new_quantity = max(0, cart_item.quantity - quantity)
+        if new_quantity == 0:
+            cart_item.delete()
+        else:
+            cart_item.quantity = new_quantity
+            cart_item.save()
+        return new_quantity
+    elif operation == 'increase':
+        cart_item.quantity += quantity
+        cart_item.save()
+        return cart_item.quantity
+    else:
+        raise ValueError(f'Invalid operation: {operation}')
+
+
+def _parse_decrease_increase_body(request):
+    """
+    Wspólna walidacja body dla api_decrease_cart_item_quantity i api_increase_cart_item_quantity.
+    Zwraca (buyer, product_id, quantity) lub (None, JsonResponse).
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return None, JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    buyer_id = body.get('buyer_id')
+    if buyer_id is None or str(buyer_id).strip() == '':
+        return None, JsonResponse({'detail': 'Nie podano buyer_id'}, status=400)
+
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return None, err
+
+    product_id = body.get('product_id')
+    if product_id is None:
+        return None, JsonResponse({'detail': 'product_id is required'}, status=400)
+
+    quantity = body.get('quantity')
+    if quantity is None:
+        return None, JsonResponse({'detail': 'quantity is required'}, status=400)
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return None, JsonResponse({'detail': 'quantity must be a positive integer'}, status=400)
+    if quantity <= 0:
+        return None, JsonResponse({'detail': 'quantity must be a positive integer'}, status=400)
+
+    return (buyer, product_id, quantity), None
+
+
+@csrf_exempt
+def api_decrease_cart_item_quantity(request):
+    """
+    API: zmniejszenie liczby sztuk produktu w koszyku o podaną wartość.
+    POST /api/cart/items/decrease/
+    Body JSON: { "buyer_id": <id>, "product_id": <id>, "quantity": <int> }
+    quantity – o ile sztuk zmniejszyć (dodatnia liczba).
+    Zwraca: { "product_id": <id>, "quantity": <int> } – nowa liczba sztuk po zmniejszeniu (0 jeśli pozycja usunięta).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    parsed, err = _parse_decrease_increase_body(request)
+    if err:
+        return err
+    buyer, product_id, quantity = parsed
+
+    try:
+        cart = Cart.objects.get(user=request.user, buyer=buyer)
+    except Cart.DoesNotExist:
+        return JsonResponse({'detail': 'Koszyk nie istnieje'}, status=404)
+
+    new_quantity = modify_cart_item_quantity_by(cart, product_id, quantity, operation='decrease')
+    if new_quantity is None:
+        return JsonResponse({'detail': 'Produkt nie jest w koszyku'}, status=404)
+
+    return JsonResponse(
+        {'product_id': int(product_id), 'quantity': new_quantity},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@csrf_exempt
+def api_increase_cart_item_quantity(request):
+    """
+    API: zwiększenie liczby sztuk produktu w koszyku o podaną wartość.
+    POST /api/cart/items/increase/
+    Body JSON: { "buyer_id": <id>, "product_id": <id>, "quantity": <int> }
+    quantity – o ile sztuk zwiększyć (dodatnia liczba).
+    Zwraca: { "product_id": <id>, "quantity": <int> } – nowa liczba sztuk po zwiększeniu.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    parsed, err = _parse_decrease_increase_body(request)
+    if err:
+        return err
+    buyer, product_id, quantity = parsed
+
+    try:
+        cart = Cart.objects.get(user=request.user, buyer=buyer)
+    except Cart.DoesNotExist:
+        return JsonResponse({'detail': 'Koszyk nie istnieje'}, status=404)
+
+    new_quantity = modify_cart_item_quantity_by(cart, product_id, quantity, operation='increase')
+    if new_quantity is None:
+        return JsonResponse({'detail': 'Produkt nie jest w koszyku'}, status=404)
+
+    return JsonResponse(
+        {'product_id': int(product_id), 'quantity': new_quantity},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
 def api_cart_items(request):
     """
     Dyspozytor dla /api/cart/items/: GET – lista, POST – dodaj/zmień ilość, DELETE – usuń pozycję.
