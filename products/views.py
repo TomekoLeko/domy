@@ -884,6 +884,54 @@ def api_create_order(request):
     }, status=201, json_dumps_params={'ensure_ascii': False})
 
 
+def api_list_of_orders_for_buyer(request):
+    """
+    API: lista zamówień dla podanego kupującego.
+    GET /api/orders/?buyer_id=<id>
+    - Staff/superuser: może pobrać zamówienia dla dowolnego kupującego.
+    - Zalogowany użytkownik: może pobrać wyłącznie własne zamówienia.
+    Zwraca 200: { "orders": [...] }
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    orders = (
+        Order.objects
+        .filter(buyer=buyer)
+        .prefetch_related('items__product__images')
+        .order_by('-created_at')
+    )
+
+    orders_data = []
+    for order in orders:
+        items_data = []
+        for item in order.items.all():
+            first_image = item.product.images.first()
+            image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
+            items_data.append({
+                'id': item.id,
+                'product_name': item.product.name,
+                'image_url': image_url,
+                'quantity': item.quantity,
+                'price': str(item.price),
+                'subtotal': str(item.subtotal),
+            })
+        orders_data.append({
+            'id': order.id,
+            'status': order.status,
+            'created_at': order.created_at.isoformat(),
+            'total_cost': str(order.total_cost),
+            'items': items_data,
+        })
+
+    return JsonResponse({'orders': orders_data}, json_dumps_params={'ensure_ascii': False})
+
+
 @require_POST
 def assign_buyer_to_order_item(request):
     try:
