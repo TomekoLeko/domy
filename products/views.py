@@ -810,6 +810,80 @@ def delete_order(request, order_id):
             'message': 'Zamówienie nie zostało znalezione'
         }, status=404)
 
+@csrf_exempt
+def api_create_order(request):
+    """
+    API: składa zamówienie z koszyka dla podanego kupującego.
+    POST /api/cart/order/
+    Body JSON: { "buyer_id": <id> }
+    - Staff/superuser: może złożyć zamówienie dla dowolnego kupującego.
+    - Zalogowany użytkownik: może złożyć zamówienie tylko dla siebie.
+    Pozycje są kopiowane bezpośrednio z koszyka – dofinansowanie przypisywane jest ręcznie po złożeniu zamówienia.
+    Zwraca 201: { "order_id": <id>, "total_cost": "...", "status": "...", "items": [...] }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    buyer_id = body.get('buyer_id')
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    try:
+        cart = Cart.objects.prefetch_related('items__product').get(user=request.user, buyer=buyer)
+    except Cart.DoesNotExist:
+        return JsonResponse({'detail': 'Koszyk nie istnieje'}, status=404)
+
+    if not cart.items.exists():
+        return JsonResponse({'detail': 'Koszyk jest pusty'}, status=400)
+
+    from .cart_create_order import create_stock_reductions
+
+    order = Order.objects.create(
+        user=request.user,
+        buyer=buyer,
+        total_cost=cart.total_cost,
+    )
+
+    cart_items = list(cart.items.all())
+    for cart_item in cart_items:
+        OrderItem.objects.create(
+            order=order,
+            product=cart_item.product,
+            quantity=cart_item.quantity,
+            price=cart_item.price,
+        )
+    create_stock_reductions(order, cart_items)
+
+    cart.delete()
+
+    items_data = [
+        {
+            'id': oi.id,
+            'product_id': oi.product_id,
+            'product_name': oi.product.name,
+            'quantity': oi.quantity,
+            'price': str(oi.price),
+            'subtotal': str(oi.subtotal),
+        }
+        for oi in order.items.select_related('product').all()
+    ]
+
+    return JsonResponse({
+        'order_id': order.id,
+        'total_cost': str(order.total_cost),
+        'status': order.status,
+        'items': items_data,
+    }, status=201, json_dumps_params={'ensure_ascii': False})
+
+
 @require_POST
 def assign_buyer_to_order_item(request):
     try:
