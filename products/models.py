@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -149,4 +151,10 @@ class OrderItem(models.Model):
     def save(self, *args, **kwargs):
         self.subtotal = self.quantity * self.price
         super().save(*args, **kwargs)
+
+    @property
+    def sum_of_order_item_payments(self):
+        return self.payments.aggregate(
+            total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField(max_digits=10, decimal_places=2))
+        )['total']
 
