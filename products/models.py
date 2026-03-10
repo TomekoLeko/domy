@@ -158,3 +158,7 @@ class OrderItem(models.Model):
             total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField(max_digits=10, decimal_places=2))
         )['total']
 
+    @property
+    def left_to_pay(self):
+        return self.subtotal - self.sum_of_order_item_payments
+
