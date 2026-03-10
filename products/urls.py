@@ -24,6 +24,7 @@ urlpatterns = [
     path('cart/order/', cart_create_order.create_order, name='create_order'),
     path('api/cart/order/', views.api_create_order, name='api_create_order'),
     path('api/orders/', views.api_list_of_orders_for_buyer, name='api_list_of_orders_for_buyer'),
+    path('api/orders/admin/', views.api_list_of_orders_for_admin, name='api_list_of_orders_for_admin'),
     path('cart/determine-contribution-usage/', carts_views.determine_contribution_usage, name='determine_contribution_usage'),
     path('orders/', views.orders, name='orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
