@@ -13,7 +13,6 @@ class Payment(models.Model):
     PAYMENT_TYPES = [
         ('contribution', 'Wpłata od wspierającego'),
         ('order', 'Płatność za zamówienie'),
-        ('beneficiary', 'Zamówienie beneficjenta'),
         ('refund', 'Zwrot środków'),
         ('expense', 'Wydatek'),
         ('other', 'Inne'),
