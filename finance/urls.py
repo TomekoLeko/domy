@@ -18,5 +18,6 @@ urlpatterns = [
     path('invoices/delete/<int:invoice_id>/', views.delete_invoice, name='delete_invoice'),
     path('contributions/', views.contributions, name='contributions'),
     path('finance/get-user-payments/<int:user_id>/', views.get_user_payments, name='get_user_payments'),
+    path('finance/get-available-contributions/', views.get_available_contributions, name='get_available_contributions'),
     path('finance/assign-payment-to-item/', views.assign_payment_to_item, name='assign_payment_to_item'),
 ]

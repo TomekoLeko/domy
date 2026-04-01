@@ -185,3 +185,19 @@ def get_cart_items(request):
         print(f"Error in get_cart_items: {str(e)}")
         return JsonResponse({'status': 'error', 'message': str(e)})
 
+@csrf_exempt
+@require_POST
+def determine_contribution_usage(request):
+    """
+    Return contribution usage data for the current cart.
+    The frontend expects `cart_contribution` in the response.
+    """
+    try:
+        cart_contribution = request.session.get('cart_contribution')
+        return JsonResponse({
+            'status': 'success',
+            'cart_contribution': cart_contribution
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
