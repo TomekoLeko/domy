@@ -1,5 +1,4 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
-from finance.models import Payment
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -8,13 +7,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 import json
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Sum, F
-from stock.models import StockEntry, StockReduction
-from django.utils import timezone
-from finance.models import MonthlyContributionUsage
 from django.contrib import messages
-from decimal import Decimal
-from pprint import pprint
 
 @csrf_exempt
 @require_POST
@@ -191,141 +184,4 @@ def get_cart_items(request):
     except Exception as e:
         print(f"Error in get_cart_items: {str(e)}")
         return JsonResponse({'status': 'error', 'message': str(e)})
-
-@csrf_exempt
-@require_POST
-def determine_contribution_usage(request):
-    buyer_id = request.POST.get('buyer_id')
-    try:
-        #  get buyer's cart
-        cart = Cart.objects.get(buyer_id=buyer_id)
-        # get cart items
-        cart_items = CartItem.objects.filter(cart=cart)
-
-        # Create temporary array with individual entries for each product unit
-        temporary_array = []
-        for cart_item in cart_items:
-            # Get product details
-            product_id = cart_item.product.id
-            product_name = cart_item.product.name
-            price = str(cart_item.price)  # Convert Decimal to string for safe serialization
-
-            # Add an entry to the temporary array for each unit of quantity
-            for _ in range(cart_item.quantity):
-                temporary_array.append({
-                    'product_id': product_id,
-                    'product_name': product_name,
-                    'price': price,
-                    'payment_id': '',
-                    'quantity': 1
-                })
-
-        remaining_available_limit = determine_remaining_available_limit(cart.buyer)
-
-        # Create contribution_usage_array based on the requirements
-        contribution_usage_array = []
-
-        # Calculate the total value of temporary_array to determine 50% limit
-        total_cart_value = sum(float(item['price']) for item in temporary_array)
-        fifty_percent_limit = total_cart_value * 0.5
-
-        effective_limit = determine_current_effective_limit(cart.buyer, remaining_available_limit, fifty_percent_limit)
-
-        # Sort temporary_array by price (descending) to optimize usage of the limit
-        # Using descending sort to get closest to the limit with fewer items
-        sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
-
-        contribution_usage_array, current_sum = assign_greedy(temporary_array, effective_limit)
-        if current_sum != effective_limit:
-            contribution_usage_array, current_sum = assign_optimal(temporary_array, effective_limit)
-
-        cart_contribution = {
-            'contribution_usage_array': contribution_usage_array,
-            'temporary_array_of_all_items': temporary_array,
-            'current_sum': current_sum,
-            'effective_limit': effective_limit,
-            'remaining_available_limit': str(remaining_available_limit),
-            'fifty_percent_limit': fifty_percent_limit
-        }
-
-        # Save cart_contribution in the session
-        request.session['cart_contribution'] = cart_contribution
-        request.session.modified = True
-
-        return JsonResponse({
-            'status': 'success',
-            'cart_contribution': cart_contribution
-        })
-
-    except (Cart.DoesNotExist, MonthlyContributionUsage.DoesNotExist):
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Cart or contribution usage not found'
-        })
-
-def determine_remaining_available_limit(buyer):
-    monthly_contribution_usage = MonthlyContributionUsage.objects.filter(
-        profile__user=buyer
-    ).order_by('-year', '-month').first()
-    if not monthly_contribution_usage:
-        return 0
-
-    remaining_available_limit = min(
-        monthly_contribution_usage.remaining_limit,
-        Payment.get_available_contributions_amount()
-    )
-
-    remaining_available_limit = int(remaining_available_limit / 10) * 10
-
-    return remaining_available_limit
-
-def determine_current_effective_limit(buyer, remaining_available_limit, fifty_percent_limit):
-    effective_limit = min(remaining_available_limit, float(fifty_percent_limit))
-    effective_limit = int(effective_limit / 10) * 10
-
-    return effective_limit
-
-def assign_greedy(temporary_array, effective_limit):
-    sorted_temp_array = sorted(temporary_array, key=lambda x: float(x['price']), reverse=True)
-
-    current_sum = 0.0
-    contribution_usage_array = []
-
-    for item in sorted_temp_array:
-        item_price = float(item['price'])
-        if current_sum + item_price <= effective_limit:
-            contribution_usage_array.append(item)
-            current_sum += item_price
-
-    return contribution_usage_array, current_sum
-
-def assign_optimal(temporary_array, effective_limit):
-    n = len(temporary_array)
-    prices = [float(item['price']) for item in temporary_array]
-
-    # dp[i] = best sum achievable <= i
-    dp = [0.0] * (int(effective_limit * 100) + 1)  # scale to avoid floating point errors
-    item_trace = [None] * len(dp)  # remember the last item used to get this sum
-
-    for idx, price in enumerate(prices):
-        price_cents = int(price * 100)
-        for i in range(len(dp) - 1, price_cents - 1, -1):
-            if dp[i - price_cents] + price > dp[i]:
-                dp[i] = dp[i - price_cents] + price
-                item_trace[i] = idx
-
-    # Find the best total
-    best_sum_index = max(range(len(dp)), key=lambda i: dp[i])
-    best_sum = dp[best_sum_index]
-
-    # Reconstruct the items used
-    contribution_usage_array = []
-    i = best_sum_index
-    while i > 0 and item_trace[i] is not None:
-        idx = item_trace[i]
-        contribution_usage_array.append(temporary_array[idx])
-        price_cents = int(prices[idx] * 100)
-        i -= price_cents
-
-    return contribution_usage_array[::-1], best_sum
 

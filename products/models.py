@@ -136,9 +136,7 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey('Product', on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)  # Price at the time of order
-    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     buyer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -148,10 +146,6 @@ class OrderItem(models.Model):
         verbose_name="Przypisany odbiorca"
     )
 
-    def save(self, *args, **kwargs):
-        self.subtotal = self.quantity * self.price
-        super().save(*args, **kwargs)
-
     @property
     def sum_of_order_item_payments(self):
         return self.payments.aggregate(
@@ -160,5 +154,5 @@ class OrderItem(models.Model):
 
     @property
     def left_to_pay(self):
-        return self.subtotal - self.sum_of_order_item_payments
+        return self.price - self.sum_of_order_item_payments
 

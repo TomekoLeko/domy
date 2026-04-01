@@ -852,15 +852,16 @@ def api_create_order(request):
         total_cost=cart.total_cost,
     )
 
-    cart_items = list(cart.items.all())
-    for cart_item in cart_items:
-        OrderItem.objects.create(
-            order=order,
-            product=cart_item.product,
-            quantity=cart_item.quantity,
-            price=cart_item.price,
-        )
-    create_stock_reductions(order, cart_items)
+    order_items = []
+    for cart_item in cart.items.all():
+        for _ in range(cart_item.quantity):
+            order_item = OrderItem.objects.create(
+                order=order,
+                product=cart_item.product,
+                price=cart_item.price,
+            )
+            order_items.append(order_item)
+    create_stock_reductions(order, order_items)
 
     cart.delete()
 
@@ -869,9 +870,8 @@ def api_create_order(request):
             'id': oi.id,
             'product_id': oi.product_id,
             'product_name': oi.product.name,
-            'quantity': oi.quantity,
             'price': str(oi.price),
-            'subtotal': str(oi.subtotal),
+            'buyer_id': oi.buyer_id,
         }
         for oi in order.items.select_related('product').all()
     ]
@@ -911,16 +911,18 @@ def api_list_of_orders_for_buyer(request):
     for order in orders:
         items_data = []
         left_to_pay_buyer = 0
-        for item in order.items.all():
+        for item in order.items.select_related('buyer').all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
             items_data.append({
                 'id': item.id,
+                'product_id': item.product_id,
                 'product_name': item.product.name,
                 'image_url': image_url,
-                'quantity': item.quantity,
                 'price': str(item.price),
-                'subtotal': str(item.subtotal),
+                'buyer_id': item.buyer_id,
+                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'left_to_pay': str(item.left_to_pay),
             })
             if item.buyer_id == buyer.id:
                 left_to_pay_buyer += item.left_to_pay
@@ -958,16 +960,18 @@ def api_list_of_orders_for_admin(request):
     orders_data = []
     for order in orders:
         items_data = []
-        for item in order.items.all():
+        for item in order.items.select_related('buyer').all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
             items_data.append({
                 'id': item.id,
+                'product_id': item.product_id,
                 'product_name': item.product.name,
                 'image_url': image_url,
-                'quantity': item.quantity,
                 'price': str(item.price),
-                'subtotal': str(item.subtotal),
+                'buyer_id': item.buyer_id,
+                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'left_to_pay': str(item.left_to_pay),
             })
         orders_data.append({
             'id': order.id,
