@@ -67,7 +67,7 @@ def get_filtered_users(request):
 
     if payment_type == 'contribution':
         users = users.filter(profile__is_contributor=True)
-    elif payment_type == 'order_payment':
+    elif payment_type == 'order':
         users = users.filter(profile__is_beneficiary=True)
 
     return JsonResponse({
