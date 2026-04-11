@@ -13,7 +13,6 @@ class Payment(models.Model):
     PAYMENT_TYPES = [
         ('contribution', 'Wpłata od wspierającego'),
         ('order', 'Płatność za zamówienie'),
-        ('beneficiary', 'Zamówienie beneficjenta'),
         ('refund', 'Zwrot środków'),
         ('expense', 'Wydatek'),
         ('other', 'Inne'),
@@ -85,7 +84,7 @@ class Payment(models.Model):
 
     @property
     def available_amount(self):
-        used_amount = sum(item.subtotal for item in self.related_order_items.all())
+        used_amount = sum(item.price for item in self.related_order_items.all())
         return self.amount - used_amount
 
     @classmethod
@@ -93,7 +92,7 @@ class Payment(models.Model):
         available_contributions = cls.objects.filter(
             payment_type='contribution'
         ).annotate(
-            used_amount=Coalesce(Sum('related_order_items__subtotal'), 0, output_field=DecimalField(max_digits=10, decimal_places=2))
+            used_amount=Coalesce(Sum('related_order_items__price'), 0, output_field=DecimalField(max_digits=10, decimal_places=2))
         ).filter(
             amount__gt=F('used_amount')
         ).order_by('payment_date')
@@ -158,8 +157,8 @@ class MonthlyContributionUsage(models.Model):
             return
             
         # Calculate total usage from related order items
-        total_usage = sum(item.quantity * item.price for item in self.order_items.all())
-        
+        total_usage = sum(item.price for item in self.order_items.all())
+
         if total_usage > self.limit:
             raise ValidationError(
                 f"Total usage ({total_usage}) exceeds the monthly limit ({self.limit})"
@@ -173,7 +172,7 @@ class MonthlyContributionUsage(models.Model):
 
     @property
     def total_usage(self):
-        return sum(item.quantity * item.price for item in self.order_items.all())
+        return sum(item.price for item in self.order_items.all())
 
     @property
     def remaining_limit(self):

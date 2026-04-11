@@ -67,7 +67,7 @@ def get_filtered_users(request):
 
     if payment_type == 'contribution':
         users = users.filter(profile__is_contributor=True)
-    elif payment_type == 'order_payment':
+    elif payment_type == 'order':
         users = users.filter(profile__is_beneficiary=True)
 
     return JsonResponse({
@@ -300,6 +300,35 @@ def get_user_payments(request, user_id):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+@staff_member_required
+def get_available_contributions(request):
+    """Return all available contribution payments with calculated available amount."""
+    payments = Payment.get_available_contributions().select_related(
+        'related_user',
+        'related_order',
+        'created_by'
+    ).prefetch_related('related_order_items')
+
+    payment_data = [{
+        'id': payment.id,
+        'amount': str(payment.amount),
+        'payment_type': payment.payment_type,
+        'description': payment.description,
+        'sender': payment.sender,
+        'related_user': payment.related_user_id,
+        'related_order': payment.related_order_id,
+        'related_order_items': list(payment.related_order_items.values_list('id', flat=True)),
+        'created_by': payment.created_by_id,
+        'created_at': payment.created_at.isoformat(),
+        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+        'available_amount': str(payment.available_amount),
+    } for payment in payments]
+
+    return JsonResponse({
+        'status': 'success',
+        'payments': payment_data
+    })
 
 @require_POST
 @staff_member_required

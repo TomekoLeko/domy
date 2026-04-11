@@ -194,7 +194,6 @@ function getSenderAndDescription(fullDescription) {
 function determinePaymentType(sender, description) {
     // TODO: retrieve beneficiaries and contributors from the database
     const tempContributors = ['GRZEGORZ PAWLAK', 'SOŚNIERZ KLIMKOWSKI', 'BARBARA LISTEK'];
-    const tempBeneficiaries = ['BALIŃSKA KATARZYNA'];
     const tempInvoices = ['KODPOL', 'FAKTURA'];
 
     const upperSender = sender.toUpperCase();
@@ -210,17 +209,10 @@ function determinePaymentType(sender, description) {
         upperDescription.includes(invoice.toUpperCase())
     );
 
-    const isBeneficiaryPayment = tempBeneficiaries.some(beneficiary => 
-        upperSender.includes(beneficiary.toUpperCase()) || 
-        upperDescription.includes(beneficiary.toUpperCase())
-    );
-
     if (isContributorPayment) {
         return {value: 'contribution', label: paymentsMap['contribution']};
     } else if (isInvoicePayment) {
         return {value: 'invoice', label: paymentsMap['invoice']};
-    } else if (isBeneficiaryPayment) {
-        return {value: 'beneficiary', label: paymentsMap['beneficiary']};
     } else {
         return {value: 'order', label: paymentsMap['order']};
     }

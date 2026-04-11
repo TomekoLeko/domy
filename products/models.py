@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -134,9 +136,7 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey('Product', on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)  # Price at the time of order
-    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     buyer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -146,7 +146,13 @@ class OrderItem(models.Model):
         verbose_name="Przypisany odbiorca"
     )
 
-    def save(self, *args, **kwargs):
-        self.subtotal = self.quantity * self.price
-        super().save(*args, **kwargs)
+    @property
+    def sum_of_order_item_payments(self):
+        return self.payments.aggregate(
+            total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField(max_digits=10, decimal_places=2))
+        )['total']
+
+    @property
+    def left_to_pay(self):
+        return self.price - self.sum_of_order_item_payments
 

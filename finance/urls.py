@@ -18,5 +18,9 @@ urlpatterns = [
     path('invoices/delete/<int:invoice_id>/', views.delete_invoice, name='delete_invoice'),
     path('contributions/', views.contributions, name='contributions'),
     path('finance/get-user-payments/<int:user_id>/', views.get_user_payments, name='get_user_payments'),
+    # New API-prefixed route for external UI integrations.
+    path('api/finance/get-available-contributions/', views.get_available_contributions, name='api_get_available_contributions'),
+    # Backward-compatible legacy route.
+    path('finance/get-available-contributions/', views.get_available_contributions, name='get_available_contributions'),
     path('finance/assign-payment-to-item/', views.assign_payment_to_item, name='assign_payment_to_item'),
 ]

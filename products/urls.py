@@ -4,7 +4,13 @@ from . import carts_views
 from . import cart_create_order
 
 urlpatterns = [
-    path ('', views.home, name='home'),
+    path('', views.home, name='home'),
+    path('api/products/', views.api_products_list, name='api_products_list'),
+    path('api/buyers/', views.api_buyers_list, name='api_buyers_list'),
+    path('api/cart/change-buyer/', views.api_cart_change_buyer, name='api_cart_change_buyer'),
+    path('api/cart/items/', views.api_cart_items, name='api_get_cart_items'),
+    path('api/cart/items/decrease/', views.api_decrease_cart_item_quantity, name='api_decrease_cart_item_quantity'),
+    path('api/cart/items/increase/', views.api_increase_cart_item_quantity, name='api_increase_cart_item_quantity'),
     path('products/', views.products, name='products'),
     path('add/', views.add_product, name='add_product'),
     path('edit/<int:product_id>/', views.edit_product, name='edit_product'),
@@ -16,7 +22,9 @@ urlpatterns = [
     path('cart/get-items/', carts_views.get_cart_items, name='get_cart_items'),
     path('cart/remove/', carts_views.remove_cart_item, name='remove_cart_item'),
     path('cart/order/', cart_create_order.create_order, name='create_order'),
-    path('cart/determine-contribution-usage/', carts_views.determine_contribution_usage, name='determine_contribution_usage'),
+    path('api/cart/order/', views.api_create_order, name='api_create_order'),
+    path('api/orders/', views.api_list_of_orders_for_buyer, name='api_list_of_orders_for_buyer'),
+    path('api/orders/admin/', views.api_list_of_orders_for_admin, name='api_list_of_orders_for_admin'),
     path('orders/', views.orders, name='orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
     path('orders/delete/<int:order_id>/', views.delete_order, name='delete_order'),
@@ -24,4 +32,5 @@ urlpatterns = [
     path('products/delete/<int:product_id>/', views.delete_product, name='delete_product'),
     path('products/add-category/', views.add_category, name='add_category'),
     path('cart/toggle/', carts_views.toggle_cart, name='toggle_cart'),
+    path('cart/determine-contribution-usage/', carts_views.determine_contribution_usage, name='determine_contribution_usage'),
 ]

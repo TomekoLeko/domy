@@ -1,9 +1,11 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
+from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_exempt
 import json
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
@@ -179,6 +181,395 @@ def save_price(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
 
+
+@require_GET
+def api_products_list(request):
+    """
+    API dla zewnętrznego frontendu (np. React).
+    Wywołanie z credentials: 'include' – sesja (cookie) identyfikuje użytkownika.
+    Wymaga autentykacji i parametru buyer_id.
+    - Brak buyer_id: 400 "Nie wybrano kupującego"
+    - Kupujący bez przypisanego cennika: 400 "Kupujący nie ma przypisanego cennika"
+    - W przeciwnym razie: lista produktów z cenami (dla cennika przypisanego kupującemu).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    if not buyer_id:
+        return JsonResponse({'detail': 'Nie wybrano kupującego'}, status=400)
+
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    User = get_user_model()
+    effective_user = User.objects.select_related('profile', 'profile__price_list').get(pk=buyer.id)
+
+    try:
+        profile = effective_user.profile
+    except Exception:
+        profile = None
+    price_list = None
+    if profile and getattr(profile, 'price_list_id', None):
+        price_list = profile.price_list
+
+    if not price_list:
+        return JsonResponse({'detail': 'Kupujący nie ma przypisanego cennika'}, status=400)
+
+    products = Product.objects.filter(is_active=True).prefetch_related(
+        'images', 'prices__price_list', 'categories'
+    )
+    prices = Price.objects.filter(
+        price_list=price_list,
+        product__in=products
+    ).values('product_id', 'gross_price')
+    product_prices = {p['product_id']: p['gross_price'] for p in prices}
+
+    product_list = []
+    for product in products:
+        first_image = product.images.first()
+        image_url = None
+        if first_image and first_image.image:
+            image_url = request.build_absolute_uri(first_image.image.url)
+        gross_price = product_prices.get(product.id)
+        product_list.append({
+            'id': product.id,
+            'name': product.name,
+            'description': product.description or '',
+            'image_url': image_url,
+            'categories': [{'id': c.id, 'name': c.name} for c in product.categories.all()],
+            'volume_value': float(product.volume_value),
+            'volume_unit': product.volume_unit,
+            'volume_unit_display': product.get_volume_unit_display(),
+            'ean': product.ean or None,
+            'gross_price': float(gross_price) if gross_price is not None else None,
+        })
+
+    if effective_user:
+        profile = getattr(effective_user, 'profile', None)
+        display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or effective_user.username
+        user_payload = {
+            'id': effective_user.id,
+            'username': effective_user.username,
+            'display_name': display_name,
+        }
+    else:
+        user_payload = None
+
+    payload = {
+        'products': product_list,
+        'price_list': {'id': price_list.id, 'name': price_list.name} if price_list else None,
+        'user': user_payload,
+    }
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+def _build_cart_payload(request, cart):
+    """Buduje słownik { cart_items, cart_total } w formacie API koszyka."""
+    items_data = []
+    cart_total = '0.00'
+    if cart:
+        for item in cart.items.all():
+            first_image = item.product.images.first()
+            image_url = None
+            if first_image and first_image.image:
+                image_url = request.build_absolute_uri(first_image.image.url)
+            items_data.append({
+                'id': item.id,
+                'product_id': item.product.id,
+                'product_name': item.product.name,
+                'price': str(item.price),
+                'quantity': item.quantity,
+                'subtotal': str(item.subtotal),
+                'image_url': image_url,
+            })
+        cart_total = str(cart.total_cost)
+    return {'cart_items': items_data, 'cart_total': cart_total}
+
+
+def _get_validated_buyer(request, buyer_id_param):
+    """
+    Waliduje buyer_id: zwraca (User, None) lub (None, JsonResponse).
+    buyer_id_param może być string lub int.
+    """
+    if buyer_id_param is None or str(buyer_id_param).strip() == '':
+        return None, JsonResponse({'detail': 'buyer_id is required'}, status=400)
+    User = get_user_model()
+    try:
+        buyer = User.objects.get(pk=buyer_id_param)
+    except (User.DoesNotExist, ValueError):
+        return None, JsonResponse({'detail': 'Invalid buyer_id'}, status=400)
+    if not (request.user.is_staff or request.user.is_superuser) and str(request.user.id) != str(buyer_id_param):
+        return None, JsonResponse({'detail': 'Forbidden'}, status=403)
+    return buyer, None
+
+
+def api_get_cart_items(request):
+    """
+    API dla zewnętrznego frontendu (np. React) – lista pozycji koszyka.
+    Wywołanie z credentials: 'include' (sesja/cookie).
+    GET /api/cart/items/?buyer_id=<id>
+    - Zalogowany: zwraca pozycje koszyka dla podanego kupującego (buyer_id).
+    - Staff/superuser: może podać dowolny buyer_id (koszyk prowadzony przez request.user dla tego kupującego).
+    - Nie-staff: buyer_id musi być id zalogowanego użytkownika (własny koszyk).
+    - Brak buyer_id: 400.
+    Zwraca: { "cart_items": [...], "cart_total": "123.45" } lub pusty koszyk.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    cart = Cart.objects.filter(user=request.user, buyer=buyer).prefetch_related('items__product', 'items__product__images').first()
+    payload = _build_cart_payload(request, cart)
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+def api_add_cart_item(request):
+    """
+    API: dodanie lub zmiana ilości produktu w koszyku.
+    POST /api/cart/items/
+    Body JSON: { "buyer_id": <id>, "product_id": <id>, "quantity": <int> }
+    quantity – delta (dodatnia = dodaj, ujemna = odejmij). Np. quantity: 1 dodaje 1 szt., quantity: -1 odejmuje 1.
+    Po aktualizacji zwraca pełny stan koszyka: { "cart_items": [...], "cart_total": "..." } (jak GET /api/cart/items/).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    buyer_id = body.get('buyer_id')
+    product_id = body.get('product_id')
+    quantity = body.get('quantity', 1)
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    if product_id is None:
+        return JsonResponse({'detail': 'product_id is required'}, status=400)
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'quantity must be an integer'}, status=400)
+
+    try:
+        product = Product.objects.get(pk=product_id)
+    except (Product.DoesNotExist, ValueError):
+        return JsonResponse({'detail': 'Product not found'}, status=404)
+
+    price_list = getattr(buyer, 'profile', None) and getattr(buyer.profile, 'price_list', None)
+    if not price_list:
+        return JsonResponse({'detail': 'Brak cennika dla kupującego'}, status=400)
+    try:
+        price_obj = Price.objects.get(price_list=price_list, product=product)
+    except Price.DoesNotExist:
+        return JsonResponse({'detail': 'Brak ceny dla tego produktu'}, status=400)
+
+    cart, _ = Cart.objects.get_or_create(user=request.user, buyer=buyer)
+    cart_item = CartItem.objects.filter(cart=cart, product=product).first()
+
+    if cart_item:
+        cart_item.quantity += quantity
+        if cart_item.quantity > 0:
+            cart_item.save()
+        else:
+            cart_item.delete()
+    else:
+        if quantity <= 0:
+            return JsonResponse(_build_cart_payload(request, cart), json_dumps_params={'ensure_ascii': False})
+        CartItem.objects.create(cart=cart, product=product, quantity=quantity, price=price_obj.gross_price)
+
+    # Odśwież koszyk (np. po delete pozycji)
+    cart = Cart.objects.filter(user=request.user, buyer=buyer).prefetch_related('items__product', 'items__product__images').first()
+    payload = _build_cart_payload(request, cart)
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+def api_remove_cart_item(request):
+    """
+    API: usunięcie produktu z koszyka (całkowite usunięcie pozycji).
+    DELETE /api/cart/items/?buyer_id=<id>&product_id=<id>
+    Zwraca pełny stan koszyka po usunięciu: { "cart_items": [...], "cart_total": "..." }.
+    """
+    if request.method != 'DELETE':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    product_id = request.GET.get('product_id')
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    if product_id is None or str(product_id).strip() == '':
+        return JsonResponse({'detail': 'product_id is required'}, status=400)
+
+    try:
+        cart = Cart.objects.get(user=request.user, buyer=buyer)
+        CartItem.objects.filter(cart=cart, product_id=product_id).delete()
+    except Cart.DoesNotExist:
+        pass
+
+    cart = Cart.objects.filter(user=request.user, buyer=buyer).prefetch_related('items__product', 'items__product__images').first()
+    payload = _build_cart_payload(request, cart)
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+def modify_cart_item_quantity_by(cart, product_id, quantity, operation):
+    """
+    Modyfikuje ilość sztuk produktu w koszyku.
+    operation: "decrease" – zmniejsza o quantity; "increase" – zwiększa o quantity.
+    quantity – dodatnia liczba (delta).
+    Zwraca: nowa liczba sztuk (int) lub None, gdy pozycja nie istnieje w koszyku.
+    """
+    cart_item = CartItem.objects.filter(cart=cart, product_id=product_id).first()
+    if not cart_item:
+        return None
+
+    if operation == 'decrease':
+        new_quantity = max(0, cart_item.quantity - quantity)
+        if new_quantity == 0:
+            cart_item.delete()
+        else:
+            cart_item.quantity = new_quantity
+            cart_item.save()
+        return new_quantity
+    elif operation == 'increase':
+        cart_item.quantity += quantity
+        cart_item.save()
+        return cart_item.quantity
+    else:
+        raise ValueError(f'Invalid operation: {operation}')
+
+
+def _parse_decrease_increase_body(request):
+    """
+    Wspólna walidacja body dla api_decrease_cart_item_quantity i api_increase_cart_item_quantity.
+    Zwraca (buyer, product_id, quantity) lub (None, JsonResponse).
+    """
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return None, JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    buyer_id = body.get('buyer_id')
+    if buyer_id is None or str(buyer_id).strip() == '':
+        return None, JsonResponse({'detail': 'Nie podano buyer_id'}, status=400)
+
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return None, err
+
+    product_id = body.get('product_id')
+    if product_id is None:
+        return None, JsonResponse({'detail': 'product_id is required'}, status=400)
+
+    quantity = body.get('quantity')
+    if quantity is None:
+        return None, JsonResponse({'detail': 'quantity is required'}, status=400)
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return None, JsonResponse({'detail': 'quantity must be a positive integer'}, status=400)
+    if quantity <= 0:
+        return None, JsonResponse({'detail': 'quantity must be a positive integer'}, status=400)
+
+    return (buyer, product_id, quantity), None
+
+
+@csrf_exempt
+def api_decrease_cart_item_quantity(request):
+    """
+    API: zmniejszenie liczby sztuk produktu w koszyku o podaną wartość.
+    POST /api/cart/items/decrease/
+    Body JSON: { "buyer_id": <id>, "product_id": <id>, "quantity": <int> }
+    quantity – o ile sztuk zmniejszyć (dodatnia liczba).
+    Zwraca: { "product_id": <id>, "quantity": <int> } – nowa liczba sztuk po zmniejszeniu (0 jeśli pozycja usunięta).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    parsed, err = _parse_decrease_increase_body(request)
+    if err:
+        return err
+    buyer, product_id, quantity = parsed
+
+    try:
+        cart = Cart.objects.get(user=request.user, buyer=buyer)
+    except Cart.DoesNotExist:
+        return JsonResponse({'detail': 'Koszyk nie istnieje'}, status=404)
+
+    new_quantity = modify_cart_item_quantity_by(cart, product_id, quantity, operation='decrease')
+    if new_quantity is None:
+        return JsonResponse({'detail': 'Produkt nie jest w koszyku'}, status=404)
+
+    return JsonResponse(
+        {'product_id': int(product_id), 'quantity': new_quantity},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@csrf_exempt
+def api_increase_cart_item_quantity(request):
+    """
+    API: zwiększenie liczby sztuk produktu w koszyku o podaną wartość.
+    POST /api/cart/items/increase/
+    Body JSON: { "buyer_id": <id>, "product_id": <id>, "quantity": <int> }
+    quantity – o ile sztuk zwiększyć (dodatnia liczba).
+    Zwraca: { "product_id": <id>, "quantity": <int> } – nowa liczba sztuk po zwiększeniu.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    parsed, err = _parse_decrease_increase_body(request)
+    if err:
+        return err
+    buyer, product_id, quantity = parsed
+
+    try:
+        cart = Cart.objects.get(user=request.user, buyer=buyer)
+    except Cart.DoesNotExist:
+        return JsonResponse({'detail': 'Koszyk nie istnieje'}, status=404)
+
+    new_quantity = modify_cart_item_quantity_by(cart, product_id, quantity, operation='increase')
+    if new_quantity is None:
+        return JsonResponse({'detail': 'Produkt nie jest w koszyku'}, status=404)
+
+    return JsonResponse(
+        {'product_id': int(product_id), 'quantity': new_quantity},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+def api_cart_items(request):
+    """
+    Dyspozytor dla /api/cart/items/: GET – lista, POST – dodaj/zmień ilość, DELETE – usuń pozycję.
+    """
+    if request.method == 'GET':
+        return api_get_cart_items(request)
+    if request.method == 'POST':
+        return api_add_cart_item(request)
+    if request.method == 'DELETE':
+        return api_remove_cart_item(request)
+    return JsonResponse({'detail': 'Method not allowed'}, status=405)
+
+
 def home(request):
     products = Product.objects.filter(is_active=True).prefetch_related('images', 'prices')
     User = get_user_model()
@@ -234,6 +625,60 @@ def home(request):
         context['monthly_usage'] = monthly_usage
 
     return render(request, 'home.html', context)
+
+@require_GET
+def api_buyers_list(request):
+    """
+    Lista kupujących (beneficjentów) do dropdownu dla staff.
+    Tylko dla zalogowanych staff/superuser. Zwraca id, display_name (profile.name lub username).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Staff required'}, status=403)
+    User = get_user_model()
+    beneficiaries = User.objects.filter(profile__is_beneficiary=True).select_related('profile')
+    buyers = []
+    for u in beneficiaries:
+        profile = getattr(u, 'profile', None)
+        display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or u.username
+        buyers.append({'id': u.id, 'username': u.username, 'display_name': display_name})
+    return JsonResponse({'buyers': buyers}, json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+def api_cart_change_buyer(request):
+    """
+    POST /api/cart/change-buyer/ – ustawia w sesji wybranego kupującego (selected_buyer_id).
+    Body JSON: { "buyer_id": <id> }. Tylko staff. Front wywołuje przed dodaniem do koszyka.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Staff required'}, status=403)
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+    buyer_id = body.get('buyer_id')
+    if buyer_id is not None:
+        User = get_user_model()
+        try:
+            buyer = User.objects.get(pk=buyer_id)
+            request.session['selected_buyer_id'] = int(buyer_id)
+            profile = getattr(buyer, 'profile', None)
+            display_name = (profile.name if profile and getattr(profile, 'name', None) else None) or buyer.username
+            return JsonResponse({
+                'status': 'success',
+                'user': {'id': buyer.id, 'username': buyer.username, 'display_name': display_name},
+            }, json_dumps_params={'ensure_ascii': False})
+        except (User.DoesNotExist, ValueError):
+            return JsonResponse({'detail': 'Invalid buyer_id'}, status=400)
+    request.session.pop('selected_buyer_id', None)
+    return JsonResponse({'status': 'success', 'user': None})
+
 
 @require_POST
 @require_authenticated_staff_or_superuser
@@ -364,6 +809,180 @@ def delete_order(request, order_id):
             'status': 'error',
             'message': 'Zamówienie nie zostało znalezione'
         }, status=404)
+
+@csrf_exempt
+def api_create_order(request):
+    """
+    API: składa zamówienie z koszyka dla podanego kupującego.
+    POST /api/cart/order/
+    Body JSON: { "buyer_id": <id> }
+    - Staff/superuser: może złożyć zamówienie dla dowolnego kupującego.
+    - Zalogowany użytkownik: może złożyć zamówienie tylko dla siebie.
+    Pozycje są kopiowane bezpośrednio z koszyka – dofinansowanie przypisywane jest ręcznie po złożeniu zamówienia.
+    Zwraca 201: { "order_id": <id>, "total_cost": "...", "status": "...", "items": [...] }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    buyer_id = body.get('buyer_id')
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    try:
+        cart = Cart.objects.prefetch_related('items__product').get(user=request.user, buyer=buyer)
+    except Cart.DoesNotExist:
+        return JsonResponse({'detail': 'Koszyk nie istnieje'}, status=404)
+
+    if not cart.items.exists():
+        return JsonResponse({'detail': 'Koszyk jest pusty'}, status=400)
+
+    from .cart_create_order import create_stock_reductions
+
+    order = Order.objects.create(
+        user=request.user,
+        buyer=buyer,
+        total_cost=cart.total_cost,
+    )
+
+    order_items = []
+    for cart_item in cart.items.all():
+        for _ in range(cart_item.quantity):
+            order_item = OrderItem.objects.create(
+                order=order,
+                product=cart_item.product,
+                price=cart_item.price,
+            )
+            order_items.append(order_item)
+    create_stock_reductions(order, order_items)
+
+    cart.delete()
+
+    items_data = [
+        {
+            'id': oi.id,
+            'product_id': oi.product_id,
+            'product_name': oi.product.name,
+            'price': str(oi.price),
+            'buyer_id': oi.buyer_id,
+        }
+        for oi in order.items.select_related('product').all()
+    ]
+
+    return JsonResponse({
+        'order_id': order.id,
+        'total_cost': str(order.total_cost),
+        'status': order.status,
+        'items': items_data,
+    }, status=201, json_dumps_params={'ensure_ascii': False})
+
+
+def api_list_of_orders_for_buyer(request):
+    """
+    API: lista zamówień dla podanego kupującego.
+    GET /api/orders/?buyer_id=<id>
+    - Staff/superuser: może pobrać zamówienia dla dowolnego kupującego.
+    - Zalogowany użytkownik: może pobrać wyłącznie własne zamówienia.
+    Zwraca 200: { "orders": [...] }
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    buyer_id = (request.GET.get('buyer_id') or '').strip()
+    buyer, err = _get_validated_buyer(request, buyer_id)
+    if err:
+        return err
+
+    orders = (
+        Order.objects
+        .filter(buyer=buyer)
+        .prefetch_related('items__product__images')
+        .order_by('-created_at')
+    )
+
+    orders_data = []
+    for order in orders:
+        items_data = []
+        left_to_pay_buyer = 0
+        for item in order.items.select_related('buyer').all():
+            first_image = item.product.images.first()
+            image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
+            items_data.append({
+                'id': item.id,
+                'product_id': item.product_id,
+                'product_name': item.product.name,
+                'image_url': image_url,
+                'price': str(item.price),
+                'buyer_id': item.buyer_id,
+                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'left_to_pay': str(item.left_to_pay),
+            })
+            if item.buyer_id == buyer.id:
+                left_to_pay_buyer += item.left_to_pay
+        orders_data.append({
+            'id': order.id,
+            'status': order.status,
+            'created_at': order.created_at.isoformat(),
+            'total_cost': str(order.total_cost),
+            'left_to_pay_buyer': str(left_to_pay_buyer),
+            'items': items_data,
+        })
+
+    return JsonResponse({'orders': orders_data}, json_dumps_params={'ensure_ascii': False})
+
+
+def api_list_of_orders_for_admin(request):
+    """
+    API: lista wszystkich zamówień (tylko dla admina/staff).
+    GET /api/admin/orders/
+    - Staff/superuser: pobiera wszystkie zamówienia w systemie.
+    Zwraca 200: { "orders": [...] }
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Permission denied'}, status=403)
+
+    orders = (
+        Order.objects
+        .prefetch_related('items__product__images')
+        .order_by('-created_at')
+    )
+
+    orders_data = []
+    for order in orders:
+        items_data = []
+        for item in order.items.select_related('buyer').all():
+            first_image = item.product.images.first()
+            image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
+            items_data.append({
+                'id': item.id,
+                'product_id': item.product_id,
+                'product_name': item.product.name,
+                'image_url': image_url,
+                'price': str(item.price),
+                'buyer_id': item.buyer_id,
+                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'left_to_pay': str(item.left_to_pay),
+            })
+        orders_data.append({
+            'id': order.id,
+            'status': order.status,
+            'created_at': order.created_at.isoformat(),
+            'total_cost': str(order.total_cost),
+            'items': items_data,
+        })
+
+    return JsonResponse({'orders': orders_data}, json_dumps_params={'ensure_ascii': False})
+
 
 @require_POST
 def assign_buyer_to_order_item(request):
