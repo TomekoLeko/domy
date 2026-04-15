@@ -166,7 +166,7 @@ def api_me(request):
     Call this first (with credentials: 'include') so frontend can read csrftoken and send X-CSRFToken on POST/PUT/PATCH/DELETE.
     """
     if not request.user.is_authenticated:
-        return Response({"user": None})
+        return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
     user = request.user
     return Response({
         "user": {

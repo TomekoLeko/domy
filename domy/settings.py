@@ -17,6 +17,20 @@ import os
 
 load_dotenv()
 
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def env_list(name, default=None):
+    value = os.getenv(name)
+    if not value:
+        return default or []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,7 +47,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-8mw@c655@)q6#&95dy=^&mtu$yy(!6xv!6dayj@6$v*-81didd")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool("DEBUG", ENVIRONMENT != "production")
 
 # Backend (API): Heroku production + staging; localhost/127.0.0.1 dla dev
 ALLOWED_HOSTS = [
@@ -83,6 +97,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", CORS_ALLOWED_ORIGINS)
 CORS_ALLOW_CREDENTIALS = True  # wymagane przy sesji/cookie
 
 # REST Framework – autentykacja tylko sesją (cookie) dla API z Reacta
@@ -95,19 +110,31 @@ REST_FRAMEWORK = {
 # Session / cookie (auth dla API z frontu React).
 # Lax: cookie wysyłane przy same-origin i top-level GET; dla localhost:5173 -> :8000 zwykle OK.
 # Gdy front na innej domenie (np. production): ustaw SESSION_COOKIE_SAMESITE = 'None' i SESSION_COOKIE_SECURE = True.
-SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = os.getenv(
+    "SESSION_COOKIE_SAMESITE",
+    "None" if ENVIRONMENT == "production" else "Lax",
+)
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", ENVIRONMENT == "production")
+SESSION_COOKIE_DOMAIN = None
 
 # CSRF: cookie csrftoken – frontend (React) odczytuje i wysyła w nagłówku X-CSRFToken przy POST/PUT/PATCH/DELETE.
 # HttpOnly=False, żeby JS mógł odczytać cookie i ustawić X-CSRFToken.
-CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = os.getenv(
+    "CSRF_COOKIE_SAMESITE",
+    "None" if ENVIRONMENT == "production" else "Lax",
+)
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", ENVIRONMENT == "production")
+CSRF_COOKIE_DOMAIN = None
 CSRF_TRUSTED_ORIGINS = [
     "https://main.d3st356dakzmcc.amplifyapp.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", CSRF_TRUSTED_ORIGINS)
+
+# Heroku / reverse proxy: request.is_secure() based on X-Forwarded-Proto
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 TEMPLATES = [
     {
