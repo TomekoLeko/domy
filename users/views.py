@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 import json
 
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.middleware.csrf import get_token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -162,17 +163,58 @@ def api_logout(request):
 @api_view(["GET"])
 def api_me(request):
     """
-    GET /api/auth/me/. Sets csrftoken cookie (for SPA). Returns current user or null.
-    Call this first (with credentials: 'include') so frontend can read csrftoken and send X-CSRFToken on POST/PUT/PATCH/DELETE.
+    GET /api/auth/me/.
+
+    Sets CSRF cookie (csrftoken) and returns the CSRF token value in JSON so SPA running on a different origin
+    can send it as `X-CSRFToken` for subsequent POST/PUT/PATCH/DELETE.
+
+    Returns:
+      - `csrfToken`: string
+      - `user`: object or null
     """
-    if not request.user.is_authenticated:
-        return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
-    user = request.user
-    return Response({
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email or "",
-            "is_superuser": user.is_superuser,
-        },
-    })
+    # DRF passes a `rest_framework.request.Request` into the view;
+    # Django's `get_token` expects a real `django.http.HttpRequest`.
+    django_request = getattr(request, "_request", request)
+    csrf_token = get_token(django_request)
+
+    if request.user.is_authenticated:
+        user_obj = request.user
+        user = {
+            "id": user_obj.id,
+            "username": user_obj.username,
+            "email": user_obj.email or "",
+            "is_superuser": user_obj.is_superuser,
+        }
+    else:
+        user = None
+
+    return Response({"csrfToken": csrf_token, "user": user})
+
+
+@ensure_csrf_cookie
+@api_view(["GET"])
+def api_csrf(request):
+    """
+    GET /api/auth/csrf/.
+
+    Backward-compatible alias for SPAs that fetch a CSRF token from this route.
+    Returns the same payload as `api_me`.
+    """
+    # Same behavior as `api_me`, but without calling `api_me(request)` directly.
+    # Otherwise we'd pass DRF's `Request` object into a DRF-decorated view,
+    # which expects a Django `HttpRequest`.
+    django_request = getattr(request, "_request", request)
+    csrf_token = get_token(django_request)
+
+    if request.user.is_authenticated:
+        user_obj = request.user
+        user = {
+            "id": user_obj.id,
+            "username": user_obj.username,
+            "email": user_obj.email or "",
+            "is_superuser": user_obj.is_superuser,
+        }
+    else:
+        user = None
+
+    return Response({"csrfToken": csrf_token, "user": user})

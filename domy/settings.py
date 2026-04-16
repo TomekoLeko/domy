@@ -126,6 +126,7 @@ CSRF_COOKIE_SAMESITE = os.getenv(
 )
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", ENVIRONMENT == "production")
 CSRF_COOKIE_DOMAIN = None
+CSRF_COOKIE_HTTPONLY = False
 CSRF_TRUSTED_ORIGINS = [
     "https://main.d3st356dakzmcc.amplifyapp.com",
     "http://localhost:5173",
