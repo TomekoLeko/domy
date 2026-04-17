@@ -330,6 +330,53 @@ def get_available_contributions(request):
         'payments': payment_data
     })
 
+
+@staff_member_required
+def get_all_contributions(request):
+    """Return all contribution payments with full related objects."""
+    payments = Payment.objects.filter(payment_type='contribution').select_related(
+        'related_user',
+        'related_order',
+        'created_by'
+    ).prefetch_related('related_order_items', 'related_order_items__product__images')
+
+    def serialize_order_item(order_item):
+        first_image = order_item.product.images.first()
+        return {
+            'id': order_item.id,
+            'order_id': order_item.order_id,
+            'product_id': order_item.product_id,
+            'product_name': order_item.product.name,
+            'image_url': first_image.image.url if first_image and first_image.image else None,
+            'price': str(order_item.price),
+            'buyer_id': order_item.buyer_id,
+        }
+
+    payment_data = [{
+        'id': payment.id,
+        'amount': str(payment.amount),
+        'payment_type': payment.payment_type,
+        'description': payment.description,
+        'sender': payment.sender,
+        'related_user': {
+            'id': payment.related_user.id,
+            'name': payment.related_user.profile.name if hasattr(payment.related_user, 'profile') and payment.related_user.profile.name else payment.related_user.username
+        } if payment.related_user else None,
+        'related_order': payment.related_order_id,
+        'related_order_items': [
+            serialize_order_item(order_item) for order_item in payment.related_order_items.all()
+        ],
+        'created_by': payment.created_by_id,
+        'created_at': payment.created_at.isoformat(),
+        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+        'available_amount': str(payment.available_amount),
+    } for payment in payments]
+
+    return JsonResponse({
+        'status': 'success',
+        'payments': payment_data
+    })
+
 @require_POST
 @staff_member_required
 def assign_payment_to_item(request):
