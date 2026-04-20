@@ -1,0 +1,29 @@
+---
+description: Wskazowki backendowe dla projektu domy-backend
+alwaysApply: true
+---
+
+# Backend guidelines (domy-backend)
+
+## Zakres zmian
+
+To repozytorium zawiera Django backend.
+
+Gdy zadanie dotyczy frontendu lub komunikacji frontend-backend, wdrazaj tutaj tylko czesc backendowa:
+- endpointy API,
+- konfiguracje CORS/CSRF/sesji,
+- logike po stronie serwera.
+
+## CSRF dla SPA cross-domain
+
+Frontend React musi pobrac token CSRF przed `POST`/`PUT`/`PATCH`/`DELETE`.
+
+Uzywaj:
+- `GET /api/auth/csrf/` z `credentials: 'include'` (rekomendowane),
+- `GET /api/auth/me/` z `credentials: 'include'` (legacy alias).
+
+Endpoint ustawia cookie `csrftoken` i zwraca JSON:
+- `csrfToken`: string,
+- `user`: object lub `null`.
+
+Nastepnie frontend wysyla `X-CSRFToken` oraz `credentials: 'include'` przy zapytaniach modyfikujacych.
