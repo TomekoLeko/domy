@@ -377,6 +377,26 @@ def get_all_contributions(request):
         'payments': payment_data
     })
 
+@staff_member_required
+def api_get_contributors(request):
+    """Return active contributors for contribution creation form."""
+    contributors = (
+        User.objects
+        .filter(is_active=True, profile__is_contributor=True)
+        .select_related('profile')
+        .order_by('profile__name', 'username')
+    )
+
+    users = [
+        {
+            'id': contributor.id,
+            'name': contributor.profile.name if hasattr(contributor, 'profile') and contributor.profile.name else contributor.username,
+        }
+        for contributor in contributors
+    ]
+
+    return JsonResponse({'users': users})
+
 @require_POST
 @staff_member_required
 def assign_payment_to_item(request):
@@ -490,6 +510,18 @@ def api_create_payment(request):
         except (ValueError, TypeError, User.DoesNotExist):
             return JsonResponse(
                 {'status': 'error', 'message': 'related_user_id is invalid or user does not exist'},
+                status=400,
+            )
+
+    if payment_type == 'contribution':
+        if related_user is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is required for contribution payment'},
+                status=400,
+            )
+        if not getattr(related_user, 'profile', None) or not related_user.profile.is_contributor:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id must point to a contributor user'},
                 status=400,
             )
 
