@@ -14,7 +14,7 @@ from datetime import datetime, date
 import calendar
 from django.db.models import Count, Q
 from domy.decorators import require_authenticated_staff_or_superuser
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from .models import Supplier
 from finance.models import Payment
 
@@ -412,3 +412,141 @@ def assign_payment_to_item(request):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+
+VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
+
+
+@require_POST
+@staff_member_required
+def api_create_payment(request):
+    """
+    Create a single payment (JSON API for staff UI).
+    Requires payment_type; see docs/API_CREATE_PAYMENT.md.
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid JSON body'},
+            status=400,
+        )
+
+    payment_type = data.get('payment_type')
+    if payment_type is None or (isinstance(payment_type, str) and not str(payment_type).strip()):
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'payment_type is required',
+            },
+            status=400,
+        )
+
+    if payment_type not in VALID_PAYMENT_TYPE_VALUES:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Invalid payment_type',
+                'allowed_payment_types': sorted(VALID_PAYMENT_TYPE_VALUES),
+            },
+            status=400,
+        )
+
+    if 'amount' not in data:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount is required'},
+            status=400,
+        )
+
+    try:
+        amount = Decimal(str(data['amount']))
+    except (InvalidOperation, ValueError, TypeError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be a valid decimal number'},
+            status=400,
+        )
+
+    if amount <= 0:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be greater than zero'},
+            status=400,
+        )
+
+    description = data.get('description')
+    if description is None:
+        description = ''
+
+    sender = data.get('sender')
+    if sender is not None and sender != '':
+        sender = str(sender)
+    else:
+        sender = None
+
+    related_user = None
+    ru_id = data.get('related_user_id')
+    if ru_id is not None and ru_id != '':
+        try:
+            related_user = User.objects.get(pk=int(ru_id))
+        except (ValueError, TypeError, User.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is invalid or user does not exist'},
+                status=400,
+            )
+
+    related_order = None
+    ro_id = data.get('related_order_id')
+    if ro_id is not None and ro_id != '':
+        try:
+            related_order = Order.objects.get(pk=int(ro_id))
+        except (ValueError, TypeError, Order.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_order_id is invalid or order does not exist'},
+                status=400,
+            )
+
+    payment_date = None
+    raw_date = data.get('payment_date')
+    if raw_date is not None and raw_date != '':
+        if isinstance(raw_date, str):
+            try:
+                payment_date = date.fromisoformat(raw_date.strip()[:10])
+            except ValueError:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'payment_date must be ISO format YYYY-MM-DD'},
+                    status=400,
+                )
+        else:
+            return JsonResponse(
+                {'status': 'error', 'message': 'payment_date must be a string YYYY-MM-DD'},
+                status=400,
+            )
+
+    payment = Payment.objects.create(
+        payment_type=payment_type,
+        amount=amount,
+        description=description,
+        sender=sender,
+        related_user=related_user,
+        related_order=related_order,
+        payment_date=payment_date,
+        created_by=request.user,
+    )
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'payment': {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'payment_type': payment.payment_type,
+                'description': payment.description,
+                'sender': payment.sender,
+                'related_user_id': payment.related_user_id,
+                'related_order_id': payment.related_order_id,
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'created_at': payment.created_at.isoformat(),
+                'created_by_id': payment.created_by_id,
+            },
+        },
+        status=201,
+    )
