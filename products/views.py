@@ -921,7 +921,7 @@ def api_list_of_orders_for_buyer(request):
                 'image_url': image_url,
                 'price': str(item.price),
                 'buyer_id': item.buyer_id,
-                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
             })
             if item.buyer_id == buyer.id:
@@ -970,7 +970,7 @@ def api_list_of_orders_for_admin(request):
                 'image_url': image_url,
                 'price': str(item.price),
                 'buyer_id': item.buyer_id,
-                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
             })
         orders_data.append({

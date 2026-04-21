@@ -340,7 +340,7 @@ def get_all_contributions(request):
         'related_user',
         'related_order',
         'created_by'
-    ).prefetch_related('related_order_items', 'related_order_items__product__images')
+    ).prefetch_related('related_order_items', 'related_order_items__buyer', 'related_order_items__product__images')
 
     def serialize_order_item(order_item):
         first_image = order_item.product.images.first()
@@ -352,6 +352,10 @@ def get_all_contributions(request):
             'image_url': first_image.image.url if first_image and first_image.image else None,
             'price': str(order_item.price),
             'buyer_id': order_item.buyer_id,
+            'buyer_name': (
+                order_item.buyer.get_organization_name_or_full_name() or order_item.buyer.username
+                if order_item.buyer else None
+            ),
         }
 
     payment_data = [{
