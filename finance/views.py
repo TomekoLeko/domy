@@ -362,8 +362,8 @@ def get_all_contributions(request):
         'sender': payment.sender,
         'related_user': {
             'id': payment.related_user.id,
-            'name': payment.related_user.profile.name if hasattr(payment.related_user, 'profile') and payment.related_user.profile.name else payment.related_user.username,
-            'full_name': payment.related_user.get_full_name(),
+            'name': payment.related_user.get_organization_name_or_full_name() or payment.related_user.username,
+            'full_name': payment.related_user.get_organization_name_or_full_name(),
         } if payment.related_user else None,
         'related_order': payment.related_order_id,
         'related_order_items': [
