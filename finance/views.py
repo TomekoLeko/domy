@@ -611,12 +611,21 @@ def api_assign_contributions_to_order(request):
             if update_fields:
                 order_item.save(update_fields=update_fields)
 
-        if requested_order_item_ids:
-            linked_contributions = Payment.objects.filter(
-                payment_type='contribution',
-                related_order_items__id__in=requested_order_item_ids,
-            ).distinct()
-            linked_order_items = list(order_items_qs.filter(id__in=requested_order_item_ids))
+        # Every order item that was not assigned to a contribution in this modal
+        # should fall back to order buyer.
+        for order_item in order_items_qs.exclude(id__in=requested_order_item_ids):
+            if order_item.buyer_id != order.buyer_id:
+                order_item.buyer = order.buyer
+                order_item.save(update_fields=['buyer'])
+
+        # Keep contribution links in sync with current modal state:
+        # clear all contribution links for this order, then re-add requested ones.
+        linked_contributions = Payment.objects.filter(
+            payment_type='contribution',
+            related_order_items__order=order,
+        ).distinct()
+        if linked_contributions.exists():
+            linked_order_items = list(order_items_qs)
             for contribution in linked_contributions:
                 contribution.related_order_items.remove(*linked_order_items)
 
@@ -629,6 +638,10 @@ def api_assign_contributions_to_order(request):
             payment = payments_by_id[payment_id]
             items_to_add = list(order_items_qs.filter(id__in=order_item_ids))
             payment.related_order_items.add(*items_to_add)
+
+        if order.status != 'accepted':
+            order.status = 'accepted'
+            order.save(update_fields=['status'])
 
     return JsonResponse(
         {
