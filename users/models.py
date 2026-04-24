@@ -42,15 +42,8 @@ class Profile(models.Model):
         return self.get_or_create_monthly_usage(datetime.now().year, datetime.now().month)
 
 @receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    if created:
-        Profile.objects.create(user=instance)
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    if not hasattr(instance, 'profile'):
-        Profile.objects.create(user=instance)
-    instance.profile.save()
+def ensure_user_profile(sender, instance, **kwargs):
+    Profile.objects.get_or_create(user=instance)
 
 
 def _get_organization_name(self):
