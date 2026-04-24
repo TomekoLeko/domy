@@ -398,6 +398,7 @@ def api_get_contributors(request):
         {
             'id': contributor.id,
             'name': contributor.profile.name if hasattr(contributor, 'profile') and contributor.profile.name else contributor.username,
+            'full_name': contributor.get_organization_name_or_full_name() or contributor.username,
         }
         for contributor in contributors
     ]
