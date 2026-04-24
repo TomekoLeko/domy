@@ -22,6 +22,12 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ('is_staff', 'is_superuser', 'profile__is_contributor', 'profile__is_beneficiary')
     search_fields = ('username', 'email', 'profile__name', 'profile__phone')
 
+    def get_inline_instances(self, request, obj=None):
+        # Avoid duplicate Profile creation on User add form.
+        if obj is None:
+            return []
+        return super().get_inline_instances(request, obj)
+
     def get_is_contributor(self, obj):
         return obj.profile.is_contributor
     get_is_contributor.short_description = 'Contributor'
