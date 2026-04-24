@@ -21,6 +21,9 @@ urlpatterns = [
     # New API-prefixed route for external UI integrations.
     path('api/finance/get-available-contributions/', views.get_available_contributions, name='api_get_available_contributions'),
     path('api/finance/get-all-contributions/', views.get_all_contributions, name='api_get_all_contributions'),
+    path('api/finance/get-contributors/', views.api_get_contributors, name='api_get_contributors'),
+    path('api/finance/create-payment/', views.api_create_payment, name='api_create_payment'),
+    path('api/finance/assign-contributions-to-order/', views.api_assign_contributions_to_order, name='api_assign_contributions_to_order'),
     # Backward-compatible legacy route.
     path('finance/get-available-contributions/', views.get_available_contributions, name='get_available_contributions'),
     path('finance/assign-payment-to-item/', views.assign_payment_to_item, name='assign_payment_to_item'),

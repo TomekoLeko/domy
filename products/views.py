@@ -903,6 +903,7 @@ def api_list_of_orders_for_buyer(request):
     orders = (
         Order.objects
         .filter(buyer=buyer)
+        .select_related('buyer')
         .prefetch_related('items__product__images')
         .order_by('-created_at')
     )
@@ -921,7 +922,7 @@ def api_list_of_orders_for_buyer(request):
                 'image_url': image_url,
                 'price': str(item.price),
                 'buyer_id': item.buyer_id,
-                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
             })
             if item.buyer_id == buyer.id:
@@ -932,6 +933,8 @@ def api_list_of_orders_for_buyer(request):
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
             'left_to_pay_buyer': str(left_to_pay_buyer),
+            'buyer_id': order.buyer_id,
+            'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
             'items': items_data,
         })
 
@@ -953,6 +956,7 @@ def api_list_of_orders_for_admin(request):
 
     orders = (
         Order.objects
+        .select_related('buyer')
         .prefetch_related('items__product__images')
         .order_by('-created_at')
     )
@@ -970,7 +974,7 @@ def api_list_of_orders_for_admin(request):
                 'image_url': image_url,
                 'price': str(item.price),
                 'buyer_id': item.buyer_id,
-                'buyer_name': item.buyer.get_full_name() or item.buyer.username if item.buyer else None,
+                'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
             })
         orders_data.append({
@@ -978,6 +982,8 @@ def api_list_of_orders_for_admin(request):
             'status': order.status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
+            'buyer_id': order.buyer_id,
+            'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
             'items': items_data,
         })
 

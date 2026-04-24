@@ -13,10 +13,12 @@ import json
 from datetime import datetime, date
 import calendar
 from django.db.models import Count, Q
+from django.db import transaction
 from domy.decorators import require_authenticated_staff_or_superuser
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from .models import Supplier
 from finance.models import Payment
+from products.models import OrderItem
 
 User = get_user_model()
 
@@ -338,7 +340,7 @@ def get_all_contributions(request):
         'related_user',
         'related_order',
         'created_by'
-    ).prefetch_related('related_order_items', 'related_order_items__product__images')
+    ).prefetch_related('related_order_items', 'related_order_items__buyer', 'related_order_items__product__images')
 
     def serialize_order_item(order_item):
         first_image = order_item.product.images.first()
@@ -350,6 +352,10 @@ def get_all_contributions(request):
             'image_url': first_image.image.url if first_image and first_image.image else None,
             'price': str(order_item.price),
             'buyer_id': order_item.buyer_id,
+            'buyer_name': (
+                order_item.buyer.get_organization_name_or_full_name() or order_item.buyer.username
+                if order_item.buyer else None
+            ),
         }
 
     payment_data = [{
@@ -360,7 +366,8 @@ def get_all_contributions(request):
         'sender': payment.sender,
         'related_user': {
             'id': payment.related_user.id,
-            'name': payment.related_user.profile.name if hasattr(payment.related_user, 'profile') and payment.related_user.profile.name else payment.related_user.username
+            'name': payment.related_user.get_organization_name_or_full_name() or payment.related_user.username,
+            'full_name': payment.related_user.get_organization_name_or_full_name(),
         } if payment.related_user else None,
         'related_order': payment.related_order_id,
         'related_order_items': [
@@ -376,6 +383,26 @@ def get_all_contributions(request):
         'status': 'success',
         'payments': payment_data
     })
+
+@staff_member_required
+def api_get_contributors(request):
+    """Return active contributors for contribution creation form."""
+    contributors = (
+        User.objects
+        .filter(is_active=True, profile__is_contributor=True)
+        .select_related('profile')
+        .order_by('profile__name', 'username')
+    )
+
+    users = [
+        {
+            'id': contributor.id,
+            'name': contributor.profile.name if hasattr(contributor, 'profile') and contributor.profile.name else contributor.username,
+        }
+        for contributor in contributors
+    ]
+
+    return JsonResponse({'users': users})
 
 @require_POST
 @staff_member_required
@@ -412,3 +439,362 @@ def assign_payment_to_item(request):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+
+VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
+
+
+@require_POST
+@staff_member_required
+def api_assign_contributions_to_order(request):
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid JSON body'},
+            status=400,
+        )
+
+    order_id = data.get('order_id')
+    assignments = data.get('assignments')
+
+    if order_id is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'order_id is required'},
+            status=400,
+        )
+
+    if not isinstance(assignments, list):
+        return JsonResponse(
+            {'status': 'error', 'message': 'assignments must be a list'},
+            status=400,
+        )
+
+    try:
+        order_id = int(order_id)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'order_id must be an integer'},
+            status=400,
+        )
+
+    order = get_object_or_404(Order, id=order_id)
+    order_items_qs = OrderItem.objects.filter(order=order).select_related('order')
+    order_items_by_id = {item.id: item for item in order_items_qs}
+
+    requested_item_to_payment = {}
+    requested_item_prices = {}
+    requested_payment_ids = set()
+
+    for idx, assignment in enumerate(assignments):
+        if not isinstance(assignment, dict):
+            return JsonResponse(
+                {'status': 'error', 'message': f'assignments[{idx}] must be an object'},
+                status=400,
+            )
+
+        payment_id = assignment.get('payment_id')
+        order_item_ids = assignment.get('order_item_ids') or []
+        raw_unit_price = assignment.get('unit_price')
+
+        try:
+            payment_id = int(payment_id)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {'status': 'error', 'message': f'assignments[{idx}].payment_id must be an integer'},
+                status=400,
+            )
+
+        if not isinstance(order_item_ids, list) or len(order_item_ids) == 0:
+            return JsonResponse(
+                {'status': 'error', 'message': f'assignments[{idx}].order_item_ids must be a non-empty list'},
+                status=400,
+            )
+
+        try:
+            parsed_price = Decimal(str(raw_unit_price))
+        except (InvalidOperation, TypeError, ValueError):
+            return JsonResponse(
+                {'status': 'error', 'message': f'assignments[{idx}].unit_price must be a valid decimal'},
+                status=400,
+            )
+
+        if parsed_price < 0:
+            return JsonResponse(
+                {'status': 'error', 'message': f'assignments[{idx}].unit_price cannot be negative'},
+                status=400,
+            )
+
+        requested_payment_ids.add(payment_id)
+
+        for raw_order_item_id in order_item_ids:
+            try:
+                order_item_id = int(raw_order_item_id)
+            except (TypeError, ValueError):
+                return JsonResponse(
+                    {'status': 'error', 'message': f'Invalid order_item_id in assignments[{idx}]'},
+                    status=400,
+                )
+
+            if order_item_id not in order_items_by_id:
+                return JsonResponse(
+                    {'status': 'error', 'message': f'Order item {order_item_id} does not belong to order {order.id}'},
+                    status=400,
+                )
+
+            if order_item_id in requested_item_to_payment:
+                return JsonResponse(
+                    {'status': 'error', 'message': f'Order item {order_item_id} assigned multiple times'},
+                    status=400,
+                )
+
+            requested_item_to_payment[order_item_id] = payment_id
+            requested_item_prices[order_item_id] = parsed_price
+
+    payments = Payment.objects.filter(
+        id__in=requested_payment_ids,
+        payment_type='contribution',
+    ).prefetch_related('related_order_items')
+    payments_by_id = {payment.id: payment for payment in payments}
+
+    missing_payment_ids = sorted(requested_payment_ids - set(payments_by_id.keys()))
+    if missing_payment_ids:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': f'Contribution payments not found: {", ".join(str(pid) for pid in missing_payment_ids)}',
+            },
+            status=404,
+        )
+
+    requested_sum_by_payment = {}
+    for order_item_id, payment_id in requested_item_to_payment.items():
+        requested_sum_by_payment.setdefault(payment_id, Decimal('0.00'))
+        requested_sum_by_payment[payment_id] += requested_item_prices[order_item_id]
+
+    requested_order_item_ids = set(requested_item_to_payment.keys())
+    for payment_id, payment in payments_by_id.items():
+        used_outside_current_request = sum(
+            order_item.price
+            for order_item in payment.related_order_items.all()
+            if order_item.id not in requested_order_item_ids
+        )
+        available_for_request = payment.amount - used_outside_current_request
+        requested_sum = requested_sum_by_payment.get(payment_id, Decimal('0.00'))
+        if requested_sum > available_for_request:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Payment {payment_id} has insufficient available amount. '
+                        f'Available: {available_for_request}, requested: {requested_sum}'
+                    ),
+                },
+                status=400,
+            )
+
+    with transaction.atomic():
+        # Persist edited item prices and buyer mapping from assigned contribution.
+        for order_item_id, unit_price in requested_item_prices.items():
+            order_item = order_items_by_id[order_item_id]
+            payment_id = requested_item_to_payment[order_item_id]
+            payment = payments_by_id[payment_id]
+
+            update_fields = []
+            if order_item.price != unit_price:
+                order_item.price = unit_price
+                update_fields.append('price')
+            if order_item.buyer_id != payment.related_user_id:
+                order_item.buyer = payment.related_user
+                update_fields.append('buyer')
+
+            if update_fields:
+                order_item.save(update_fields=update_fields)
+
+        # Every order item that was not assigned to a contribution in this modal
+        # should fall back to order buyer.
+        for order_item in order_items_qs.exclude(id__in=requested_order_item_ids):
+            if order_item.buyer_id != order.buyer_id:
+                order_item.buyer = order.buyer
+                order_item.save(update_fields=['buyer'])
+
+        # Keep contribution links in sync with current modal state:
+        # clear all contribution links for this order, then re-add requested ones.
+        linked_contributions = Payment.objects.filter(
+            payment_type='contribution',
+            related_order_items__order=order,
+        ).distinct()
+        if linked_contributions.exists():
+            linked_order_items = list(order_items_qs)
+            for contribution in linked_contributions:
+                contribution.related_order_items.remove(*linked_order_items)
+
+        grouped_item_ids = {}
+        for order_item_id, payment_id in requested_item_to_payment.items():
+            grouped_item_ids.setdefault(payment_id, [])
+            grouped_item_ids[payment_id].append(order_item_id)
+
+        for payment_id, order_item_ids in grouped_item_ids.items():
+            payment = payments_by_id[payment_id]
+            items_to_add = list(order_items_qs.filter(id__in=order_item_ids))
+            payment.related_order_items.add(*items_to_add)
+
+        if order.status != 'accepted':
+            order.status = 'accepted'
+            order.save(update_fields=['status'])
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'order_id': order.id,
+            'assigned_items_count': len(requested_order_item_ids),
+            'assigned_payments_count': len(grouped_item_ids),
+        }
+    )
+
+
+@require_POST
+@staff_member_required
+def api_create_payment(request):
+    """
+    Create a single payment (JSON API for staff UI).
+    Requires payment_type; see docs/API_CREATE_PAYMENT.md.
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid JSON body'},
+            status=400,
+        )
+
+    payment_type = data.get('payment_type')
+    if payment_type is None or (isinstance(payment_type, str) and not str(payment_type).strip()):
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'payment_type is required',
+            },
+            status=400,
+        )
+
+    if payment_type not in VALID_PAYMENT_TYPE_VALUES:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Invalid payment_type',
+                'allowed_payment_types': sorted(VALID_PAYMENT_TYPE_VALUES),
+            },
+            status=400,
+        )
+
+    if 'amount' not in data:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount is required'},
+            status=400,
+        )
+
+    try:
+        amount = Decimal(str(data['amount']))
+    except (InvalidOperation, ValueError, TypeError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be a valid decimal number'},
+            status=400,
+        )
+
+    if amount <= 0:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be greater than zero'},
+            status=400,
+        )
+
+    description = data.get('description')
+    if description is None:
+        description = ''
+
+    sender = data.get('sender')
+    if sender is not None and sender != '':
+        sender = str(sender)
+    else:
+        sender = None
+
+    related_user = None
+    ru_id = data.get('related_user_id')
+    if ru_id is not None and ru_id != '':
+        try:
+            related_user = User.objects.get(pk=int(ru_id))
+        except (ValueError, TypeError, User.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is invalid or user does not exist'},
+                status=400,
+            )
+
+    if payment_type == 'contribution':
+        if related_user is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is required for contribution payment'},
+                status=400,
+            )
+        if not getattr(related_user, 'profile', None) or not related_user.profile.is_contributor:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id must point to a contributor user'},
+                status=400,
+            )
+
+    related_order = None
+    ro_id = data.get('related_order_id')
+    if ro_id is not None and ro_id != '':
+        try:
+            related_order = Order.objects.get(pk=int(ro_id))
+        except (ValueError, TypeError, Order.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_order_id is invalid or order does not exist'},
+                status=400,
+            )
+
+    payment_date = None
+    raw_date = data.get('payment_date')
+    if raw_date is not None and raw_date != '':
+        if isinstance(raw_date, str):
+            try:
+                payment_date = date.fromisoformat(raw_date.strip()[:10])
+            except ValueError:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'payment_date must be ISO format YYYY-MM-DD'},
+                    status=400,
+                )
+        else:
+            return JsonResponse(
+                {'status': 'error', 'message': 'payment_date must be a string YYYY-MM-DD'},
+                status=400,
+            )
+
+    payment = Payment.objects.create(
+        payment_type=payment_type,
+        amount=amount,
+        description=description,
+        sender=sender,
+        related_user=related_user,
+        related_order=related_order,
+        payment_date=payment_date,
+        created_by=request.user,
+    )
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'payment': {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'payment_type': payment.payment_type,
+                'description': payment.description,
+                'sender': payment.sender,
+                'related_user_id': payment.related_user_id,
+                'related_order_id': payment.related_order_id,
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'created_at': payment.created_at.isoformat(),
+                'created_by_id': payment.created_by_id,
+            },
+        },
+        status=201,
+    )

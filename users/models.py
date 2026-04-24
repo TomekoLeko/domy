@@ -51,3 +51,21 @@ def save_user_profile(sender, instance, **kwargs):
     if not hasattr(instance, 'profile'):
         Profile.objects.create(user=instance)
     instance.profile.save()
+
+
+def _get_organization_name(self):
+    profile = getattr(self, "profile", None)
+    if not profile:
+        return ""
+    return (profile.name or "").strip()
+
+
+def _get_organization_name_or_full_name(self):
+    organization_name = self.get_organization_name()
+    if organization_name:
+        return organization_name
+    return self.get_full_name()
+
+
+User.add_to_class("get_organization_name", _get_organization_name)
+User.add_to_class("get_organization_name_or_full_name", _get_organization_name_or_full_name)
