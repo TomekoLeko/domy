@@ -87,6 +87,8 @@ def update_user_profile(request):
         profile.postal = data.get('postal', '')
         profile.is_beneficiary = data.get('is_beneficiary', False)
         profile.monthly_limit = data.get('monthly_limit', '')
+        discount_rate_percent = data.get('discount_rate_percent')
+        profile.discount_rate_percent = discount_rate_percent if discount_rate_percent not in ("", None) else None
         if data.get('price_list'):
             profile.price_list_id = data.get('price_list')
         else:

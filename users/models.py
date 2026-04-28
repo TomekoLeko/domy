@@ -4,6 +4,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from products.models import PriceList
 from datetime import datetime
+from decimal import Decimal
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -16,6 +18,14 @@ class Profile(models.Model):
     phone = models.CharField(max_length=15, blank=True)
     price_list = models.ForeignKey(PriceList, on_delete=models.SET_NULL, null=True, blank=True)
     monthly_limit = models.IntegerField(null=True, blank=True, help_text="Miesięczny limit dla beneficjenta")
+    discount_rate_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+        help_text="Procent ulgi dla beneficjenta (0-100)",
+    )
 
     def __str__(self):
         return f"{self.user.username}'s profile"
@@ -34,7 +44,10 @@ class Profile(models.Model):
             profile=self,
             year=year,
             month=month,
-            defaults={'limit': self.monthly_limit}
+            defaults={
+                'limit': self.monthly_limit,
+                'discount_rate_percent': self.discount_rate_percent if self.discount_rate_percent is not None else Decimal('100.00'),
+            }
         )
         return usage
 
