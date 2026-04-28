@@ -838,6 +838,7 @@ def api_get_or_create_monthly_usage_for_buyer(request):
         )
 
     usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage.id)
+    has_pending_orders = Order.objects.filter(buyer_id=buyer_id, status='pending').exists()
 
     return JsonResponse(
         {
@@ -852,6 +853,7 @@ def api_get_or_create_monthly_usage_for_buyer(request):
                 'order_item_ids': list(usage.order_items.values_list('id', flat=True)),
                 'total_usage': str(usage.total_usage),
                 'remaining_limit': str(usage.remaining_limit),
+                'has_pending_orders': has_pending_orders,
             },
         }
     )
