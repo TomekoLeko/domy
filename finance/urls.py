@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/finance/get-contributors/', views.api_get_contributors, name='api_get_contributors'),
     path('api/finance/create-payment/', views.api_create_payment, name='api_create_payment'),
     path('api/finance/assign-contributions-to-order/', views.api_assign_contributions_to_order, name='api_assign_contributions_to_order'),
+    path('api/finance/get-or-create-monthly-usage-for-buyer/', views.api_get_or_create_monthly_usage_for_buyer, name='api_get_or_create_monthly_usage_for_buyer'),
     # Backward-compatible legacy route.
     path('finance/get-available-contributions/', views.get_available_contributions, name='get_available_contributions'),
     path('finance/assign-payment-to-item/', views.assign_payment_to_item, name='assign_payment_to_item'),

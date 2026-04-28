@@ -1,13 +1,14 @@
 from django.shortcuts import render, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
-from .models import Payment, Invoice
+from .models import Payment, Invoice, MonthlyContributionUsage
 from products.models import Order
 from .forms import PaymentForm
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.core.serializers.json import DjangoJSONEncoder
 import json
 from datetime import datetime, date
@@ -798,4 +799,59 @@ def api_create_payment(request):
             },
         },
         status=201,
+    )
+
+
+@login_required
+def api_get_or_create_monthly_usage_for_buyer(request):
+    buyer_id = request.GET.get('buyer_id')
+    if buyer_id is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'buyer_id is required'},
+            status=400,
+        )
+
+    try:
+        buyer_id = int(buyer_id)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'buyer_id must be an integer'},
+            status=400,
+        )
+
+    buyer = get_object_or_404(User.objects.select_related('profile'), id=buyer_id)
+    profile = getattr(buyer, 'profile', None)
+    if profile is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Buyer profile not found'},
+            status=404,
+        )
+
+    usage = profile.get_or_create_current_monthly_usage()
+    if usage is None:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Monthly usage is unavailable for this buyer (beneficiary/monthly_limit required)',
+            },
+            status=400,
+        )
+
+    usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage.id)
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'monthly_usage': {
+                'id': usage.id,
+                'profile_id': usage.profile_id,
+                'year': usage.year,
+                'month': usage.month,
+                'limit': usage.limit,
+                'discount_rate_percent': str(usage.discount_rate_percent),
+                'order_item_ids': list(usage.order_items.values_list('id', flat=True)),
+                'total_usage': str(usage.total_usage),
+                'remaining_limit': str(usage.remaining_limit),
+            },
+        }
     )
