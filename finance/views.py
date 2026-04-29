@@ -645,6 +645,40 @@ def api_assign_contributions_to_order(request):
             order.status = 'accepted'
             order.save(update_fields=['status'])
 
+        # Sync monthly usage for the beneficiary:
+        # - MonthlyContributionUsage belongs to the order beneficiary (order.buyer.profile)
+        # - OrderItems paid by donors (i.e. every OrderItem whose assigned buyer != order.buyer)
+        #   should be included in that MonthlyContributionUsage.
+        #
+        # Important: do NOT call MonthlyContributionUsage.save()/clean() here.
+        # The "limit" must be enforced only during UI calculation (cart/discount),
+        # while manual contribution assignment must be allowed to exceed the limit.
+        beneficiary_profile = getattr(order.buyer, 'profile', None)
+        if beneficiary_profile is not None:
+            monthly_usage = beneficiary_profile.get_or_create_current_monthly_usage()
+            if monthly_usage is not None:
+                order_item_ids = list(
+                    OrderItem.objects.filter(order=order).values_list('id', flat=True)
+                )
+                if order_item_ids:
+                    # Remove these OrderItems from any MonthlyContributionUsage for this profile,
+                    # so re-assignments don't leave stale entries in other months.
+                    related_monthly_usages = MonthlyContributionUsage.objects.filter(
+                        profile=beneficiary_profile,
+                        order_items__id__in=order_item_ids,
+                    ).distinct()
+
+                    for usage in related_monthly_usages:
+                        items_to_remove = usage.order_items.filter(id__in=order_item_ids)
+                        if items_to_remove.exists():
+                            usage.order_items.remove(*list(items_to_remove))
+
+                donor_order_items = list(
+                    OrderItem.objects.filter(order=order).exclude(buyer_id=order.buyer_id)
+                )
+                if donor_order_items:
+                    monthly_usage.order_items.add(*donor_order_items)
+
     return JsonResponse(
         {
             'status': 'success',
