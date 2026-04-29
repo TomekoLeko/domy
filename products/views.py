@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 import json
+from decimal import Decimal, InvalidOperation
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
 from django.db import transaction
@@ -887,7 +888,7 @@ def api_create_order(request):
     """
     API: składa zamówienie z koszyka dla podanego kupującego.
     POST /api/cart/order/
-    Body JSON: { "buyer_id": <id> }
+    Body JSON: { "buyer_id": <id>, "max_payable_amount": "..." }
     - Staff/superuser: może złożyć zamówienie dla dowolnego kupującego.
     - Zalogowany użytkownik: może złożyć zamówienie tylko dla siebie.
     Pozycje są kopiowane bezpośrednio z koszyka – dofinansowanie przypisywane jest ręcznie po złożeniu zamówienia.
@@ -916,12 +917,24 @@ def api_create_order(request):
     if not cart.items.exists():
         return JsonResponse({'detail': 'Koszyk jest pusty'}, status=400)
 
+    raw_max_payable_amount = body.get('max_payable_amount', cart.total_cost)
+    try:
+        max_payable_amount = Decimal(str(raw_max_payable_amount))
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse({'detail': 'Nieprawidłowa wartość max_payable_amount'}, status=400)
+
+    if max_payable_amount < 0:
+        return JsonResponse({'detail': 'max_payable_amount nie może być ujemne'}, status=400)
+    if max_payable_amount > cart.total_cost:
+        return JsonResponse({'detail': 'max_payable_amount nie może być większe niż total_cost'}, status=400)
+
     from .cart_create_order import create_stock_reductions
 
     order = Order.objects.create(
         user=request.user,
         buyer=buyer,
         total_cost=cart.total_cost,
+        max_payable_amount=max_payable_amount,
     )
 
     order_items = []
@@ -951,6 +964,7 @@ def api_create_order(request):
     return JsonResponse({
         'order_id': order.id,
         'total_cost': str(order.total_cost),
+        'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
         'status': order.status,
         'items': items_data,
     }, status=201, json_dumps_params={'ensure_ascii': False})
@@ -1004,6 +1018,7 @@ def api_list_of_orders_for_buyer(request):
             'status': order.status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
+            'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
             'left_to_pay_buyer': str(left_to_pay_buyer),
             'buyer_id': order.buyer_id,
             'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
@@ -1054,6 +1069,7 @@ def api_list_of_orders_for_admin(request):
             'status': order.status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
+            'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
             'buyer_id': order.buyer_id,
             'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
             'items': items_data,
