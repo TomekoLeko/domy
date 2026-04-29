@@ -9,10 +9,12 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
+from django.db import transaction
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
-from finance.models import MonthlyContributionUsage
+from finance.models import MonthlyContributionUsage, Payment
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
+from users.models import Profile
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -798,17 +800,87 @@ def delete_product(request, product_id):
 @require_authenticated_staff_or_superuser
 def delete_order(request, order_id):
     try:
-        order = Order.objects.get(id=order_id)
-        order.delete()
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Zamówienie zostało usunięte'
-        })
+        _delete_order_impl(order_id)
+        return JsonResponse({'status': 'success', 'message': 'Zamówienie zostało usunięte'})
     except Order.DoesNotExist:
         return JsonResponse({
             'status': 'error',
             'message': 'Zamówienie nie zostało znalezione'
         }, status=404)
+
+
+def _delete_order_impl(order_id):
+    """
+    Bezpieczne kasowanie Order zgodne z ORDER_DELETE_PROMPT.md:
+    - najpierw odpięcie relacji finansowych (M2M) i cofnięcie MonthlyContributionUsage,
+    - potem usunięcie StockReduction (żeby PROTECT nie blokował),
+    - następnie rekalkulacja StockEntry.remaining_quantity,
+    - na końcu CASCADE delete Order (OrderItem).
+    """
+    with transaction.atomic():
+        order = Order.objects.select_related('buyer').get(id=order_id)
+        order_items = list(order.items.all())
+
+        # Prepare stock reductions + affected stock entry ids
+        stock_reductions_qs = StockReduction.objects.filter(order=order)
+        affected_stock_entry_ids = list(
+            stock_reductions_qs
+            .exclude(stock_entry__isnull=True)
+            .values_list('stock_entry_id', flat=True)
+            .distinct()
+        )
+
+        # Detach financial M2M relations before deleting Order/OrderItem
+        if order_items:
+            payments_qs = Payment.objects.filter(related_order_items__in=order_items).distinct()
+            for payment in payments_qs:
+                payment.related_order_items.remove(*order_items)
+
+            buyer_profile = None
+            try:
+                buyer_profile = order.buyer.profile
+            except Profile.DoesNotExist:
+                buyer_profile = None
+
+            monthly_usage_qs = MonthlyContributionUsage.objects.filter(order_items__in=order_items).distinct()
+            if buyer_profile is not None:
+                monthly_usage_qs = monthly_usage_qs.filter(profile=buyer_profile)
+
+            for usage in monthly_usage_qs:
+                usage.order_items.remove(*order_items)
+
+        # Delete stock reductions before deleting Order/OrderItem (PROTECT)
+        stock_reductions_qs.delete()
+
+        # Recalculate StockEntry.remaining_quantity from current StockReduction state
+        if affected_stock_entry_ids:
+            used_by_entry_id = {}
+            for row in (
+                StockReduction.objects
+                .filter(stock_entry_id__in=affected_stock_entry_ids)
+                .values('stock_entry_id')
+                .annotate(used=Sum('quantity'))
+            ):
+                used_by_entry_id[row['stock_entry_id']] = row['used']
+
+            for entry in StockEntry.objects.filter(id__in=affected_stock_entry_ids):
+                used = used_by_entry_id.get(entry.id, 0) or 0
+                new_remaining = max(entry.quantity - used, 0)
+                entry.remaining_quantity = new_remaining
+                entry.save(update_fields=['remaining_quantity'])
+
+        # Finally delete Order (CASCADE deletes OrderItem)
+        order.delete()
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_delete_order(request, order_id):
+    try:
+        _delete_order_impl(order_id)
+        return JsonResponse({'status': 'success', 'message': 'Zamówienie zostało usunięte'})
+    except Order.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Zamówienie nie zostało znalezione'}, status=404)
 
 @csrf_exempt
 def api_create_order(request):
