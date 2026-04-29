@@ -691,6 +691,43 @@ def api_assign_contributions_to_order(request):
 
 @require_POST
 @staff_member_required
+def api_delete_contribution(request, payment_id):
+    """
+    Delete a single contribution payment.
+    Safety: deletes ONLY Payment; never touches related users.
+    """
+    payment = get_object_or_404(Payment, id=payment_id)
+
+    if payment.payment_type != 'contribution':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid payment_type'},
+            status=400,
+        )
+
+    if payment.related_order_id is not None:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cannot remove Paymetn  with assiged related_order',
+            },
+            status=400,
+        )
+
+    if payment.related_order_items.exists():
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cannot remove Paymetn  with assiged related_order_items',
+            },
+            status=400,
+        )
+
+    payment.delete()
+    return JsonResponse({'status': 'success'})
+
+
+@require_POST
+@staff_member_required
 def api_create_payment(request):
     """
     Create a single payment (JSON API for staff UI).
