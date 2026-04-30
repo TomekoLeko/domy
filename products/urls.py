@@ -6,6 +6,9 @@ from . import cart_create_order
 urlpatterns = [
     path('', views.home, name='home'),
     path('api/products/', views.api_products_list, name='api_products_list'),
+    path('api/admin/price-lists/', views.api_admin_price_lists, name='api_admin_price_lists'),
+    path('api/admin/price-lists/add/', views.api_add_price_list, name='api_add_price_list'),
+    path('api/admin/price-lists/save/', views.api_save_price, name='api_save_price'),
     path('api/buyers/', views.api_buyers_list, name='api_buyers_list'),
     path('api/cart/change-buyer/', views.api_cart_change_buyer, name='api_cart_change_buyer'),
     path('api/cart/items/', views.api_cart_items, name='api_get_cart_items'),
