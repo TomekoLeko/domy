@@ -12,4 +12,6 @@ urlpatterns = [
     path('api/auth/logout/', views.api_logout, name='api_logout'),
     path('api/auth/csrf/', views.api_csrf, name='api_csrf'),
     path('api/auth/me/', views.api_me, name='api_me'),
+    path('api/users/', views.api_users_list, name='api_users_list'),
+    path('api/users/update/', views.api_update_user_profile, name='api_update_user_profile'),
 ]

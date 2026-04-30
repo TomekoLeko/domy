@@ -38,7 +38,8 @@ def create_order(request):
         order = Order.objects.create(
             user=request.user,
             buyer=cart.buyer,
-            total_cost=cart.total_cost
+            total_cost=cart.total_cost,
+            max_payable_amount=cart.total_cost,
         )
 
         order_items = []

@@ -142,6 +142,12 @@ class MonthlyContributionUsage(models.Model):
     year = models.IntegerField(validators=[MinValueValidator(2000), MaxValueValidator(2100)])
     month = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(12)])
     limit = models.IntegerField()
+    discount_rate_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('100.00'),
+        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
+    )
     order_items = models.ManyToManyField(OrderItem, related_name='monthly_usage', blank=True)
 
     class Meta:

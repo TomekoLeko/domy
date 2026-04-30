@@ -7,12 +7,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 import json
+from decimal import Decimal, InvalidOperation
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F
+from django.db import transaction
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
-from finance.models import MonthlyContributionUsage
+from finance.models import MonthlyContributionUsage, Payment
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
+from users.models import Profile
 
 @require_authenticated_staff_or_superuser
 def products(request):
@@ -798,24 +801,94 @@ def delete_product(request, product_id):
 @require_authenticated_staff_or_superuser
 def delete_order(request, order_id):
     try:
-        order = Order.objects.get(id=order_id)
-        order.delete()
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Zamówienie zostało usunięte'
-        })
+        _delete_order_impl(order_id)
+        return JsonResponse({'status': 'success', 'message': 'Zamówienie zostało usunięte'})
     except Order.DoesNotExist:
         return JsonResponse({
             'status': 'error',
             'message': 'Zamówienie nie zostało znalezione'
         }, status=404)
 
+
+def _delete_order_impl(order_id):
+    """
+    Bezpieczne kasowanie Order zgodne z ORDER_DELETE_PROMPT.md:
+    - najpierw odpięcie relacji finansowych (M2M) i cofnięcie MonthlyContributionUsage,
+    - potem usunięcie StockReduction (żeby PROTECT nie blokował),
+    - następnie rekalkulacja StockEntry.remaining_quantity,
+    - na końcu CASCADE delete Order (OrderItem).
+    """
+    with transaction.atomic():
+        order = Order.objects.select_related('buyer').get(id=order_id)
+        order_items = list(order.items.all())
+
+        # Prepare stock reductions + affected stock entry ids
+        stock_reductions_qs = StockReduction.objects.filter(order=order)
+        affected_stock_entry_ids = list(
+            stock_reductions_qs
+            .exclude(stock_entry__isnull=True)
+            .values_list('stock_entry_id', flat=True)
+            .distinct()
+        )
+
+        # Detach financial M2M relations before deleting Order/OrderItem
+        if order_items:
+            payments_qs = Payment.objects.filter(related_order_items__in=order_items).distinct()
+            for payment in payments_qs:
+                payment.related_order_items.remove(*order_items)
+
+            buyer_profile = None
+            try:
+                buyer_profile = order.buyer.profile
+            except Profile.DoesNotExist:
+                buyer_profile = None
+
+            monthly_usage_qs = MonthlyContributionUsage.objects.filter(order_items__in=order_items).distinct()
+            if buyer_profile is not None:
+                monthly_usage_qs = monthly_usage_qs.filter(profile=buyer_profile)
+
+            for usage in monthly_usage_qs:
+                usage.order_items.remove(*order_items)
+
+        # Delete stock reductions before deleting Order/OrderItem (PROTECT)
+        stock_reductions_qs.delete()
+
+        # Recalculate StockEntry.remaining_quantity from current StockReduction state
+        if affected_stock_entry_ids:
+            used_by_entry_id = {}
+            for row in (
+                StockReduction.objects
+                .filter(stock_entry_id__in=affected_stock_entry_ids)
+                .values('stock_entry_id')
+                .annotate(used=Sum('quantity'))
+            ):
+                used_by_entry_id[row['stock_entry_id']] = row['used']
+
+            for entry in StockEntry.objects.filter(id__in=affected_stock_entry_ids):
+                used = used_by_entry_id.get(entry.id, 0) or 0
+                new_remaining = max(entry.quantity - used, 0)
+                entry.remaining_quantity = new_remaining
+                entry.save(update_fields=['remaining_quantity'])
+
+        # Finally delete Order (CASCADE deletes OrderItem)
+        order.delete()
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_delete_order(request, order_id):
+    try:
+        _delete_order_impl(order_id)
+        return JsonResponse({'status': 'success', 'message': 'Zamówienie zostało usunięte'})
+    except Order.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Zamówienie nie zostało znalezione'}, status=404)
+
 @csrf_exempt
 def api_create_order(request):
     """
     API: składa zamówienie z koszyka dla podanego kupującego.
     POST /api/cart/order/
-    Body JSON: { "buyer_id": <id> }
+    Body JSON: { "buyer_id": <id>, "max_payable_amount": "..." }
     - Staff/superuser: może złożyć zamówienie dla dowolnego kupującego.
     - Zalogowany użytkownik: może złożyć zamówienie tylko dla siebie.
     Pozycje są kopiowane bezpośrednio z koszyka – dofinansowanie przypisywane jest ręcznie po złożeniu zamówienia.
@@ -844,12 +917,24 @@ def api_create_order(request):
     if not cart.items.exists():
         return JsonResponse({'detail': 'Koszyk jest pusty'}, status=400)
 
+    raw_max_payable_amount = body.get('max_payable_amount', cart.total_cost)
+    try:
+        max_payable_amount = Decimal(str(raw_max_payable_amount))
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse({'detail': 'Nieprawidłowa wartość max_payable_amount'}, status=400)
+
+    if max_payable_amount < 0:
+        return JsonResponse({'detail': 'max_payable_amount nie może być ujemne'}, status=400)
+    if max_payable_amount > cart.total_cost:
+        return JsonResponse({'detail': 'max_payable_amount nie może być większe niż total_cost'}, status=400)
+
     from .cart_create_order import create_stock_reductions
 
     order = Order.objects.create(
         user=request.user,
         buyer=buyer,
         total_cost=cart.total_cost,
+        max_payable_amount=max_payable_amount,
     )
 
     order_items = []
@@ -879,6 +964,7 @@ def api_create_order(request):
     return JsonResponse({
         'order_id': order.id,
         'total_cost': str(order.total_cost),
+        'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
         'status': order.status,
         'items': items_data,
     }, status=201, json_dumps_params={'ensure_ascii': False})
@@ -932,6 +1018,7 @@ def api_list_of_orders_for_buyer(request):
             'status': order.status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
+            'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
             'left_to_pay_buyer': str(left_to_pay_buyer),
             'buyer_id': order.buyer_id,
             'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
@@ -982,6 +1069,7 @@ def api_list_of_orders_for_admin(request):
             'status': order.status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
+            'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
             'buyer_id': order.buyer_id,
             'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
             'items': items_data,

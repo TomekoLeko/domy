@@ -1,13 +1,14 @@
 from django.shortcuts import render, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
-from .models import Payment, Invoice
+from .models import Payment, Invoice, MonthlyContributionUsage
 from products.models import Order
 from .forms import PaymentForm
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.core.serializers.json import DjangoJSONEncoder
 import json
 from datetime import datetime, date
@@ -644,6 +645,40 @@ def api_assign_contributions_to_order(request):
             order.status = 'accepted'
             order.save(update_fields=['status'])
 
+        # Sync monthly usage for the beneficiary:
+        # - MonthlyContributionUsage belongs to the order beneficiary (order.buyer.profile)
+        # - OrderItems paid by donors (i.e. every OrderItem whose assigned buyer != order.buyer)
+        #   should be included in that MonthlyContributionUsage.
+        #
+        # Important: do NOT call MonthlyContributionUsage.save()/clean() here.
+        # The "limit" must be enforced only during UI calculation (cart/discount),
+        # while manual contribution assignment must be allowed to exceed the limit.
+        beneficiary_profile = getattr(order.buyer, 'profile', None)
+        if beneficiary_profile is not None:
+            monthly_usage = beneficiary_profile.get_or_create_current_monthly_usage()
+            if monthly_usage is not None:
+                order_item_ids = list(
+                    OrderItem.objects.filter(order=order).values_list('id', flat=True)
+                )
+                if order_item_ids:
+                    # Remove these OrderItems from any MonthlyContributionUsage for this profile,
+                    # so re-assignments don't leave stale entries in other months.
+                    related_monthly_usages = MonthlyContributionUsage.objects.filter(
+                        profile=beneficiary_profile,
+                        order_items__id__in=order_item_ids,
+                    ).distinct()
+
+                    for usage in related_monthly_usages:
+                        items_to_remove = usage.order_items.filter(id__in=order_item_ids)
+                        if items_to_remove.exists():
+                            usage.order_items.remove(*list(items_to_remove))
+
+                donor_order_items = list(
+                    OrderItem.objects.filter(order=order).exclude(buyer_id=order.buyer_id)
+                )
+                if donor_order_items:
+                    monthly_usage.order_items.add(*donor_order_items)
+
     return JsonResponse(
         {
             'status': 'success',
@@ -652,6 +687,43 @@ def api_assign_contributions_to_order(request):
             'assigned_payments_count': len(grouped_item_ids),
         }
     )
+
+
+@require_POST
+@staff_member_required
+def api_delete_contribution(request, payment_id):
+    """
+    Delete a single contribution payment.
+    Safety: deletes ONLY Payment; never touches related users.
+    """
+    payment = get_object_or_404(Payment, id=payment_id)
+
+    if payment.payment_type != 'contribution':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid payment_type'},
+            status=400,
+        )
+
+    if payment.related_order_id is not None:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cannot remove Paymetn  with assiged related_order',
+            },
+            status=400,
+        )
+
+    if payment.related_order_items.exists():
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cannot remove Paymetn  with assiged related_order_items',
+            },
+            status=400,
+        )
+
+    payment.delete()
+    return JsonResponse({'status': 'success'})
 
 
 @require_POST
@@ -798,4 +870,61 @@ def api_create_payment(request):
             },
         },
         status=201,
+    )
+
+
+@login_required
+def api_get_or_create_monthly_usage_for_buyer(request):
+    buyer_id = request.GET.get('buyer_id')
+    if buyer_id is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'buyer_id is required'},
+            status=400,
+        )
+
+    try:
+        buyer_id = int(buyer_id)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'buyer_id must be an integer'},
+            status=400,
+        )
+
+    buyer = get_object_or_404(User.objects.select_related('profile'), id=buyer_id)
+    profile = getattr(buyer, 'profile', None)
+    if profile is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Buyer profile not found'},
+            status=404,
+        )
+
+    usage = profile.get_or_create_current_monthly_usage()
+    if usage is None:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Monthly usage is unavailable for this buyer (beneficiary/monthly_limit required)',
+            },
+            status=400,
+        )
+
+    usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage.id)
+    has_pending_orders = Order.objects.filter(buyer_id=buyer_id, status='pending').exists()
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'monthly_usage': {
+                'id': usage.id,
+                'profile_id': usage.profile_id,
+                'year': usage.year,
+                'month': usage.month,
+                'limit': usage.limit,
+                'discount_rate_percent': str(usage.discount_rate_percent),
+                'order_item_ids': list(usage.order_items.values_list('id', flat=True)),
+                'total_usage': str(usage.total_usage),
+                'remaining_limit': str(usage.remaining_limit),
+                'has_pending_orders': has_pending_orders,
+            },
+        }
     )
