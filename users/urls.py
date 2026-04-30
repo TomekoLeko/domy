@@ -19,4 +19,9 @@ urlpatterns = [
         views.api_user_monthly_contributions,
         name='api_user_monthly_contributions',
     ),
+    path(
+        'api/users/monthly-contributions/<int:usage_id>/delete/',
+        views.api_delete_monthly_contribution_usage,
+        name='api_delete_monthly_contribution_usage',
+    ),
 ]

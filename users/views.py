@@ -265,6 +265,7 @@ def api_user_monthly_contributions(request, user_id):
             "limit": str(usage.limit),
             "total_usage": str(usage.total_usage),
             "remaining_limit": str(usage.remaining_limit),
+            "order_items_count": len(usage_order_items),
         })
 
         for order_item in usage_order_items:
@@ -288,6 +289,30 @@ def api_user_monthly_contributions(request, user_id):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_delete_monthly_contribution_usage(request, usage_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    try:
+        usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage_id)
+    except MonthlyContributionUsage.DoesNotExist:
+        return Response(
+            {"detail": "MonthlyContributionUsage not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if usage.order_items.exists():
+        return Response(
+            {"detail": "Nie można usunąć wpisu: obiekt ma przypięte OrderItems."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    usage.delete()
+    return Response({"status": "success"}, status=status.HTTP_200_OK)
 
 
 # --- API Auth (React frontend: sesja + cookie, bez JWT) ---
