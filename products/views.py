@@ -40,6 +40,28 @@ def _price_list_to_dict(request, price_list):
     }
 
 
+def _admin_product_to_dict(request, product):
+    first_image = product.images.first()
+    image_url = None
+    if first_image and first_image.image:
+        image_url = request.build_absolute_uri(first_image.image.url)
+
+    return {
+        'id': product.id,
+        'name': product.name,
+        'description': product.description or '',
+        'vat': str(product.vat),
+        'ean': product.ean or '',
+        'volume_value': str(product.volume_value),
+        'volume_unit': product.volume_unit,
+        'volume_unit_display': product.get_volume_unit_display(),
+        'image_url': image_url,
+        'categories': [{'id': c.id, 'name': c.name} for c in product.categories.all()],
+        'physical_stock': calculate_physical_stock_level(product),
+        'virtual_stock': calculate_virtual_stock_level(product),
+    }
+
+
 @require_authenticated_staff_or_superuser
 def products(request):
     products = Product.objects.filter(is_active=True).prefetch_related('images')
@@ -216,6 +238,120 @@ def api_admin_price_lists(request):
         'price_lists': [_price_list_to_dict(request, price_list) for price_list in price_lists],
     }
     return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+@require_GET
+@require_authenticated_staff_or_superuser
+def api_admin_products(request):
+    products = Product.objects.filter(is_active=True).prefetch_related('images', 'categories').order_by('id')
+    categories = ProductCategory.objects.all().order_by('name')
+    return JsonResponse(
+        {
+            'products': [_admin_product_to_dict(request, product) for product in products],
+            'categories': [{'id': c.id, 'name': c.name} for c in categories],
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_add_product(request):
+    name = (request.POST.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    product = Product.objects.create(
+        name=name,
+        description=(request.POST.get('description') or '').strip(),
+        vat=request.POST.get('vat') or 23,
+        ean=(request.POST.get('ean') or '').strip() or None,
+        volume_value=request.POST.get('volume_value') or 1,
+        volume_unit=request.POST.get('volume_unit') or 'pcs',
+    )
+
+    category_ids = request.POST.getlist('categories')
+    if category_ids:
+        product.categories.set(category_ids)
+
+    if 'image' in request.FILES:
+        ProductImage.objects.create(product=product, image=request.FILES['image'])
+
+    for price_list in PriceList.objects.all():
+        Price.objects.create(
+            price_list=price_list,
+            product=product,
+            net_price=0,
+            gross_price=0,
+        )
+
+    product = Product.objects.prefetch_related('images', 'categories').get(pk=product.pk)
+    return JsonResponse(
+        {'status': 'success', 'product': _admin_product_to_dict(request, product)},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_edit_product(request, product_id):
+    product = get_object_or_404(Product.objects.prefetch_related('images', 'categories'), id=product_id)
+
+    name = (request.POST.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    product.name = name
+    product.description = (request.POST.get('description') or '').strip()
+    product.vat = request.POST.get('vat') or product.vat
+    product.ean = (request.POST.get('ean') or '').strip() or None
+    product.volume_value = request.POST.get('volume_value') or product.volume_value
+    product.volume_unit = request.POST.get('volume_unit') or product.volume_unit
+
+    category_ids = request.POST.getlist('categories')
+    product.categories.set(category_ids)
+
+    if 'image' in request.FILES:
+        product.images.all().delete()
+        ProductImage.objects.create(product=product, image=request.FILES['image'])
+
+    product.save()
+    product = Product.objects.prefetch_related('images', 'categories').get(pk=product.pk)
+    return JsonResponse(
+        {'status': 'success', 'product': _admin_product_to_dict(request, product)},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_delete_product(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    product.delete()
+    return JsonResponse({'status': 'success'})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_add_product_category(request):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    category, created = ProductCategory.objects.get_or_create(name=name)
+    return JsonResponse(
+        {
+            'status': 'success',
+            'created': created,
+            'category': {'id': category.id, 'name': category.name},
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
 
 
 @require_POST
