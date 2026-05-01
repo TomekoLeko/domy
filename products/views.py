@@ -17,6 +17,51 @@ from finance.models import MonthlyContributionUsage, Payment
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 from users.models import Profile
 
+def _price_list_to_dict(request, price_list):
+    prices_data = []
+    for price in price_list.prices.select_related('product').prefetch_related('product__images').all():
+        first_image = price.product.images.first()
+        image_url = None
+        if first_image and first_image.image:
+            image_url = request.build_absolute_uri(first_image.image.url)
+        prices_data.append({
+            'product_id': price.product_id,
+            'product_name': price.product.name,
+            'image_url': image_url,
+            'net_price': str(price.net_price),
+            'gross_price': str(price.gross_price),
+        })
+
+    return {
+        'id': price_list.id,
+        'name': price_list.name,
+        'is_standard': bool(price_list.is_standard),
+        'prices': prices_data,
+    }
+
+
+def _admin_product_to_dict(request, product):
+    first_image = product.images.first()
+    image_url = None
+    if first_image and first_image.image:
+        image_url = request.build_absolute_uri(first_image.image.url)
+
+    return {
+        'id': product.id,
+        'name': product.name,
+        'description': product.description or '',
+        'vat': str(product.vat),
+        'ean': product.ean or '',
+        'volume_value': str(product.volume_value),
+        'volume_unit': product.volume_unit,
+        'volume_unit_display': product.get_volume_unit_display(),
+        'image_url': image_url,
+        'categories': [{'id': c.id, 'name': c.name} for c in product.categories.all()],
+        'physical_stock': calculate_physical_stock_level(product),
+        'virtual_stock': calculate_virtual_stock_level(product),
+    }
+
+
 @require_authenticated_staff_or_superuser
 def products(request):
     products = Product.objects.filter(is_active=True).prefetch_related('images')
@@ -183,6 +228,202 @@ def save_price(request):
         return JsonResponse({'status': 'error', 'error': 'Price not found'}, status=404)
     except Exception as e:
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
+
+
+@require_GET
+@require_authenticated_staff_or_superuser
+def api_admin_price_lists(request):
+    price_lists = PriceList.objects.prefetch_related('prices__product__images').all()
+    payload = {
+        'price_lists': [_price_list_to_dict(request, price_list) for price_list in price_lists],
+    }
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+@require_GET
+@require_authenticated_staff_or_superuser
+def api_admin_products(request):
+    products = Product.objects.filter(is_active=True).prefetch_related('images', 'categories').order_by('id')
+    categories = ProductCategory.objects.all().order_by('name')
+    return JsonResponse(
+        {
+            'products': [_admin_product_to_dict(request, product) for product in products],
+            'categories': [{'id': c.id, 'name': c.name} for c in categories],
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_add_product(request):
+    name = (request.POST.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    product = Product.objects.create(
+        name=name,
+        description=(request.POST.get('description') or '').strip(),
+        vat=request.POST.get('vat') or 23,
+        ean=(request.POST.get('ean') or '').strip() or None,
+        volume_value=request.POST.get('volume_value') or 1,
+        volume_unit=request.POST.get('volume_unit') or 'pcs',
+    )
+
+    category_ids = request.POST.getlist('categories')
+    if category_ids:
+        product.categories.set(category_ids)
+
+    if 'image' in request.FILES:
+        ProductImage.objects.create(product=product, image=request.FILES['image'])
+
+    for price_list in PriceList.objects.all():
+        Price.objects.create(
+            price_list=price_list,
+            product=product,
+            net_price=0,
+            gross_price=0,
+        )
+
+    product = Product.objects.prefetch_related('images', 'categories').get(pk=product.pk)
+    return JsonResponse(
+        {'status': 'success', 'product': _admin_product_to_dict(request, product)},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_edit_product(request, product_id):
+    product = get_object_or_404(Product.objects.prefetch_related('images', 'categories'), id=product_id)
+
+    name = (request.POST.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    product.name = name
+    product.description = (request.POST.get('description') or '').strip()
+    product.vat = request.POST.get('vat') or product.vat
+    product.ean = (request.POST.get('ean') or '').strip() or None
+    product.volume_value = request.POST.get('volume_value') or product.volume_value
+    product.volume_unit = request.POST.get('volume_unit') or product.volume_unit
+
+    category_ids = request.POST.getlist('categories')
+    product.categories.set(category_ids)
+
+    if 'image' in request.FILES:
+        product.images.all().delete()
+        ProductImage.objects.create(product=product, image=request.FILES['image'])
+
+    product.save()
+    product = Product.objects.prefetch_related('images', 'categories').get(pk=product.pk)
+    return JsonResponse(
+        {'status': 'success', 'product': _admin_product_to_dict(request, product)},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_delete_product(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    product.delete()
+    return JsonResponse({'status': 'success'})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_add_product_category(request):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    category, created = ProductCategory.objects.get_or_create(name=name)
+    return JsonResponse(
+        {
+            'status': 'success',
+            'created': created,
+            'category': {'id': category.id, 'name': category.name},
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_add_price_list(request):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'Name is required'}, status=400)
+
+    price_list = PriceList.objects.create(name=name)
+    products = Product.objects.filter(is_active=True)
+    for product in products:
+        Price.objects.create(
+            price_list=price_list,
+            product=product,
+            net_price=0,
+            gross_price=0,
+        )
+
+    price_list = PriceList.objects.prefetch_related('prices__product__images').get(pk=price_list.pk)
+    return JsonResponse(
+        {
+            'status': 'success',
+            'price_list': _price_list_to_dict(request, price_list),
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_save_price(request):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    price_list_id = data.get('price_list_id')
+    product_id = data.get('product_id')
+    net_price = data.get('net_price')
+    gross_price = data.get('gross_price')
+
+    if not all([price_list_id, product_id]):
+        return JsonResponse({'detail': 'price_list_id and product_id are required'}, status=400)
+
+    if net_price in (None, '') or gross_price in (None, ''):
+        return JsonResponse({'detail': 'net_price and gross_price are required'}, status=400)
+
+    try:
+        price = Price.objects.get(price_list_id=price_list_id, product_id=product_id)
+        price.net_price = net_price
+        price.gross_price = gross_price
+        price.save()
+    except Price.DoesNotExist:
+        return JsonResponse({'detail': 'Price not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'detail': str(e)}, status=500)
+
+    return JsonResponse({
+        'status': 'success',
+        'price': {
+            'price_list_id': int(price_list_id),
+            'product_id': int(product_id),
+            'net_price': str(price.net_price),
+            'gross_price': str(price.gross_price),
+        },
+    })
 
 
 @require_GET

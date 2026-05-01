@@ -17,6 +17,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from finance.models import MonthlyContributionUsage
 
 def register(request):
   if request.user.is_authenticated:
@@ -227,6 +228,91 @@ def api_update_user_profile(request):
             {"status": "error", "message": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_user_monthly_contributions(request, user_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "User not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    profile, _ = Profile.objects.get_or_create(user=target_user)
+    usages = (
+        MonthlyContributionUsage.objects
+        .filter(profile=profile)
+        .prefetch_related('order_items', 'order_items__product')
+        .order_by('-year', '-month')
+    )
+
+    monthly_usage = []
+    pinned_order_items = []
+    seen_order_item_ids = set()
+
+    for usage in usages:
+        usage_order_items = list(usage.order_items.all())
+        monthly_usage.append({
+            "id": usage.id,
+            "year": usage.year,
+            "month": usage.month,
+            "limit": str(usage.limit),
+            "total_usage": str(usage.total_usage),
+            "remaining_limit": str(usage.remaining_limit),
+            "order_items_count": len(usage_order_items),
+        })
+
+        for order_item in usage_order_items:
+            if order_item.id in seen_order_item_ids:
+                continue
+            seen_order_item_ids.add(order_item.id)
+            pinned_order_items.append({
+                "id": order_item.id,
+                "order_id": order_item.order_id,
+                "product_id": order_item.product_id,
+                "product_name": order_item.product.name,
+                "price": str(order_item.price),
+                "buyer_id": order_item.buyer_id,
+            })
+
+    return Response(
+        {
+            "user_id": target_user.id,
+            "monthly_usage": monthly_usage,
+            "pinned_order_items": pinned_order_items,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_delete_monthly_contribution_usage(request, usage_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    try:
+        usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage_id)
+    except MonthlyContributionUsage.DoesNotExist:
+        return Response(
+            {"detail": "MonthlyContributionUsage not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if usage.order_items.exists():
+        return Response(
+            {"detail": "Nie można usunąć wpisu: obiekt ma przypięte OrderItems."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    usage.delete()
+    return Response({"status": "success"}, status=status.HTTP_200_OK)
 
 
 # --- API Auth (React frontend: sesja + cookie, bez JWT) ---
