@@ -26,6 +26,10 @@ urlpatterns = [
     path('api/finance/assign-contributions-to-order/', views.api_assign_contributions_to_order, name='api_assign_contributions_to_order'),
     path('api/finance/delete-contribution/<int:payment_id>/', views.api_delete_contribution, name='api_delete_contribution'),
     path('api/finance/get-or-create-monthly-usage-for-buyer/', views.api_get_or_create_monthly_usage_for_buyer, name='api_get_or_create_monthly_usage_for_buyer'),
+    path('api/finance/payments/', views.api_list_payments, name='api_list_payments'),
+    path('api/finance/delete-payment/<int:payment_id>/', views.api_delete_payment, name='api_delete_payment'),
+    path('api/finance/get-filtered-users/', views.api_get_filtered_users, name='api_get_filtered_users'),
+    path('api/finance/get-filtered-orders/', views.api_get_filtered_orders, name='api_get_filtered_orders'),
     # Backward-compatible legacy route.
     path('finance/get-available-contributions/', views.get_available_contributions, name='get_available_contributions'),
     path('finance/assign-payment-to-item/', views.assign_payment_to_item, name='assign_payment_to_item'),

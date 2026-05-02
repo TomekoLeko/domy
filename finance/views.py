@@ -953,3 +953,119 @@ def api_get_or_create_monthly_usage_for_buyer(request):
             },
         }
     )
+
+
+def _payment_user_display(user):
+    if user is None:
+        return None
+    profile = getattr(user, 'profile', None)
+    if profile and profile.name:
+        return profile.name
+    return user.username
+
+
+def _serialize_payment_list_row(payment):
+    related_order = payment.related_order
+    order_label = None
+    if related_order is not None:
+        order_label = (
+            f'Zamówienie z {related_order.created_at.strftime("%d.%m.%Y %H:%M")} '
+            f'({related_order.total_cost} zł)'
+        )
+    return {
+        'id': payment.id,
+        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+        'payment_type': payment.payment_type,
+        'payment_type_label': payment.get_payment_type_display(),
+        'payment_method': payment.payment_method,
+        'payment_method_label': payment.get_payment_method_display(),
+        'amount': str(payment.amount),
+        'sender': payment.sender or '',
+        'description': payment.description or '',
+        'related_user_id': payment.related_user_id,
+        'related_user_name': _payment_user_display(payment.related_user),
+        'related_order_id': payment.related_order_id,
+        'related_order_label': order_label,
+        'created_by_id': payment.created_by_id,
+        'created_by_name': _payment_user_display(payment.created_by) or '',
+        'created_at': payment.created_at.isoformat(),
+    }
+
+
+@staff_member_required
+def api_list_payments(request):
+    """
+    GET /api/finance/payments/
+    Query: date_from, date_to (YYYY-MM-DD), limit (default 300, max 500), offset (default 0).
+    """
+    if request.method != 'GET':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+
+    qs = (
+        Payment.objects.select_related('related_user__profile', 'created_by__profile', 'related_order')
+        .order_by('-payment_date', '-created_at', '-id')
+    )
+
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
+    if date_from:
+        try:
+            df = date.fromisoformat(date_from[:10])
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid date_from'}, status=400)
+        qs = qs.filter(payment_date__gte=df)
+    if date_to:
+        try:
+            dt = date.fromisoformat(date_to[:10])
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid date_to'}, status=400)
+        qs = qs.filter(payment_date__lte=dt)
+
+    try:
+        limit = int(request.GET.get('limit') or 300)
+    except (TypeError, ValueError):
+        limit = 300
+    limit = max(1, min(limit, 500))
+
+    try:
+        offset = int(request.GET.get('offset') or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(0, offset)
+
+    total_count = qs.count()
+    rows = [_serialize_payment_list_row(p) for p in qs[offset : offset + limit]]
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'total_count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
+            'payment_method_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_METHOD_CHOICES],
+            'payments': rows,
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@staff_member_required
+def api_delete_payment(request, payment_id):
+    """POST /api/finance/delete-payment/<id>/ — usuwa dowolną płatność (personel)."""
+    payment = get_object_or_404(Payment, id=payment_id)
+    payment.delete()
+    return JsonResponse({'status': 'success'})
+
+
+@staff_member_required
+def api_get_filtered_users(request):
+    """GET /api/finance/get-filtered-users/ — alias API dla formularza (React)."""
+    return get_filtered_users(request)
+
+
+@staff_member_required
+def api_get_filtered_orders(request):
+    """GET /api/finance/get-filtered-orders/ — alias API dla formularza (React)."""
+    return get_filtered_orders(request)
