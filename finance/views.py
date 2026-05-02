@@ -13,7 +13,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 import json
 from datetime import datetime, date
 import calendar
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Prefetch
 from django.db import transaction
 from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal, InvalidOperation
@@ -85,21 +85,52 @@ def get_filtered_users(request):
 
 @staff_member_required
 def get_filtered_orders(request):
-    user_id = request.GET.get('user_id')
-    orders = []
+    """
+    Zamówienia do powiązania z płatnością (Rozliczenia):
+    - status zamówienia inny niż „oczekujące” (pending),
+    - status rozliczenia: oczekujące na rozliczenie lub częściowo opłacone,
+    - opcjonalnie: tylko zamówienia danego kupującego (buyer), gdy user_id > 0.
+    """
+    user_id_raw = request.GET.get('user_id')
+    user_id = None
+    if user_id_raw not in (None, ''):
+        try:
+            uid = int(user_id_raw)
+            if uid > 0:
+                user_id = uid
+        except (ValueError, TypeError):
+            user_id = None
 
-    if user_id:
-        orders = Order.objects.filter(buyer_id=user_id).order_by('-created_at')
+    item_qs = OrderItem.objects.select_related('buyer').prefetch_related('payments')
+    qs = (
+        Order.objects.exclude(status='pending')
+        .filter(payment_status__in=['pending', 'partial'])
+        .select_related('buyer')
+        .prefetch_related(Prefetch('items', queryset=item_qs))
+        .order_by('-created_at')
+    )
+    if user_id is not None:
+        qs = qs.filter(buyer_id=user_id)
 
-    return JsonResponse({
-        'orders': [
+    orders_payload = []
+    for order in qs:
+        buyer_id = order.buyer_id
+        left_to_pay = Decimal('0.00')
+        for item in order.items.all():
+            if item.buyer_id == buyer_id:
+                left_to_pay += item.left_to_pay
+        date_str = order.created_at.strftime('%d.%m.%Y')
+        orders_payload.append(
             {
                 'id': order.id,
-                'display': f'Zamówienie z {order.created_at.strftime("%d.m.%Y %H:%M")} ({order.total_cost} zł)'
+                'buyer_id': order.buyer_id,
+                'left_to_pay': str(left_to_pay),
+                'created_at': order.created_at.isoformat(),
+                'display': f'#{order.id}, {left_to_pay:.2f} zł, {date_str}',
             }
-            for order in orders
-        ]
-    })
+        )
+
+    return JsonResponse({'orders': orders_payload})
 
 @require_POST
 @staff_member_required
@@ -684,7 +715,7 @@ def api_assign_contributions_to_order(request):
                     monthly_usage.order_items.add(*donor_order_items)
 
     order.refresh_from_db()
-    order.update_payment_status_from_settlement()
+    # Przypisanie kontrybucji nie zmienia order.payment_status (rozliczenie — osobna ścieżka).
 
     return JsonResponse(
         {
