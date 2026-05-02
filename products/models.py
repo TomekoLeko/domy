@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
+from decimal import Decimal
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -120,6 +121,15 @@ class Order(models.Model):
         ('cancelled', 'Anulowane'),
     ]
 
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Oczekujące na rozliczenie'),
+        ('processing', 'W trakcie rozliczenia'),
+        ('partial', 'Częściowo opłacone'),
+        ('paid', 'Opłacone'),
+        ('rejected', 'Odrzucone'),
+        ('cancelled', 'Rozliczenie anulowane'),
+    ]
+
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     buyer = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='buyer_orders')
     status = models.CharField(
@@ -127,12 +137,45 @@ class Order(models.Model):
         choices=STATUS_CHOICES, 
         default='pending'
     )
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+        verbose_name='Status rozliczenia',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2)
     max_payable_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     def __str__(self):
         return f"Order {self.id} by {self.buyer.profile.name or self.buyer.username}"
+
+    def update_payment_status_from_settlement(self):
+        """
+        Ustawia payment_status na podstawie przypiętych płatności do pozycji zamówienia.
+        Nie nadpisuje stanów końcowych ustawianych ręcznie: rejected, cancelled.
+        """
+        if self.payment_status in ('rejected', 'cancelled'):
+            return
+
+        items = list(self.items.all())
+        if not items:
+            return
+
+        total_left = sum((item.left_to_pay for item in items), start=Decimal('0'))
+        total_price = sum((item.price for item in items), start=Decimal('0'))
+        paid_amount = total_price - total_left
+
+        if total_left <= Decimal('0.01'):
+            new_status = 'paid'
+        elif paid_amount > Decimal('0.01'):
+            new_status = 'partial'
+        else:
+            new_status = 'pending'
+
+        if self.payment_status != new_status:
+            self.payment_status = new_status
+            self.save(update_fields=['payment_status'])
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)

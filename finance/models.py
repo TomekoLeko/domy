@@ -19,6 +19,15 @@ class Payment(models.Model):
         ('invoice', 'Faktura'),
     ]
 
+    # Kanał / instrument zapłaty (osobno od payment_type — kategoria biznesowa).
+    PAYMENT_METHOD_CHOICES = [
+        ('transfer', 'Przelew'),
+        ('cash', 'Gotówka'),
+        ('cod', 'Pobranie'),
+        ('card', 'Karta'),
+        ('blik', 'BLIK'),
+    ]
+
     amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -28,6 +37,12 @@ class Payment(models.Model):
         max_length=30,
         choices=PAYMENT_TYPES,
         verbose_name="Typ płatności"
+    )
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='transfer',
+        verbose_name="Sposób zapłaty",
     )
     description = models.TextField(
         verbose_name="Opis"

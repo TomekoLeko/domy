@@ -1208,6 +1208,7 @@ def api_create_order(request):
         'total_cost': str(order.total_cost),
         'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
         'status': order.status,
+        'payment_status': order.payment_status,
         'items': items_data,
     }, status=201, json_dumps_params={'ensure_ascii': False})
 
@@ -1258,6 +1259,7 @@ def api_list_of_orders_for_buyer(request):
         orders_data.append({
             'id': order.id,
             'status': order.status,
+            'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
             'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
@@ -1309,6 +1311,7 @@ def api_list_of_orders_for_admin(request):
         orders_data.append({
             'id': order.id,
             'status': order.status,
+            'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
             'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,

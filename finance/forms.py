@@ -8,12 +8,21 @@ User = get_user_model()
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
-        fields = ['payment_type', 'related_user', 'related_order', 'amount', 'payment_date', 'description']
+        fields = [
+            'payment_type',
+            'payment_method',
+            'related_user',
+            'related_order',
+            'amount',
+            'payment_date',
+            'description',
+        ]
         widgets = {
             'payment_type': forms.Select(attrs={
                 'class': 'form-select',
                 'onchange': 'handlePaymentTypeChange(this.value)'
             }),
+            'payment_method': forms.Select(attrs={'class': 'form-select'}),
             'related_user': forms.Select(attrs={
                 'class': 'form-select',
                 'onchange': 'handleUserChange(this.value)'

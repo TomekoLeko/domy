@@ -317,6 +317,7 @@ def get_available_contributions(request):
         'id': payment.id,
         'amount': str(payment.amount),
         'payment_type': payment.payment_type,
+        'payment_method': payment.payment_method,
         'description': payment.description,
         'sender': payment.sender,
         'related_user': payment.related_user_id,
@@ -363,6 +364,7 @@ def get_all_contributions(request):
         'id': payment.id,
         'amount': str(payment.amount),
         'payment_type': payment.payment_type,
+        'payment_method': payment.payment_method,
         'description': payment.description,
         'sender': payment.sender,
         'related_user': {
@@ -429,7 +431,8 @@ def assign_payment_to_item(request):
         
         # Add the order item to the payment's related items
         payment.related_order_items.add(order_item)
-        
+        order_item.order.update_payment_status_from_settlement()
+
         return JsonResponse({
             'status': 'success',
             'message': 'Płatność została przypisana pomyślnie'
@@ -444,6 +447,7 @@ def assign_payment_to_item(request):
 
 
 VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
+VALID_PAYMENT_METHOD_VALUES = {choice[0] for choice in Payment.PAYMENT_METHOD_CHOICES}
 
 
 @require_POST
@@ -679,12 +683,16 @@ def api_assign_contributions_to_order(request):
                 if donor_order_items:
                     monthly_usage.order_items.add(*donor_order_items)
 
+    order.refresh_from_db()
+    order.update_payment_status_from_settlement()
+
     return JsonResponse(
         {
             'status': 'success',
             'order_id': order.id,
             'assigned_items_count': len(requested_order_item_ids),
             'assigned_payments_count': len(grouped_item_ids),
+            'payment_status': order.payment_status,
         }
     )
 
@@ -731,7 +739,7 @@ def api_delete_contribution(request, payment_id):
 def api_create_payment(request):
     """
     Create a single payment (JSON API for staff UI).
-    Requires payment_type; see docs/API_CREATE_PAYMENT.md.
+    Requires payment_type; optional payment_method (default transfer).
     """
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -842,8 +850,24 @@ def api_create_payment(request):
                 status=400,
             )
 
+    raw_payment_method = data.get('payment_method')
+    if raw_payment_method is None or (isinstance(raw_payment_method, str) and not str(raw_payment_method).strip()):
+        payment_method = 'transfer'
+    else:
+        payment_method = str(raw_payment_method).strip()
+        if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Invalid payment_method',
+                    'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+
     payment = Payment.objects.create(
         payment_type=payment_type,
+        payment_method=payment_method,
         amount=amount,
         description=description,
         sender=sender,
@@ -860,6 +884,7 @@ def api_create_payment(request):
                 'id': payment.id,
                 'amount': str(payment.amount),
                 'payment_type': payment.payment_type,
+                'payment_method': payment.payment_method,
                 'description': payment.description,
                 'sender': payment.sender,
                 'related_user_id': payment.related_user_id,
