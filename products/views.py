@@ -28,6 +28,7 @@ def _price_list_to_dict(request, price_list):
             'product_id': price.product_id,
             'product_name': price.product.name,
             'image_url': image_url,
+            'vat': str(price.product.vat),
             'net_price': str(price.net_price),
             'gross_price': str(price.gross_price),
         })
