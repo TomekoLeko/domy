@@ -46,8 +46,17 @@ def finance_main(request):
 @require_POST
 @staff_member_required
 def delete_payment(request, payment_id):
-    payment = get_object_or_404(Payment, id=payment_id)
+    payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
+    order = payment.related_order
     payment.delete()
+    if order is not None:
+        order_fresh = (
+            Order.objects.filter(pk=order.pk)
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        if order_fresh is not None:
+            order_fresh.update_payment_status_from_settlement()
     return JsonResponse({'status': 'success'})
 
 @staff_member_required
@@ -101,7 +110,12 @@ def get_filtered_orders(request):
         except (ValueError, TypeError):
             user_id = None
 
-    item_qs = OrderItem.objects.select_related('buyer').prefetch_related('payments')
+    item_qs = OrderItem.objects.select_related('buyer').prefetch_related(
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related('related_order_items'),
+        )
+    )
     qs = (
         Order.objects.exclude(status='pending')
         .filter(payment_status__in=['pending', 'partial'])
@@ -479,6 +493,41 @@ def assign_payment_to_item(request):
 
 VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
 VALID_PAYMENT_METHOD_VALUES = {choice[0] for choice in Payment.PAYMENT_METHOD_CHOICES}
+
+_ORDER_ITEMS_FOR_PAYMENT_PREFETCH = Prefetch(
+    'items',
+    queryset=OrderItem.objects.select_related('buyer').prefetch_related(
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related('related_order_items'),
+        )
+    ),
+)
+
+
+def _order_buyer_left_to_pay_total(order):
+    """Suma left_to_pay po pozycjach przypisanych do kupującego zamówienia (buyer)."""
+    total = Decimal('0.00')
+    for item in order.items.all():
+        if item.buyer_id == order.buyer_id:
+            total += item.left_to_pay
+    return total
+
+
+def _payment_to_api_dict(payment):
+    return {
+        'id': payment.id,
+        'amount': str(payment.amount),
+        'payment_type': payment.payment_type,
+        'payment_method': payment.payment_method,
+        'description': payment.description,
+        'sender': payment.sender,
+        'related_user_id': payment.related_user_id,
+        'related_order_id': payment.related_order_id,
+        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+        'created_at': payment.created_at.isoformat(),
+        'created_by_id': payment.created_by_id,
+    }
 
 
 @require_POST
@@ -882,10 +931,48 @@ def api_create_payment(request):
             )
 
     raw_payment_method = data.get('payment_method')
-    if raw_payment_method is None or (isinstance(raw_payment_method, str) and not str(raw_payment_method).strip()):
-        payment_method = 'transfer'
-    else:
-        payment_method = str(raw_payment_method).strip()
+    pm_strip = None
+    if isinstance(raw_payment_method, str):
+        pm_strip = raw_payment_method.strip()
+    elif raw_payment_method is not None:
+        pm_strip = str(raw_payment_method).strip()
+
+    if payment_type == 'order':
+        if related_order is None:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Dla płatności za zamówienie wymagane jest powiązane zamówienie.',
+                },
+                status=400,
+            )
+        if related_user is None:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Dla płatności za zamówienie wymagany jest powiązany użytkownik (kupujący).',
+                },
+                status=400,
+            )
+        if related_user.id != related_order.buyer_id:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.',
+                },
+                status=400,
+            )
+        if payment_date is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Data płatności jest wymagana.'},
+                status=400,
+            )
+        if not pm_strip:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Sposób zapłaty jest wymagany.'},
+                status=400,
+            )
+        payment_method = pm_strip
         if payment_method not in VALID_PAYMENT_METHOD_VALUES:
             return JsonResponse(
                 {
@@ -895,6 +982,83 @@ def api_create_payment(request):
                 },
                 status=400,
             )
+
+        order = (
+            Order.objects.filter(pk=related_order.pk)
+            .select_related('buyer')
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        left_total = _order_buyer_left_to_pay_total(order)
+        if amount > left_total:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Kwota przekracza pozostałość do zapłaty w zamówieniu ({left_total} zł).'
+                    ),
+                },
+                status=400,
+            )
+        buyer_items = [
+            it for it in order.items.all() if it.buyer_id == order.buyer_id
+        ]
+        if not buyer_items:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Brak pozycji zamówienia do rozliczenia tą płatnością.',
+                },
+                status=400,
+            )
+
+        order_pk = order.pk
+        with transaction.atomic():
+            pay = Payment.objects.create(
+                payment_type='order',
+                payment_method=payment_method,
+                amount=amount,
+                description=description,
+                sender=sender,
+                related_user=related_user,
+                related_order_id=order_pk,
+                payment_date=payment_date,
+                created_by=request.user,
+            )
+            pay.related_order_items.set(buyer_items)
+
+            order_fresh = (
+                Order.objects.filter(pk=order_pk)
+                .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+                .first()
+            )
+            order_fresh.update_payment_status_from_settlement()
+            final_payment_status = order_fresh.payment_status
+
+        payload = [_payment_to_api_dict(pay)]
+        return JsonResponse(
+            {
+                'status': 'success',
+                'payment': payload[0],
+                'payments': payload,
+                'order_payment_status': final_payment_status,
+            },
+            status=201,
+        )
+
+    if pm_strip:
+        payment_method = pm_strip
+        if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Invalid payment_method',
+                    'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+    else:
+        payment_method = 'transfer'
 
     payment = Payment.objects.create(
         payment_type=payment_type,
@@ -911,19 +1075,8 @@ def api_create_payment(request):
     return JsonResponse(
         {
             'status': 'success',
-            'payment': {
-                'id': payment.id,
-                'amount': str(payment.amount),
-                'payment_type': payment.payment_type,
-                'payment_method': payment.payment_method,
-                'description': payment.description,
-                'sender': payment.sender,
-                'related_user_id': payment.related_user_id,
-                'related_order_id': payment.related_order_id,
-                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-                'created_at': payment.created_at.isoformat(),
-                'created_by_id': payment.created_by_id,
-            },
+            'payment': _payment_to_api_dict(payment),
+            'payments': [_payment_to_api_dict(payment)],
         },
         status=201,
     )
@@ -1085,8 +1238,17 @@ def api_list_payments(request):
 @staff_member_required
 def api_delete_payment(request, payment_id):
     """POST /api/finance/delete-payment/<id>/ — usuwa dowolną płatność (personel)."""
-    payment = get_object_or_404(Payment, id=payment_id)
+    payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
+    order = payment.related_order
     payment.delete()
+    if order is not None:
+        order_fresh = (
+            Order.objects.filter(pk=order.pk)
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        if order_fresh is not None:
+            order_fresh.update_payment_status_from_settlement()
     return JsonResponse({'status': 'success'})
 
 

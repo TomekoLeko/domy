@@ -1,9 +1,24 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.db.models import Sum
-from django.db.models.functions import Coalesce
 from decimal import Decimal
+
+
+def payment_amount_attributed_to_order_item(payment, order_item):
+    """
+    Kwota płatności liczona dla danej pozycji zamówienia, gdy jedna płatność
+    jest powiązana M2M z wieloma pozycjami: proporcjonalnie wg ceny pozycji
+    względem sumy cen powiązanych pozycji (raty / jedna wpłata na całe zamówienie).
+    """
+    linked = list(payment.related_order_items.all())
+    ids = {x.id for x in linked}
+    if order_item.id not in ids:
+        return Decimal('0')
+    denom = sum((x.price for x in linked), start=Decimal('0'))
+    if denom <= 0:
+        return Decimal('0')
+    return payment.amount * order_item.price / denom
+
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -158,7 +173,8 @@ class Order(models.Model):
         if self.payment_status in ('rejected', 'cancelled'):
             return
 
-        items = list(self.items.all())
+        buyer_id = self.buyer_id
+        items = [it for it in self.items.all() if it.buyer_id == buyer_id]
         if not items:
             return
 
@@ -192,11 +208,19 @@ class OrderItem(models.Model):
 
     @property
     def sum_of_order_item_payments(self):
-        return self.payments.aggregate(
-            total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField(max_digits=10, decimal_places=2))
-        )['total']
+        qs = self.payments.all()
+        if 'payments' not in getattr(self, '_prefetched_objects_cache', {}):
+            qs = self.payments.prefetch_related('related_order_items').all()
+        total = sum(
+            (payment_amount_attributed_to_order_item(p, self) for p in qs),
+            start=Decimal('0'),
+        )
+        return total
 
     @property
     def left_to_pay(self):
-        return self.price - self.sum_of_order_item_payments
+        raw = self.price - self.sum_of_order_item_payments
+        if raw <= Decimal('0.01'):
+            return Decimal('0.00')
+        return raw.quantize(Decimal('0.01'))
 
