@@ -43,6 +43,12 @@ def finance_main(request):
 @require_POST
 @staff_member_required
 def delete_payment(request, payment_id):
+    """
+    POST finance/payment/<id>/delete/ — usuwa płatność (m.in. szablon finance/main.html).
+
+    Wspólna ścieżka z api_delete_payment: `_delete_payment_and_refresh_affected_orders`
+    (kaskada SettlementAllocation po FK przy usuwaniu Payment, potem odświeżenie payment_status na zamówieniach).
+    """
     payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
     _delete_payment_and_refresh_affected_orders(payment)
     return JsonResponse({'status': 'success'})
@@ -685,8 +691,13 @@ def _refresh_payment_status_for_orders(order_ids):
 
 
 def _delete_payment_and_refresh_affected_orders(payment):
+    """
+    Usuwa płatność (kaskada FK usuwa wiersze SettlementAllocation i powiązania M2M),
+    potem przelicza payment_status na zamówieniach z _order_ids_touched_by_payment.
+    """
     order_ids = _order_ids_touched_by_payment(payment)
-    payment.delete()
+    with transaction.atomic():
+        payment.delete()
     _refresh_payment_status_for_orders(order_ids)
 
 
@@ -1489,10 +1500,8 @@ def api_list_payments(request):
 @require_POST
 @staff_member_required
 def api_delete_payment(request, payment_id):
-    """POST /api/finance/delete-payment/<id>/ — usuwa dowolną płatność (personel)."""
-    payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
-    _delete_payment_and_refresh_affected_orders(payment)
-    return JsonResponse({'status': 'success'})
+    """POST /api/finance/delete-payment/<id>/ — alias API; deleguje do ``delete_payment``."""
+    return delete_payment(request, payment_id)
 
 
 @staff_member_required

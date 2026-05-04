@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#13–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane; **#9** — `api_create_order` — zrealizowane; **#10** — `get_filtered_orders` / `api_get_filtered_orders` — zrealizowane; **#11** — `assign_payment_to_item` — zrealizowane; **#12** — `get_available_contributions` / `get_all_contributions` + `Payment.available_amount` / `get_available_contributions` (model) — zrealizowane).
+**Numeracja:** sprawy do przebudowy w kodzie — **#14–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane; **#9** — `api_create_order` — zrealizowane; **#10** — `get_filtered_orders` / `api_get_filtered_orders` — zrealizowane; **#11** — `assign_payment_to_item` — zrealizowane; **#12** — `get_available_contributions` / `get_all_contributions` + `Payment.available_amount` / `get_available_contributions` (model) — zrealizowane; **#13** — `delete_payment` / `api_delete_payment` — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -23,12 +23,6 @@ Przy usuwaniu poniższych nie zmieniaj numeracji.
 Po wykonaniu zadania napisz propozyucje commitu po angielsku w oknie czatu. Oraz skasuj wykonane zadania z poniszej listy.
 
 ## Widoki powiązane (bez prefiksu `api_` w nazwie), ale używane z frontu / ścieżek `api/`
-
-### #13 — `delete_payment` (szablon Django `finance/payment/.../delete/`)
-
-**Teraz / Chcemy:** Wspólna logika z **`api_delete_payment`** w `finance/views.py`: usunięcie płatności (kaskada **`SettlementAllocation`** po FK), odświeżenie **`payment_status`** na każdym zamówieniu powiązanym przez `related_order`, **`SettlementAllocation`** lub M2M **`related_order_items`**.
-
----
 
 ## Funkcje pomocnicze / model (nie są endpointami, ale wpływają na „ile zostało”)
 
