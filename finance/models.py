@@ -118,6 +118,50 @@ class Payment(models.Model):
         available_contributions = cls.get_available_contributions()
         return sum(contribution.available_amount for contribution in available_contributions)
 
+
+class SettlementAllocation(models.Model):
+    """
+    Jawny podział kwoty płatności na pozycje zamówienia (docelowo zamiast wyłącznie M2M
+    related_order_items + heurystyki w kodzie).
+    """
+
+    payment = models.ForeignKey(
+        Payment,
+        on_delete=models.CASCADE,
+        related_name='settlement_allocations',
+        verbose_name='Płatność',
+    )
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.CASCADE,
+        related_name='settlement_allocations',
+        verbose_name='Pozycja zamówienia',
+    )
+    allocated_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='Kwota przypisana do pozycji',
+    )
+
+    class Meta:
+        verbose_name = 'Alokacja rozliczenia'
+        verbose_name_plural = 'Alokacje rozliczeń'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['payment', 'order_item'],
+                name='finance_settlementallocation_payment_orderitem_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['payment']),
+            models.Index(fields=['order_item']),
+        ]
+
+    def __str__(self):
+        return f'{self.payment_id} → item {self.order_item_id}: {self.allocated_amount} zł'
+
+
 class Invoice(models.Model):
     invoice_number = models.CharField(max_length=50, unique=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='invoices')
