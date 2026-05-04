@@ -208,13 +208,38 @@ class OrderItem(models.Model):
 
     @property
     def sum_of_order_item_payments(self):
-        qs = self.payments.all()
+        """
+        Settled amount on this line: use SettlementAllocation.allocated_amount when present
+        for a linked payment; otherwise legacy proportional split from M2M. Includes
+        allocations whose payment is not in related_order_items (orphan rows).
+        """
+        alloc_by_payment = {}
+        allocations = self.settlement_allocations.all()
+        if 'settlement_allocations' not in getattr(self, '_prefetched_objects_cache', {}):
+            allocations = self.settlement_allocations.all()
+        for sa in allocations:
+            alloc_by_payment[sa.payment_id] = sa.allocated_amount
+
+        payments_qs = self.payments.all()
         if 'payments' not in getattr(self, '_prefetched_objects_cache', {}):
-            qs = self.payments.prefetch_related('related_order_items').all()
-        total = sum(
-            (payment_amount_attributed_to_order_item(p, self) for p in qs),
-            start=Decimal('0'),
-        )
+            payments_qs = self.payments.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ).all()
+
+        linked_payment_ids = set()
+        total = Decimal('0')
+        for p in payments_qs:
+            linked_payment_ids.add(p.id)
+            if p.id in alloc_by_payment:
+                total += alloc_by_payment[p.id]
+            else:
+                total += payment_amount_attributed_to_order_item(p, self)
+
+        for payment_id, amount in alloc_by_payment.items():
+            if payment_id not in linked_payment_ids:
+                total += amount
+
         return total
 
     @property

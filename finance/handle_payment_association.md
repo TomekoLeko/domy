@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#3–#17**.
+**Numeracja:** sprawy do przebudowy w kodzie — **#4–#17** (numery punktów poniżej bez przesuwania).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -19,15 +19,9 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
+Przy usuwaniu poniższych nie zmieniaj numeracji.
+
 ## Endpointy `api_*` — `finance/views.py`
-
-### #3 — `api_get_filtered_orders`
-
-**Teraz:** Alias do `get_filtered_orders`: dla zamówień z filtrów sumuje **`item.left_to_pay`** po pozycjach z `item.buyer_id == order.buyer_id`, zwraca `left_to_pay` w JSON dla formularza Rozliczenia.
-
-**Chcemy:** Ta sama semantyka odpowiedzi, ale `OrderItem.left_to_pay` (i ewentualnie sumy po zamówieniu) liczone z **`sum(SettlementAllocation.allocated_amount)`**.
-
----
 
 ### #4 — `api_get_or_create_monthly_usage_for_buyer`
 
@@ -83,7 +77,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ### #10 — `get_filtered_orders` (`finance/views.py`, to samo co `api_get_filtered_orders`)
 
-**Teraz / Chcemy:** Jak **#3** (`api_get_filtered_orders`) — ta sama implementacja / ten sam zakres zmian w kodzie.
+**Teraz / Chcemy:** Jak **`api_get_filtered_orders`** / **`get_filtered_orders`** — ta sama implementacja / ten sam zakres zmian w kodzie (`OrderItem.left_to_pay` przez alokacje + fallback M2M).
 
 ---
 

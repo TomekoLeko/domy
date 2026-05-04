@@ -101,10 +101,14 @@ def get_filtered_orders(request):
             user_id = None
 
     item_qs = OrderItem.objects.select_related('buyer').prefetch_related(
+        'settlement_allocations',
         Prefetch(
             'payments',
-            queryset=Payment.objects.prefetch_related('related_order_items'),
-        )
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
     )
     qs = (
         Order.objects.exclude(status='pending')
@@ -487,10 +491,14 @@ VALID_PAYMENT_METHOD_VALUES = {choice[0] for choice in Payment.PAYMENT_METHOD_CH
 _ORDER_ITEMS_FOR_PAYMENT_PREFETCH = Prefetch(
     'items',
     queryset=OrderItem.objects.select_related('buyer').prefetch_related(
+        'settlement_allocations',
         Prefetch(
             'payments',
-            queryset=Payment.objects.prefetch_related('related_order_items'),
-        )
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
     ),
 )
 
