@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#15–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane; **#9** — `api_create_order` — zrealizowane; **#10** — `get_filtered_orders` / `api_get_filtered_orders` — zrealizowane; **#11** — `assign_payment_to_item` — zrealizowane; **#12** — `get_available_contributions` / `get_all_contributions` + `Payment.available_amount` / `get_available_contributions` (model) — zrealizowane; **#13** — `delete_payment` / `api_delete_payment` — zrealizowane; **#14** — `_order_buyer_left_to_pay_total` — zrealizowane).
+**Numeracja:** sprawy do przebudowy w kodzie — **#16–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane; **#9** — `api_create_order` — zrealizowane; **#10** — `get_filtered_orders` / `api_get_filtered_orders` — zrealizowane; **#11** — `assign_payment_to_item` — zrealizowane; **#12** — `get_available_contributions` / `get_all_contributions` + `Payment.available_amount` / `get_available_contributions` (model) — zrealizowane; **#13** — `delete_payment` / `api_delete_payment` — zrealizowane; **#14** — `_order_buyer_left_to_pay_total` — zrealizowane; **#15** — `Order.update_payment_status_from_settlement` — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -25,14 +25,6 @@ Po wykonaniu zadania napisz propozyucje commitu po angielsku w oknie czatu. Oraz
 ## Widoki powiązane (bez prefiksu `api_` w nazwie), ale używane z frontu / ścieżek `api/`
 
 ## Funkcje pomocnicze / model (nie są endpointami, ale wpływają na „ile zostało”)
-
-### #15 — `Order.update_payment_status_from_settlement()` — `products/models.py`
-
-**Teraz:** Na podstawie pozycji kupującego (`buyer_id == order.buyer_id`) sumuje `left_to_pay` / `price` i ustawia `payment_status` (`pending` / `partial` / `paid`).
-
-**Chcemy:** Bez zmiany kontraktu metody — ale **`left_to_pay`** musi pochodzić z **`SettlementAllocation`** (+ ewentualnie M2M w fazie przejściowej w kodzie).
-
----
 
 ### #16 — `OrderItem.sum_of_order_item_payments` / `left_to_pay` oraz `payment_amount_attributed_to_order_item` — `products/models.py`
 

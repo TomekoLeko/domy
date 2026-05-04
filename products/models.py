@@ -167,7 +167,11 @@ class Order(models.Model):
 
     def update_payment_status_from_settlement(self):
         """
-        Ustawia payment_status na podstawie przypiętych płatności do pozycji zamówienia.
+        Ustawia payment_status na podstawie rozliczenia pozycji kupującego (`buyer_id == order.buyer_id`).
+
+        Sumuje `OrderItem.left_to_pay` i `price` — `left_to_pay` liczy się z `SettlementAllocation`
+        oraz przejściowo z podziału proporcjonalnego M2M tam, gdzie brak wiersza alokacji.
+
         Nie nadpisuje stanów końcowych ustawianych ręcznie: rejected, cancelled.
         """
         if self.payment_status in ('rejected', 'cancelled'):
