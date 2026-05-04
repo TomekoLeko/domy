@@ -1,0 +1,25 @@
+---
+description: Wskazowki ogolne wspolne dla domy-front i domy-backend
+alwaysApply: true
+---
+
+# Domy guidelines (wspolne)
+
+## Struktura projektow
+
+Projekt sklada sie z dwoch aplikacji:
+- `domy-front` (React/Vite),
+- `domy-backend` (Django/DRF).
+
+## Wspolpraca front-back
+
+- Traktuj frontend i backend jako oddzielne projekty.
+- Przy zadaniach przekrojowych zachowuj zgodnosc kontraktu API miedzy nimi.
+- Konfiguracje CORS/CSRF/sesji utrzymuj po stronie backendu, a po stronie frontendu pilnuj poprawnego uzycia `credentials` i naglowkow.
+
+## Organizacja wskazowek Cursor
+
+- Zasady specyficzne dla technologii utrzymuj w plikach projektu:
+  - `domy-front/.cursor/rules/`,
+  - `domy-backend/.cursor/rules/`.
+- **Zasady wspolne** sa w tym pliku (`domy-backend/.cursor/rules/domy-guidlines.mdc`). Repozytorium frontendowe zawiera tylko krotka wzmianka w `frontend-guidlines.mdc` — przy workspace z samym frontem dodaj rowniez folder `domy-backend`, zeby Cursor ladowal te reguly.
