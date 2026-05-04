@@ -53,11 +53,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='settlementallocation',
-            index=models.Index(fields=['payment'], name='finance_sett_payment_6b5fbd_idx'),
+            index=models.Index(fields=['payment'], name='finance_sa_pay_idx'),
         ),
         migrations.AddIndex(
             model_name='settlementallocation',
-            index=models.Index(fields=['order_item'], name='finance_sett_order_it_0a8b2e_idx'),
+            index=models.Index(fields=['order_item'], name='finance_sa_oi_idx'),
         ),
         migrations.AddConstraint(
             model_name='settlementallocation',

@@ -180,8 +180,8 @@ class SettlementAllocation(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=['payment']),
-            models.Index(fields=['order_item']),
+            models.Index(fields=['payment'], name='finance_sa_pay_idx'),
+            models.Index(fields=['order_item'], name='finance_sa_oi_idx'),
         ]
 
     def __str__(self):
