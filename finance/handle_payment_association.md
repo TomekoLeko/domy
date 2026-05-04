@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#7–#17** (numery punktów poniżej bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane).
+**Numeracja:** sprawy do przebudowy w kodzie — **#9–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -20,24 +20,9 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 ---
 
 Przy usuwaniu poniższych nie zmieniaj numeracji.
+Po wykonaniu zadania napisz propozyucje commitu po angielsku w oknie czatu. Oraz skasuj wykonane zadania z poniszej listy.
 
 ## Endpointy `api_*` — `products/views.py`
-
-### #7 — `api_list_of_orders_for_buyer`
-
-**Teraz:** Dla każdej pozycji zwraca **`left_to_pay`** z właściwości `OrderItem`; sumuje **`left_to_pay_buyer`** dla pozycji, gdzie `item.buyer_id == buyer`.
-
-**Chcemy:** Identyczny kontrakt API, ale `left_to_pay` wyliczane z **`SettlementAllocation`**.
-
----
-
-### #8 — `api_list_of_orders_for_admin`
-
-**Teraz:** Jak wyżej — **`left_to_pay`** per pozycja w payloadzie (bez sumy „buyer” w głównym obiekcie zamówienia w tym widoku).
-
-**Chcemy:** Jak wyżej — spójne liczenie z alokacji.
-
----
 
 ### #9 — `api_create_order`
 

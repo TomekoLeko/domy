@@ -9,7 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 from decimal import Decimal, InvalidOperation
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Sum, F
+from django.db.models import Q, Sum, F, Prefetch
 from django.db import transaction
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
@@ -1203,6 +1203,22 @@ def api_create_order(request):
     }, status=201, json_dumps_params={'ensure_ascii': False})
 
 
+_ORDER_ITEMS_PREFETCH_FOR_LIST = Prefetch(
+    'items',
+    queryset=OrderItem.objects.select_related('buyer', 'product').prefetch_related(
+        'product__images',
+        'settlement_allocations',
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
+    ),
+)
+
+
 def api_list_of_orders_for_buyer(request):
     """
     API: lista zamówień dla podanego kupującego.
@@ -1223,7 +1239,7 @@ def api_list_of_orders_for_buyer(request):
         Order.objects
         .filter(buyer=buyer)
         .select_related('buyer')
-        .prefetch_related('items__product__images')
+        .prefetch_related(_ORDER_ITEMS_PREFETCH_FOR_LIST)
         .order_by('-created_at')
     )
 
@@ -1231,7 +1247,7 @@ def api_list_of_orders_for_buyer(request):
     for order in orders:
         items_data = []
         left_to_pay_buyer = 0
-        for item in order.items.select_related('buyer').all():
+        for item in order.items.all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
             items_data.append({
@@ -1278,14 +1294,14 @@ def api_list_of_orders_for_admin(request):
     orders = (
         Order.objects
         .select_related('buyer')
-        .prefetch_related('items__product__images')
+        .prefetch_related(_ORDER_ITEMS_PREFETCH_FOR_LIST)
         .order_by('-created_at')
     )
 
     orders_data = []
     for order in orders:
         items_data = []
-        for item in order.items.select_related('buyer').all():
+        for item in order.items.all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
             items_data.append({
