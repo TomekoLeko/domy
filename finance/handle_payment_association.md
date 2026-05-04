@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#9–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane).
+**Numeracja:** sprawy do przebudowy w kodzie — **#10–#17** w liście poniżej (numery punktów bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane; **#7** — `api_list_of_orders_for_buyer` — zrealizowane; **#8** — `api_list_of_orders_for_admin` — zrealizowane; **#9** — `api_create_order` — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -21,16 +21,6 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 Przy usuwaniu poniższych nie zmieniaj numeracji.
 Po wykonaniu zadania napisz propozyucje commitu po angielsku w oknie czatu. Oraz skasuj wykonane zadania z poniszej listy.
-
-## Endpointy `api_*` — `products/views.py`
-
-### #9 — `api_create_order`
-
-**Teraz:** Tworzy zamówienie i pozycje; zwraca `payment_status` z modelu (domyślnie `pending`), **bez** tworzenia płatności ani alokacji.
-
-**Chcemy:** Bez zmian w przypisywaniu płatności; ewentualnie tylko dopisek w dokumentacji API, że rozliczenie następuje osobnymi endpointami finansowymi.
-
----
 
 ## Widoki powiązane (bez prefiksu `api_` w nazwie), ale używane z frontu / ścieżek `api/`
 

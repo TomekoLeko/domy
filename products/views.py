@@ -1124,7 +1124,12 @@ def api_create_order(request):
     - Staff/superuser: może złożyć zamówienie dla dowolnego kupującego.
     - Zalogowany użytkownik: może złożyć zamówienie tylko dla siebie.
     Pozycje są kopiowane bezpośrednio z koszyka – dofinansowanie przypisywane jest ręcznie po złożeniu zamówienia.
-    Zwraca 201: { "order_id": <id>, "total_cost": "...", "status": "...", "items": [...] }
+
+    Nie tworzy rekordów płatności ani alokacji rozliczenia (`Payment`, `SettlementAllocation`).
+    Rozliczenie zamówienia (wpłaty, powiązanie z pozycjami) odbywa się osobnymi endpointami finansowymi,
+    m.in. POST /api/finance/create-payment/ oraz POST /finance/assign-payment-to-item/ (ścieżki względem roota serwisu).
+
+    Zwraca 201: { "order_id", "total_cost", "max_payable_amount", "status", "payment_status", "items" }.
     """
     if request.method != 'POST':
         return JsonResponse({'detail': 'Method not allowed'}, status=405)
