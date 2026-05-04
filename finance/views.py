@@ -702,12 +702,19 @@ def _delete_payment_and_refresh_affected_orders(payment):
 
 
 def _order_buyer_left_to_pay_total(order):
-    """Suma left_to_pay po pozycjach przypisanych do kupującego zamówienia (buyer)."""
+    """
+    Suma pozostałości na pozycjach kupującego zamówienia (`item.buyer_id == order.buyer_id`).
+
+    Równoważnie suma `price - rozliczone` z alokacji (i przejściowo z M2M) — każde `item.left_to_pay`
+    pochodzi z `OrderItem.sum_of_order_item_payments` / `SettlementAllocation`.
+
+    Wywołuj z `order` mającym prefetch `_ORDER_ITEMS_FOR_PAYMENT_PREFETCH` na `items`, żeby uniknąć N+1.
+    """
     total = Decimal('0.00')
     for item in order.items.all():
         if item.buyer_id == order.buyer_id:
             total += item.left_to_pay
-    return total
+    return total.quantize(Decimal('0.01'))
 
 
 def _split_order_payment_amount_across_buyer_line_items(amount, buyer_items):
