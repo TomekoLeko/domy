@@ -513,6 +513,29 @@ def _order_buyer_left_to_pay_total(order):
     return total
 
 
+def _split_order_payment_amount_across_buyer_line_items(amount, buyer_items):
+    """
+    Rozkłada kwotę płatności za zamówienie na pozycje kupującego proporcjonalnie do price
+    (zgodnie z heurystyką payment_amount_attributed_to_order_item). Suma alokacji == amount.
+    Wymaga niepustego buyer_items oraz sumy cen > 0.
+    """
+    q = Decimal('0.01')
+    total_price = sum((it.price for it in buyer_items), start=Decimal('0'))
+    if total_price <= 0:
+        raise ValueError('Suma cen pozycji kupującego musi być dodatnia.')
+    out = []
+    allocated = Decimal('0.00')
+    n = len(buyer_items)
+    for i, it in enumerate(buyer_items):
+        if i == n - 1:
+            part = (amount - allocated).quantize(q)
+        else:
+            part = (amount * it.price / total_price).quantize(q)
+            allocated += part
+        out.append((it, part))
+    return out
+
+
 def _payment_to_api_dict(payment):
     return {
         'id': payment.id,
@@ -1046,6 +1069,16 @@ def api_create_payment(request):
                 status=400,
             )
 
+        try:
+            allocation_pairs = _split_order_payment_amount_across_buyer_line_items(
+                amount, buyer_items
+            )
+        except ValueError as exc:
+            return JsonResponse(
+                {'status': 'error', 'message': str(exc)},
+                status=400,
+            )
+
         order_pk = order.pk
         with transaction.atomic():
             pay = Payment.objects.create(
@@ -1060,6 +1093,16 @@ def api_create_payment(request):
                 created_by=request.user,
             )
             pay.related_order_items.set(buyer_items)
+            SettlementAllocation.objects.bulk_create(
+                [
+                    SettlementAllocation(
+                        payment=pay,
+                        order_item=it,
+                        allocated_amount=amt,
+                    )
+                    for it, amt in allocation_pairs
+                ]
+            )
 
             order_fresh = (
                 Order.objects.filter(pk=order_pk)

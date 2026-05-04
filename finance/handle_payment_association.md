@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#2–#19**; kroki migracji / porządku danych na końcu — **M.1–M.4** (nie są osobnymi endpointami).
+**Numeracja:** sprawy do przebudowy w kodzie — **#3–#19**; kroki migracji / porządku danych na końcu — **M.1–M.4** (nie są osobnymi endpointami).
 
 ---
 
@@ -18,14 +18,6 @@ Do czasu tej przebudowy **źródłem prawdy dla rozliczeń w kodzie nadal jest M
 ---
 
 ## Endpointy `api_*` — `finance/views.py`
-
-### #2 — `api_create_payment`
-
-**Teraz:** Dla `payment_type == 'order'` tworzy jeden `Payment` z `related_order` i **`related_order_items.set(buyer_items)`** (wszystkie pozycje, gdzie `buyer_id == order.buyer_id`). Walidacja kwoty względem `_order_buyer_left_to_pay_total` (suma `OrderItem.left_to_pay`). Po zapisie: `Order.update_payment_status_from_settlement()`.
-
-**Chcemy:** Tworzenie płatności + **jawne wiersze `SettlementAllocation`** (lista par `order_item` + `allocated_amount` lub reguła generująca alokacje), walidacja `sum(allocated_amount) == payment.amount` (lub ≤ z jasną polityką nadpłat), powiązanie z zamówieniem bez konieczności utrzymywania równoległego M2M (lub M2M wyłącznie jako cache/legacy do usunięcia w kolejnym kroku).
-
----
 
 ### #3 — `api_delete_contribution`
 
