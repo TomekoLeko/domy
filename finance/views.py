@@ -853,16 +853,16 @@ def api_delete_contribution(request, payment_id):
         return JsonResponse(
             {
                 'status': 'error',
-                'message': 'Cannot remove Paymetn  with assiged related_order',
+                'message': 'Cannot remove Payment with assigned related_order',
             },
             status=400,
         )
 
-    if payment.related_order_items.exists():
+    if payment.settlement_allocations.exists():
         return JsonResponse(
             {
                 'status': 'error',
-                'message': 'Cannot remove Paymetn  with assiged related_order_items',
+                'message': 'Cannot remove Payment with settlement allocations',
             },
             status=400,
         )
