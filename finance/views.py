@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
-from .models import Payment, Invoice, MonthlyContributionUsage
+from .models import Payment, Invoice, MonthlyContributionUsage, SettlementAllocation
 from products.models import Order
 from .forms import PaymentForm
 from django.http import JsonResponse
@@ -18,7 +18,6 @@ from django.db import transaction
 from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal, InvalidOperation
 from .models import Supplier
-from finance.models import Payment
 from products.models import OrderItem
 
 User = get_user_model()
@@ -530,6 +529,27 @@ def _payment_to_api_dict(payment):
     }
 
 
+def _payment_settled_amount_excluding_items(payment, exclude_item_ids):
+    """
+    Kwota kontrybucji już „zużyta” na pozycjach spoza exclude_item_ids.
+    Sumuje SettlementAllocation; dla pozycji tylko w M2M (bez wiersza alokacji) — legacy: price.
+    """
+    exclude_item_ids = set(exclude_item_ids)
+    alloc_total = Decimal('0.00')
+    item_ids_with_alloc = set()
+    for a in payment.settlement_allocations.all():
+        if a.order_item_id in exclude_item_ids:
+            continue
+        alloc_total += a.allocated_amount
+        item_ids_with_alloc.add(a.order_item_id)
+    legacy = Decimal('0.00')
+    for oi in payment.related_order_items.all():
+        if oi.id in exclude_item_ids or oi.id in item_ids_with_alloc:
+            continue
+        legacy += oi.price
+    return alloc_total + legacy
+
+
 @require_POST
 @staff_member_required
 def api_assign_contributions_to_order(request):
@@ -640,7 +660,7 @@ def api_assign_contributions_to_order(request):
     payments = Payment.objects.filter(
         id__in=requested_payment_ids,
         payment_type='contribution',
-    ).prefetch_related('related_order_items')
+    ).prefetch_related('related_order_items', 'settlement_allocations')
     payments_by_id = {payment.id: payment for payment in payments}
 
     missing_payment_ids = sorted(requested_payment_ids - set(payments_by_id.keys()))
@@ -660,10 +680,8 @@ def api_assign_contributions_to_order(request):
 
     requested_order_item_ids = set(requested_item_to_payment.keys())
     for payment_id, payment in payments_by_id.items():
-        used_outside_current_request = sum(
-            order_item.price
-            for order_item in payment.related_order_items.all()
-            if order_item.id not in requested_order_item_ids
+        used_outside_current_request = _payment_settled_amount_excluding_items(
+            payment, requested_order_item_ids
         )
         available_for_request = payment.amount - used_outside_current_request
         requested_sum = requested_sum_by_payment.get(payment_id, Decimal('0.00'))
@@ -680,6 +698,11 @@ def api_assign_contributions_to_order(request):
             )
 
     with transaction.atomic():
+        SettlementAllocation.objects.filter(
+            order_item__order=order,
+            payment__payment_type='contribution',
+        ).delete()
+
         # Persist edited item prices and buyer mapping from assigned contribution.
         for order_item_id, unit_price in requested_item_prices.items():
             order_item = order_items_by_id[order_item_id]
@@ -720,10 +743,21 @@ def api_assign_contributions_to_order(request):
             grouped_item_ids.setdefault(payment_id, [])
             grouped_item_ids[payment_id].append(order_item_id)
 
+        new_allocations = []
         for payment_id, order_item_ids in grouped_item_ids.items():
             payment = payments_by_id[payment_id]
             items_to_add = list(order_items_qs.filter(id__in=order_item_ids))
             payment.related_order_items.add(*items_to_add)
+            for oi in items_to_add:
+                new_allocations.append(
+                    SettlementAllocation(
+                        payment=payment,
+                        order_item=oi,
+                        allocated_amount=requested_item_prices[oi.id],
+                    )
+                )
+        if new_allocations:
+            SettlementAllocation.objects.bulk_create(new_allocations)
 
         if order.status != 'accepted':
             order.status = 'accepted'
