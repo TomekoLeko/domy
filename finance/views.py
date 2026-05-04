@@ -1228,6 +1228,13 @@ def _serialize_payment_list_row(payment):
             f'Zamówienie z {related_order.created_at.strftime("%d.%m.%Y %H:%M")} '
             f'({related_order.total_cost} zł)'
         )
+    allocations = [
+        {
+            'order_item_id': a.order_item_id,
+            'allocated_amount': str(a.allocated_amount),
+        }
+        for a in payment.settlement_allocations.all()
+    ]
     return {
         'id': payment.id,
         'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
@@ -1245,6 +1252,7 @@ def _serialize_payment_list_row(payment):
         'created_by_id': payment.created_by_id,
         'created_by_name': _payment_user_display(payment.created_by) or '',
         'created_at': payment.created_at.isoformat(),
+        'allocations': allocations,
     }
 
 
@@ -1259,6 +1267,7 @@ def api_list_payments(request):
 
     qs = (
         Payment.objects.select_related('related_user__profile', 'created_by__profile', 'related_order')
+        .prefetch_related('settlement_allocations')
         .order_by('-payment_date', '-created_at', '-id')
     )
 

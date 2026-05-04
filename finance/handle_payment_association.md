@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#5–#17** (numery punktów poniżej bez przesuwania; **#4** — `api_get_or_create_monthly_usage_for_buyer` / `MonthlyContributionUsage`: usunięte M2M `order_items`, zużycie miesiąca z **`SettlementAllocation`** kontrybucji na liniach „donor” — zrealizowane).
+**Numeracja:** sprawy do przebudowy w kodzie — **#6–#17** (numery punktów poniżej bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: pole **`allocations`** (`order_item_id` + `allocated_amount`) — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -20,16 +20,6 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 ---
 
 Przy usuwaniu poniższych nie zmieniaj numeracji.
-
-## Endpointy `api_*` — `finance/views.py`
-
-### #5 — `api_get_contributors` / `api_get_filtered_users` / `api_list_payments`
-
-**Teraz:** Nie przypisują płatności do pozycji ani nie liczą `left_to_pay` dla zamówień (lista płatności nie serializuje `related_order_items` w `_serialize_payment_list_row`).
-
-**Chcemy:** Opcjonalnie rozszerzyć `api_list_payments` o zwięzłą reprezentację alokacji (id pozycji + kwoty) do podglądu staff.
-
----
 
 ## Endpointy `api_*` — `products/views.py`
 
