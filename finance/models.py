@@ -7,8 +7,6 @@ from django.core.exceptions import ValidationError
 from users.models import Profile
 from products.models import OrderItem
 from django.db.models import Sum, F, Q, ExpressionWrapper, DecimalField
-from django.db.models.functions import Coalesce
-
 class Payment(models.Model):
     PAYMENT_TYPES = [
         ('contribution', 'Wpłata od wspierającego'),
@@ -97,21 +95,47 @@ class Payment(models.Model):
     def __str__(self):
         return f"{self.get_payment_type_display()}: {self.amount} zł"
 
+    def used_amount_settlement_and_legacy(self):
+        """
+        Kwota płatności już „przypięta”: suma SettlementAllocation.allocated_amount
+        plus pełna cena pozycji tylko w M2M bez wiersza alokacji (faza przejściowa).
+        """
+        total_alloc = sum(
+            (a.allocated_amount for a in self.settlement_allocations.all()),
+            start=Decimal('0'),
+        )
+        item_ids_with_alloc = {a.order_item_id for a in self.settlement_allocations.all()}
+        legacy = sum(
+            (oi.price for oi in self.related_order_items.all() if oi.id not in item_ids_with_alloc),
+            start=Decimal('0'),
+        )
+        return (total_alloc + legacy).quantize(Decimal('0.01'))
+
     @property
     def available_amount(self):
-        used_amount = sum(item.price for item in self.related_order_items.all())
-        return self.amount - used_amount
+        return self.amount - self.used_amount_settlement_and_legacy()
 
     @classmethod
     def get_available_contributions(cls):
-        available_contributions = cls.objects.filter(
-            payment_type='contribution'
-        ).annotate(
-            used_amount=Coalesce(Sum('related_order_items__price'), 0, output_field=DecimalField(max_digits=10, decimal_places=2))
-        ).filter(
-            amount__gt=F('used_amount')
-        ).order_by('payment_date')
-        return available_contributions
+        """
+        Kontrybucje z kwotą dostępną do dalszego przypisania (wg alokacji + legacy M2M).
+        """
+        candidates = cls.objects.filter(payment_type='contribution').prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        )
+        eligible_ids = [
+            p.pk
+            for p in candidates
+            if p.amount > p.used_amount_settlement_and_legacy()
+        ]
+        if not eligible_ids:
+            return cls.objects.none()
+        return (
+            cls.objects.filter(pk__in=eligible_ids)
+            .prefetch_related('settlement_allocations', 'related_order_items')
+            .order_by('payment_date')
+        )
 
     @classmethod
     def get_available_contributions_amount(cls):

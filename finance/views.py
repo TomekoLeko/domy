@@ -346,30 +346,47 @@ def get_user_payments(request, user_id):
             'message': str(e)
         }, status=400)
 
+def _contribution_linked_order_items_union(payment):
+    """Pozycje powiązane z kontrybucją: M2M oraz (bez duplikatów) z SettlementAllocation."""
+    by_id = {}
+    for oi in payment.related_order_items.all():
+        by_id[oi.id] = oi
+    for alloc in payment.settlement_allocations.all():
+        by_id[alloc.order_item_id] = alloc.order_item
+    return sorted(by_id.values(), key=lambda oi: oi.id)
+
+
 @staff_member_required
 def get_available_contributions(request):
     """Return all available contribution payments with calculated available amount."""
-    payments = Payment.get_available_contributions().select_related(
-        'related_user',
-        'related_order',
-        'created_by'
-    ).prefetch_related('related_order_items')
+    payments = (
+        Payment.get_available_contributions()
+        .select_related('related_user', 'related_order', 'created_by')
+        .prefetch_related('settlement_allocations', 'related_order_items')
+    )
 
-    payment_data = [{
-        'id': payment.id,
-        'amount': str(payment.amount),
-        'payment_type': payment.payment_type,
-        'payment_method': payment.payment_method,
-        'description': payment.description,
-        'sender': payment.sender,
-        'related_user': payment.related_user_id,
-        'related_order': payment.related_order_id,
-        'related_order_items': list(payment.related_order_items.values_list('id', flat=True)),
-        'created_by': payment.created_by_id,
-        'created_at': payment.created_at.isoformat(),
-        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-        'available_amount': str(payment.available_amount),
-    } for payment in payments]
+    payment_data = []
+    for payment in payments:
+        item_ids = {oi.id for oi in payment.related_order_items.all()} | {
+            a.order_item_id for a in payment.settlement_allocations.all()
+        }
+        payment_data.append(
+            {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'payment_type': payment.payment_type,
+                'payment_method': payment.payment_method,
+                'description': payment.description,
+                'sender': payment.sender,
+                'related_user': payment.related_user_id,
+                'related_order': payment.related_order_id,
+                'related_order_items': sorted(item_ids),
+                'created_by': payment.created_by_id,
+                'created_at': payment.created_at.isoformat(),
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'available_amount': str(payment.available_amount),
+            }
+        )
 
     return JsonResponse({
         'status': 'success',
@@ -380,11 +397,22 @@ def get_available_contributions(request):
 @staff_member_required
 def get_all_contributions(request):
     """Return all contribution payments with full related objects."""
-    payments = Payment.objects.filter(payment_type='contribution').select_related(
-        'related_user',
-        'related_order',
-        'created_by'
-    ).prefetch_related('related_order_items', 'related_order_items__buyer', 'related_order_items__product__images')
+    payments = (
+        Payment.objects.filter(payment_type='contribution')
+        .select_related('related_user', 'related_order', 'created_by')
+        .prefetch_related(
+            'related_order_items',
+            'related_order_items__buyer',
+            'related_order_items__product__images',
+            Prefetch(
+                'settlement_allocations',
+                queryset=SettlementAllocation.objects.select_related(
+                    'order_item__buyer',
+                    'order_item__product',
+                ).prefetch_related('order_item__product__images'),
+            ),
+        )
+    )
 
     def serialize_order_item(order_item):
         first_image = order_item.product.images.first()
@@ -402,27 +430,33 @@ def get_all_contributions(request):
             ),
         }
 
-    payment_data = [{
-        'id': payment.id,
-        'amount': str(payment.amount),
-        'payment_type': payment.payment_type,
-        'payment_method': payment.payment_method,
-        'description': payment.description,
-        'sender': payment.sender,
-        'related_user': {
-            'id': payment.related_user.id,
-            'name': payment.related_user.get_organization_name_or_full_name() or payment.related_user.username,
-            'full_name': payment.related_user.get_organization_name_or_full_name(),
-        } if payment.related_user else None,
-        'related_order': payment.related_order_id,
-        'related_order_items': [
-            serialize_order_item(order_item) for order_item in payment.related_order_items.all()
-        ],
-        'created_by': payment.created_by_id,
-        'created_at': payment.created_at.isoformat(),
-        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-        'available_amount': str(payment.available_amount),
-    } for payment in payments]
+    payment_data = []
+    for payment in payments:
+        linked_items = _contribution_linked_order_items_union(payment)
+        payment_data.append(
+            {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'payment_type': payment.payment_type,
+                'payment_method': payment.payment_method,
+                'description': payment.description,
+                'sender': payment.sender,
+                'related_user': {
+                    'id': payment.related_user.id,
+                    'name': payment.related_user.get_organization_name_or_full_name()
+                    or payment.related_user.username,
+                    'full_name': payment.related_user.get_organization_name_or_full_name(),
+                }
+                if payment.related_user
+                else None,
+                'related_order': payment.related_order_id,
+                'related_order_items': [serialize_order_item(oi) for oi in linked_items],
+                'created_by': payment.created_by_id,
+                'created_at': payment.created_at.isoformat(),
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'available_amount': str(payment.available_amount),
+            }
+        )
 
     return JsonResponse({
         'status': 'success',
