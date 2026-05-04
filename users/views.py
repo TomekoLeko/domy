@@ -248,7 +248,6 @@ def api_user_monthly_contributions(request, user_id):
     usages = (
         MonthlyContributionUsage.objects
         .filter(profile=profile)
-        .prefetch_related('order_items', 'order_items__product')
         .order_by('-year', '-month')
     )
 
@@ -257,7 +256,7 @@ def api_user_monthly_contributions(request, user_id):
     seen_order_item_ids = set()
 
     for usage in usages:
-        usage_order_items = list(usage.order_items.all())
+        usage_order_items = list(usage.get_monthly_order_items())
         monthly_usage.append({
             "id": usage.id,
             "year": usage.year,
@@ -298,16 +297,16 @@ def api_delete_monthly_contribution_usage(request, usage_id):
         return _api_staff_forbidden_response()
 
     try:
-        usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage_id)
+        usage = MonthlyContributionUsage.objects.get(id=usage_id)
     except MonthlyContributionUsage.DoesNotExist:
         return Response(
             {"detail": "MonthlyContributionUsage not found"},
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    if usage.order_items.exists():
+    if usage.donor_contribution_allocations_qs().exists():
         return Response(
-            {"detail": "Nie można usunąć wpisu: obiekt ma przypięte OrderItems."},
+            {"detail": "Nie można usunąć wpisu: istnieją alokacje kontrybucji wliczane w ten miesiąc."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

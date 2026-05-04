@@ -812,39 +812,8 @@ def api_assign_contributions_to_order(request):
             order.status = 'accepted'
             order.save(update_fields=['status'])
 
-        # Sync monthly usage for the beneficiary:
-        # - MonthlyContributionUsage belongs to the order beneficiary (order.buyer.profile)
-        # - OrderItems paid by donors (i.e. every OrderItem whose assigned buyer != order.buyer)
-        #   should be included in that MonthlyContributionUsage.
-        #
-        # Important: do NOT call MonthlyContributionUsage.save()/clean() here.
-        # The "limit" must be enforced only during UI calculation (cart/discount),
-        # while manual contribution assignment must be allowed to exceed the limit.
-        beneficiary_profile = getattr(order.buyer, 'profile', None)
-        if beneficiary_profile is not None:
-            monthly_usage = beneficiary_profile.get_or_create_current_monthly_usage()
-            if monthly_usage is not None:
-                order_item_ids = list(
-                    OrderItem.objects.filter(order=order).values_list('id', flat=True)
-                )
-                if order_item_ids:
-                    # Remove these OrderItems from any MonthlyContributionUsage for this profile,
-                    # so re-assignments don't leave stale entries in other months.
-                    related_monthly_usages = MonthlyContributionUsage.objects.filter(
-                        profile=beneficiary_profile,
-                        order_items__id__in=order_item_ids,
-                    ).distinct()
-
-                    for usage in related_monthly_usages:
-                        items_to_remove = usage.order_items.filter(id__in=order_item_ids)
-                        if items_to_remove.exists():
-                            usage.order_items.remove(*list(items_to_remove))
-
-                donor_order_items = list(
-                    OrderItem.objects.filter(order=order).exclude(buyer_id=order.buyer_id)
-                )
-                if donor_order_items:
-                    monthly_usage.order_items.add(*donor_order_items)
+        # MonthlyContributionUsage totals are derived from contribution SettlementAllocation
+        # (see MonthlyContributionUsage.donor_contribution_allocations_qs).
 
     order.refresh_from_db()
     # Przypisanie kontrybucji nie zmienia order.payment_status (rozliczenie — osobna ścieżka).
@@ -1220,7 +1189,7 @@ def api_get_or_create_monthly_usage_for_buyer(request):
             status=400,
         )
 
-    usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage.id)
+    usage = MonthlyContributionUsage.objects.get(id=usage.id)
     has_pending_orders = Order.objects.filter(buyer_id=buyer_id, status='pending').exists()
 
     return JsonResponse(
@@ -1233,7 +1202,7 @@ def api_get_or_create_monthly_usage_for_buyer(request):
                 'month': usage.month,
                 'limit': usage.limit,
                 'discount_rate_percent': str(usage.discount_rate_percent),
-                'order_item_ids': list(usage.order_items.values_list('id', flat=True)),
+                'order_item_ids': usage.distinct_order_item_ids_for_month(),
                 'total_usage': str(usage.total_usage),
                 'remaining_limit': str(usage.remaining_limit),
                 'has_pending_orders': has_pending_orders,

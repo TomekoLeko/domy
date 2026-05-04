@@ -13,7 +13,7 @@ from django.db.models import Q, Sum, F
 from django.db import transaction
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
-from finance.models import MonthlyContributionUsage, Payment
+from finance.models import Payment
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 from users.models import Profile
 
@@ -1055,7 +1055,7 @@ def delete_order(request, order_id):
 def _delete_order_impl(order_id):
     """
     Bezpieczne kasowanie Order zgodne z ORDER_DELETE_PROMPT.md:
-    - najpierw odpięcie relacji finansowych (M2M) i cofnięcie MonthlyContributionUsage,
+    - najpierw odpięcie relacji finansowych (M2M Payment ↔ pozycje),
     - potem usunięcie StockReduction (żeby PROTECT nie blokował),
     - następnie rekalkulacja StockEntry.remaining_quantity,
     - na końcu CASCADE delete Order (OrderItem).
@@ -1079,18 +1079,7 @@ def _delete_order_impl(order_id):
             for payment in payments_qs:
                 payment.related_order_items.remove(*order_items)
 
-            buyer_profile = None
-            try:
-                buyer_profile = order.buyer.profile
-            except Profile.DoesNotExist:
-                buyer_profile = None
-
-            monthly_usage_qs = MonthlyContributionUsage.objects.filter(order_items__in=order_items).distinct()
-            if buyer_profile is not None:
-                monthly_usage_qs = monthly_usage_qs.filter(profile=buyer_profile)
-
-            for usage in monthly_usage_qs:
-                usage.order_items.remove(*order_items)
+        # MonthlyContributionUsage is derived from SettlementAllocation (CASCADE on OrderItem).
 
         # Delete stock reductions before deleting Order/OrderItem (PROTECT)
         stock_reductions_qs.delete()

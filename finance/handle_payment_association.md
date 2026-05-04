@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#4–#17** (numery punktów poniżej bez przesuwania).
+**Numeracja:** sprawy do przebudowy w kodzie — **#5–#17** (numery punktów poniżej bez przesuwania; **#4** — `api_get_or_create_monthly_usage_for_buyer` / `MonthlyContributionUsage`: usunięte M2M `order_items`, zużycie miesiąca z **`SettlementAllocation`** kontrybucji na liniach „donor” — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -22,14 +22,6 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 Przy usuwaniu poniższych nie zmieniaj numeracji.
 
 ## Endpointy `api_*` — `finance/views.py`
-
-### #4 — `api_get_or_create_monthly_usage_for_buyer`
-
-**Teraz:** Zwraca `MonthlyContributionUsage` i listę `order_item_ids` z **M2M `usage.order_items`** — to **nie** jest bezpośrednio `Payment` ↔ `OrderItem`, lecz limit miesięczny / pozycje „przypięte” do profilu beneficjenta po kontrybucjach.
-
-**Chcemy:** Jeśli logika miesięczna ma pozostać powiązana z tymi samymi pozycjami co rozliczenia, ujednolicić źródło prawdy (np. nadal M2M usage **albo** odczyt z alokacji kontrybucji — decyzja produktowa); ten endpoint **nie musi** duplikować `SettlementAllocation`, ale trzeba sprawdzić spójność po zmianie przypisywania kontrybucji. **`MonthlyContributionUsage.order_items`** to osobna ścieżka niż alokacje rozliczeń — nie mylić z `SettlementAllocation`.
-
----
 
 ### #5 — `api_get_contributors` / `api_get_filtered_users` / `api_list_payments`
 
