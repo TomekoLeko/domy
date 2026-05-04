@@ -113,6 +113,7 @@ class Payment(models.Model):
 
     @property
     def available_amount(self):
+        """`amount` minus suma alokacji i legacy M2M — patrz `used_amount_settlement_and_legacy`."""
         return self.amount - self.used_amount_settlement_and_legacy()
 
     @classmethod
@@ -139,6 +140,7 @@ class Payment(models.Model):
 
     @classmethod
     def get_available_contributions_amount(cls):
+        """Suma `available_amount` po kontrybucjach z `get_available_contributions()` (alokacje + legacy M2M)."""
         available_contributions = cls.get_available_contributions()
         return sum(contribution.available_amount for contribution in available_contributions)
 

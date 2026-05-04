@@ -6,9 +6,9 @@ from decimal import Decimal
 
 def payment_amount_attributed_to_order_item(payment, order_item):
     """
-    Kwota płatności liczona dla danej pozycji zamówienia, gdy jedna płatność
-    jest powiązana M2M z wieloma pozycjami: proporcjonalnie wg ceny pozycji
-    względem sumy cen powiązanych pozycji (raty / jedna wpłata na całe zamówienie).
+    Legacy: kwota z płatności przypisana do pozycji proporcjonalnie do `price` względem
+    sumy cen pozycji powiązanych M2M — używane tylko gdy brak wiersza
+    `SettlementAllocation` dla tej pary (płatność, pozycja).
     """
     linked = list(payment.related_order_items.all())
     ids = {x.id for x in linked}
@@ -213,36 +213,25 @@ class OrderItem(models.Model):
     @property
     def sum_of_order_item_payments(self):
         """
-        Settled amount on this line: use SettlementAllocation.allocated_amount when present
-        for a linked payment; otherwise legacy proportional split from M2M. Includes
-        allocations whose payment is not in related_order_items (orphan rows).
+        Rozliczona kwota na pozycji: suma `SettlementAllocation.allocated_amount` dla tej pozycji,
+        plus dla każdej płatności powiązanej M2M bez wiersza alokacji — `payment_amount_attributed_to_order_item`.
+        Alokacje bez M2M (sieroty) wchodzą wyłącznie w pierwszej sumie.
         """
-        alloc_by_payment = {}
-        allocations = self.settlement_allocations.all()
-        if 'settlement_allocations' not in getattr(self, '_prefetched_objects_cache', {}):
-            allocations = self.settlement_allocations.all()
-        for sa in allocations:
-            alloc_by_payment[sa.payment_id] = sa.allocated_amount
+        allocations = list(self.settlement_allocations.all())
+        total = sum((a.allocated_amount for a in allocations), start=Decimal('0'))
+        payment_ids_with_allocation = {a.payment_id for a in allocations}
 
-        payments_qs = self.payments.all()
-        if 'payments' not in getattr(self, '_prefetched_objects_cache', {}):
-            payments_qs = self.payments.prefetch_related(
+        if 'payments' in getattr(self, '_prefetched_objects_cache', {}):
+            payments_iter = self.payments.all()
+        else:
+            payments_iter = self.payments.prefetch_related(
                 'related_order_items',
                 'settlement_allocations',
             ).all()
 
-        linked_payment_ids = set()
-        total = Decimal('0')
-        for p in payments_qs:
-            linked_payment_ids.add(p.id)
-            if p.id in alloc_by_payment:
-                total += alloc_by_payment[p.id]
-            else:
+        for p in payments_iter:
+            if p.id not in payment_ids_with_allocation:
                 total += payment_amount_attributed_to_order_item(p, self)
-
-        for payment_id, amount in alloc_by_payment.items():
-            if payment_id not in linked_payment_ids:
-                total += amount
 
         return total
 
