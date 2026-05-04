@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from .models import Payment, Invoice, MonthlyContributionUsage, SettlementAllocation
-from products.models import Order
+from products.models import Order, OrderItem, payment_amount_attributed_to_order_item
 from .forms import PaymentForm
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -18,8 +18,6 @@ from django.db import transaction
 from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal, InvalidOperation
 from .models import Supplier
-from products.models import OrderItem
-
 User = get_user_model()
 
 @staff_member_required
@@ -455,39 +453,162 @@ def api_get_contributors(request):
 @require_POST
 @staff_member_required
 def assign_payment_to_item(request):
-    """Assign a payment to an order item"""
+    """
+    POST …/finance/assign-payment-to-item/
+    Body JSON: { "payment_id", "order_item_id" [, "allocated_amount" ] }
+
+    Tworzy lub aktualizuje wiersz SettlementAllocation; utrzymuje M2M `related_order_items`.
+    Bez `allocated_amount` ustawiana jest kwota min(dostępność na płatności, miejsce na pozycji).
+    """
     try:
         data = json.loads(request.body)
-        payment_id = data.get('payment_id')
-        order_item_id = data.get('order_item_id')
-        
-        if not payment_id or not order_item_id:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Missing required parameters'
-            }, status=400)
-        
-        payment = get_object_or_404(Payment, id=payment_id)
-        
-        # Use correct import for OrderItem
-        from products.models import OrderItem
-        order_item = get_object_or_404(OrderItem, id=order_item_id)
-        
-        # Add the order item to the payment's related items
-        payment.related_order_items.add(order_item)
-        order_item.order.update_payment_status_from_settlement()
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
 
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Płatność została przypisana pomyślnie'
-        })
+    payment_id = data.get('payment_id')
+    order_item_id = data.get('order_item_id')
+    raw_allocated = data.get('allocated_amount')
+
+    if not payment_id or not order_item_id:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Missing required parameters'},
+            status=400,
+        )
+
+    payment = get_object_or_404(
+        Payment.objects.prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        ),
+        id=payment_id,
+    )
+    order_item = get_object_or_404(
+        OrderItem.objects.select_related('order').prefetch_related(
+            'settlement_allocations',
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.prefetch_related(
+                    'related_order_items',
+                    'settlement_allocations',
+                ),
+            ),
+        ),
+        id=order_item_id,
+    )
+
+    q = Decimal('0.01')
+    try:
+        with transaction.atomic():
+            payment = Payment.objects.prefetch_related(
+                'settlement_allocations',
+                'related_order_items',
+            ).get(pk=payment.pk)
+            order_item = (
+                OrderItem.objects.select_related('order')
+                .prefetch_related(
+                    'settlement_allocations',
+                    Prefetch(
+                        'payments',
+                        queryset=Payment.objects.prefetch_related(
+                            'related_order_items',
+                            'settlement_allocations',
+                        ),
+                    ),
+                )
+                .get(pk=order_item.pk)
+            )
+
+            used_elsewhere = _payment_settled_amount_excluding_items(
+                payment, {order_item.id}
+            )
+            max_from_payment = (payment.amount - used_elsewhere).quantize(q)
+            if max_from_payment <= Decimal('0.00'):
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': 'Brak dostępnej kwoty na tej płatności do przypisania do pozycji.',
+                    },
+                    status=400,
+                )
+
+            current_on_line = _settled_from_payment_on_order_line(order_item, payment)
+            max_for_line = (order_item.left_to_pay + current_on_line).quantize(q)
+
+            if raw_allocated is not None and raw_allocated != '':
+                try:
+                    allocated_amount = Decimal(str(raw_allocated)).quantize(q)
+                except (InvalidOperation, TypeError, ValueError):
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'allocated_amount must be a valid decimal'},
+                        status=400,
+                    )
+                if allocated_amount <= Decimal('0.00'):
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'allocated_amount must be positive'},
+                        status=400,
+                    )
+            else:
+                allocated_amount = min(max_from_payment, max_for_line)
+
+            if allocated_amount <= Decimal('0.00'):
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': 'Brak kwoty do alokacji (pozycja rozliczona lub brak miejsca).',
+                    },
+                    status=400,
+                )
+
+            if allocated_amount > max_from_payment:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': (
+                            f'Kwota przekracza dostępność na płatności '
+                            f'(max {max_from_payment} zł).'
+                        ),
+                    },
+                    status=400,
+                )
+            if allocated_amount > max_for_line:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': (
+                            f'Kwota przekracza miejsce na pozycji zamówienia '
+                            f'(max {max_for_line} zł).'
+                        ),
+                    },
+                    status=400,
+                )
+
+            SettlementAllocation.objects.update_or_create(
+                payment=payment,
+                order_item=order_item,
+                defaults={'allocated_amount': allocated_amount},
+            )
+            payment.related_order_items.add(order_item)
+
+            order_fresh = (
+                Order.objects.filter(pk=order_item.order_id)
+                .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+                .first()
+            )
+            if order_fresh is not None:
+                order_fresh.update_payment_status_from_settlement()
+
+        return JsonResponse(
+            {
+                'status': 'success',
+                'message': 'Płatność została przypisana pomyślnie',
+                'allocated_amount': str(allocated_amount),
+            }
+        )
     except Exception as e:
         import traceback
-        traceback.print_exc()  # Print traceback to server console for debugging
-        return JsonResponse({
-            'status': 'error',
-            'message': str(e)
-        }, status=400)
+
+        traceback.print_exc()
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
@@ -602,6 +723,17 @@ def _payment_settled_amount_excluding_items(payment, exclude_item_ids):
             continue
         legacy += oi.price
     return alloc_total + legacy
+
+
+def _settled_from_payment_on_order_line(order_item, payment):
+    """Kwota z danej płatności już przypisana do pozycji (alokacja lub legacy M2M proporcjonalnie)."""
+    for a in order_item.settlement_allocations.all():
+        if a.payment_id == payment.id:
+            return a.allocated_amount
+    for p in order_item.payments.all():
+        if p.id == payment.id:
+            return payment_amount_attributed_to_order_item(p, order_item)
+    return Decimal('0.00')
 
 
 @require_POST
