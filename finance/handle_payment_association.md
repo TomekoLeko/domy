@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#6–#17** (numery punktów poniżej bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: pole **`allocations`** (`order_item_id` + `allocated_amount`) — zrealizowane).
+**Numeracja:** sprawy do przebudowy w kodzie — **#7–#17** (numery punktów poniżej bez przesuwania; **#4** — `MonthlyContributionUsage` z alokacji — zrealizowane; **#5** — `api_list_payments`: **`allocations`** — zrealizowane; **#6** — `api_delete_order` / `_delete_order_impl`: jawne **`SettlementAllocation.delete`** + M2M; **`related_order`** → SET_NULL — zrealizowane).
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -22,14 +22,6 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 Przy usuwaniu poniższych nie zmieniaj numeracji.
 
 ## Endpointy `api_*` — `products/views.py`
-
-### #6 — `api_delete_order`
-
-**Teraz:** Przed usunięciem zamówienia znajduje `Payment` z M2M `related_order_items` przecinającym się z pozycjami zamówienia i wykonuje **`payment.related_order_items.remove(*order_items)`**.
-
-**Chcemy:** Usunięcie / oderwanie alokacji (`SettlementAllocation` dla tych pozycji lub CASCADE przy usuwaniu `OrderItem` — już przy `ForeignKey(..., CASCADE)` na `order_item`); upewnić się, że płatności „gołe” mają sensowną politykę (np. `related_order` null + ostrzeżenie).
-
----
 
 ### #7 — `api_list_of_orders_for_buyer`
 
