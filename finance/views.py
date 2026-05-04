@@ -46,16 +46,7 @@ def finance_main(request):
 @staff_member_required
 def delete_payment(request, payment_id):
     payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
-    order = payment.related_order
-    payment.delete()
-    if order is not None:
-        order_fresh = (
-            Order.objects.filter(pk=order.pk)
-            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
-            .first()
-        )
-        if order_fresh is not None:
-            order_fresh.update_payment_status_from_settlement()
+    _delete_payment_and_refresh_affected_orders(payment)
     return JsonResponse({'status': 'success'})
 
 @staff_member_required
@@ -502,6 +493,33 @@ _ORDER_ITEMS_FOR_PAYMENT_PREFETCH = Prefetch(
         )
     ),
 )
+
+
+def _order_ids_touched_by_payment(payment):
+    """Orders whose settlement status may change when this payment is removed."""
+    ids = set()
+    if payment.related_order_id:
+        ids.add(payment.related_order_id)
+    ids.update(payment.settlement_allocations.values_list('order_item__order_id', flat=True))
+    ids.update(payment.related_order_items.values_list('order_id', flat=True))
+    return {pk for pk in ids if pk}
+
+
+def _refresh_payment_status_for_orders(order_ids):
+    for order_pk in order_ids:
+        order_fresh = (
+            Order.objects.filter(pk=order_pk)
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        if order_fresh is not None:
+            order_fresh.update_payment_status_from_settlement()
+
+
+def _delete_payment_and_refresh_affected_orders(payment):
+    order_ids = _order_ids_touched_by_payment(payment)
+    payment.delete()
+    _refresh_payment_status_for_orders(order_ids)
 
 
 def _order_buyer_left_to_pay_total(order):
@@ -1316,16 +1334,7 @@ def api_list_payments(request):
 def api_delete_payment(request, payment_id):
     """POST /api/finance/delete-payment/<id>/ — usuwa dowolną płatność (personel)."""
     payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
-    order = payment.related_order
-    payment.delete()
-    if order is not None:
-        order_fresh = (
-            Order.objects.filter(pk=order.pk)
-            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
-            .first()
-        )
-        if order_fresh is not None:
-            order_fresh.update_payment_status_from_settlement()
+    _delete_payment_and_refresh_affected_orders(payment)
     return JsonResponse({'status': 'success'})
 
 

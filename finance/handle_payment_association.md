@@ -5,7 +5,7 @@ Dokument pomocniczy przed przebudową na **`SettlementAllocation`** (`finance.mo
 Poniżej: wyłącznie miejsca istotne dla **powiązania `Payment` ↔ `Order` / `OrderItem`** albo **wyliczenia pozostałości (`left_to_pay`, sumy dla kupującego, status rozliczenia)**.  
 Dla każdej pozycji: **`Teraz:`** obecne zachowanie, **`Chcemy:`** docelowy kierunek (jawne alokacje przez `SettlementAllocation`, spójna walidacja sum alokacji względem `Payment.amount` i pozostałości na pozycji).
 
-**Numeracja:** sprawy do przebudowy w kodzie — **#3–#18**.
+**Numeracja:** sprawy do przebudowy w kodzie — **#3–#17**.
 
 **Commit:** po zrealizowaniu któregokolwiek zadania z tego spisu, w odpowiedzi / podsumowaniu dla autora **zaproponuj treść wiadomości commita po angielsku** (krótka, opisująca faktyczną zmianę; bez wstawiania jej do repozytorium, jeśli autor nie poprosi).
 
@@ -21,15 +21,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ## Endpointy `api_*` — `finance/views.py`
 
-### #3 — `api_delete_payment`
-
-**Teraz:** Usuwa dowolny `Payment`; jeśli był `related_order`, ponownie ładuje zamówienie i wywołuje `update_payment_status_from_settlement()`. Usunięcie kaskadowe M2M jest po stronie Django.
-
-**Chcemy:** Usunięcie płatności kaskaduje **`SettlementAllocation`** (FK `CASCADE` już na modelu); status zamówienia liczony z alokacji / `left_to_pay` opartego na sumach `allocated_amount`.
-
----
-
-### #4 — `api_get_filtered_orders`
+### #3 — `api_get_filtered_orders`
 
 **Teraz:** Alias do `get_filtered_orders`: dla zamówień z filtrów sumuje **`item.left_to_pay`** po pozycjach z `item.buyer_id == order.buyer_id`, zwraca `left_to_pay` w JSON dla formularza Rozliczenia.
 
@@ -37,7 +29,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #5 — `api_get_or_create_monthly_usage_for_buyer`
+### #4 — `api_get_or_create_monthly_usage_for_buyer`
 
 **Teraz:** Zwraca `MonthlyContributionUsage` i listę `order_item_ids` z **M2M `usage.order_items`** — to **nie** jest bezpośrednio `Payment` ↔ `OrderItem`, lecz limit miesięczny / pozycje „przypięte” do profilu beneficjenta po kontrybucjach.
 
@@ -45,7 +37,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #6 — `api_get_contributors` / `api_get_filtered_users` / `api_list_payments`
+### #5 — `api_get_contributors` / `api_get_filtered_users` / `api_list_payments`
 
 **Teraz:** Nie przypisują płatności do pozycji ani nie liczą `left_to_pay` dla zamówień (lista płatności nie serializuje `related_order_items` w `_serialize_payment_list_row`).
 
@@ -55,7 +47,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ## Endpointy `api_*` — `products/views.py`
 
-### #7 — `api_delete_order`
+### #6 — `api_delete_order`
 
 **Teraz:** Przed usunięciem zamówienia znajduje `Payment` z M2M `related_order_items` przecinającym się z pozycjami zamówienia i wykonuje **`payment.related_order_items.remove(*order_items)`**.
 
@@ -63,7 +55,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #8 — `api_list_of_orders_for_buyer`
+### #7 — `api_list_of_orders_for_buyer`
 
 **Teraz:** Dla każdej pozycji zwraca **`left_to_pay`** z właściwości `OrderItem`; sumuje **`left_to_pay_buyer`** dla pozycji, gdzie `item.buyer_id == buyer`.
 
@@ -71,7 +63,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #9 — `api_list_of_orders_for_admin`
+### #8 — `api_list_of_orders_for_admin`
 
 **Teraz:** Jak wyżej — **`left_to_pay`** per pozycja w payloadzie (bez sumy „buyer” w głównym obiekcie zamówienia w tym widoku).
 
@@ -79,7 +71,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #10 — `api_create_order`
+### #9 — `api_create_order`
 
 **Teraz:** Tworzy zamówienie i pozycje; zwraca `payment_status` z modelu (domyślnie `pending`), **bez** tworzenia płatności ani alokacji.
 
@@ -89,13 +81,13 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ## Widoki powiązane (bez prefiksu `api_` w nazwie), ale używane z frontu / ścieżek `api/`
 
-### #11 — `get_filtered_orders` (`finance/views.py`, to samo co `api_get_filtered_orders`)
+### #10 — `get_filtered_orders` (`finance/views.py`, to samo co `api_get_filtered_orders`)
 
-**Teraz / Chcemy:** Jak **#4** (`api_get_filtered_orders`) — ta sama implementacja / ten sam zakres zmian w kodzie.
+**Teraz / Chcemy:** Jak **#3** (`api_get_filtered_orders`) — ta sama implementacja / ten sam zakres zmian w kodzie.
 
 ---
 
-### #12 — `assign_payment_to_item` (`POST …/finance/assign-payment-to-item/`)
+### #11 — `assign_payment_to_item` (`POST …/finance/assign-payment-to-item/`)
 
 **Teraz:** `payment.related_order_items.add(order_item)` + `order_item.order.update_payment_status_from_settlement()`.
 
@@ -103,7 +95,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #13 — `get_available_contributions` / `get_all_contributions` (`finance/views.py`)
+### #12 — `get_available_contributions` / `get_all_contributions` (`finance/views.py`)
 
 **Teraz:** Odczyt listy kontrybucji; w payloadzie **`related_order_items`** (serializacja pozycji). Dostępna kwota kontrybucji: m.in. **`Payment.available_amount`** (`amount - sum(price)` powiązanych pozycji) oraz zapytanie z adnotacją `Sum('related_order_items__price')`.
 
@@ -111,17 +103,15 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #14 — `delete_payment` (szablon Django `finance/payment/.../delete/`)
+### #13 — `delete_payment` (szablon Django `finance/payment/.../delete/`)
 
-**Teraz:** Jak **#3** (`api_delete_payment`) — usuwa `Payment` i odświeża status zamówienia po `related_order`.
-
-**Chcemy:** Jak **#3** — kaskada alokacji (`SettlementAllocation`).
+**Teraz / Chcemy:** Wspólna logika z **`api_delete_payment`** w `finance/views.py`: usunięcie płatności (kaskada **`SettlementAllocation`** po FK), odświeżenie **`payment_status`** na każdym zamówieniu powiązanym przez `related_order`, **`SettlementAllocation`** lub M2M **`related_order_items`**.
 
 ---
 
 ## Funkcje pomocnicze / model (nie są endpointami, ale wpływają na „ile zostało”)
 
-### #15 — `_order_buyer_left_to_pay_total(order)` — `finance/views.py`
+### #14 — `_order_buyer_left_to_pay_total(order)` — `finance/views.py`
 
 **Teraz:** Suma **`item.left_to_pay`** po pozycjach z `item.buyer_id == order.buyer_id`.
 
@@ -129,7 +119,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #16 — `Order.update_payment_status_from_settlement()` — `products/models.py`
+### #15 — `Order.update_payment_status_from_settlement()` — `products/models.py`
 
 **Teraz:** Na podstawie pozycji kupującego (`buyer_id == order.buyer_id`) sumuje `left_to_pay` / `price` i ustawia `payment_status` (`pending` / `partial` / `paid`).
 
@@ -137,7 +127,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #17 — `OrderItem.sum_of_order_item_payments` / `left_to_pay` oraz `payment_amount_attributed_to_order_item` — `products/models.py`
+### #16 — `OrderItem.sum_of_order_item_payments` / `left_to_pay` oraz `payment_amount_attributed_to_order_item` — `products/models.py`
 
 **Teraz:** Rozbicie kwoty każdej płatności **proporcjonalnie do `price`** po zbiorze pozycji powiązanych M2M `payment.related_order_items`; suma po płatnościach → `left_to_pay`.
 
@@ -145,7 +135,7 @@ Do czasu tej przebudowy część ścieżek w kodzie nadal używa M2M i heurystyk
 
 ---
 
-### #18 — `Payment.available_amount` oraz `Payment.get_available_contributions` — `finance/models.py`
+### #17 — `Payment.available_amount` oraz `Payment.get_available_contributions` — `finance/models.py`
 
 **Teraz:** Bazuje na **`sum(item.price)`** dla `related_order_items`.
 
