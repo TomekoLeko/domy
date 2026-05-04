@@ -89,6 +89,11 @@ def get_filtered_orders(request):
     - status zamówienia inny niż „oczekujące” (pending),
     - status rozliczenia: oczekujące na rozliczenie lub częściowo opłacone,
     - opcjonalnie: tylko zamówienia danego kupującego (buyer), gdy user_id > 0.
+
+    Dla każdego zamówienia pole `left_to_pay` w odpowiedzi to suma `OrderItem.left_to_pay`
+    po pozycjach z `item.buyer_id == order.buyer_id` — ta właściwość liczy rozliczenie
+    z `SettlementAllocation`, z przejściowym fallbackiem proporcjonalnym z M2M tam,
+    gdzie nie ma jeszcze wierszy alokacji (zgodnie z modelem `OrderItem`).
     """
     user_id_raw = request.GET.get('user_id')
     user_id = None
@@ -1332,5 +1337,9 @@ def api_get_filtered_users(request):
 
 @staff_member_required
 def api_get_filtered_orders(request):
-    """GET /api/finance/get-filtered-orders/ — alias API dla formularza (React)."""
+    """
+    GET /api/finance/get-filtered-orders/ — alias API dla formularza (React).
+
+    Deleguje do `get_filtered_orders` (ten sam payload i liczenie `left_to_pay`).
+    """
     return get_filtered_orders(request)
