@@ -1359,7 +1359,68 @@ def api_list_of_orders_for_admin(request):
             'items': items_data,
         })
 
-    return JsonResponse({'orders': orders_data}, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse(
+        {
+            'orders': orders_data,
+            'order_status_choices': [{'value': value, 'label': label} for value, label in Order.STATUS_CHOICES],
+            'payment_status_choices': [
+                {'value': value, 'label': label} for value, label in Order.PAYMENT_STATUS_CHOICES
+            ],
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_update_order_status(request, order_id):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    new_status = (data.get('status') or '').strip()
+    valid_statuses = {value for value, _ in Order.STATUS_CHOICES}
+    if new_status not in valid_statuses:
+        return JsonResponse(
+            {
+                'detail': 'Invalid status',
+                'allowed_statuses': sorted(valid_statuses),
+            },
+            status=400,
+        )
+
+    order = get_object_or_404(Order, id=order_id)
+    order.status = new_status
+    order.save(update_fields=['status'])
+    return JsonResponse({'status': 'success', 'order_id': order.id, 'order_status': order.status})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_update_order_payment_status(request, order_id):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    new_payment_status = (data.get('payment_status') or '').strip()
+    valid_payment_statuses = {value for value, _ in Order.PAYMENT_STATUS_CHOICES}
+    if new_payment_status not in valid_payment_statuses:
+        return JsonResponse(
+            {
+                'detail': 'Invalid payment_status',
+                'allowed_payment_statuses': sorted(valid_payment_statuses),
+            },
+            status=400,
+        )
+
+    order = get_object_or_404(Order, id=order_id)
+    order.payment_status = new_payment_status
+    order.save(update_fields=['payment_status'])
+    return JsonResponse(
+        {'status': 'success', 'order_id': order.id, 'payment_status': order.payment_status}
+    )
 
 
 @require_POST
