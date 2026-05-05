@@ -8,6 +8,7 @@ from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 import json
 from decimal import Decimal, InvalidOperation
+from collections import defaultdict
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum, F, Prefetch
 from django.db import transaction
@@ -1212,7 +1213,10 @@ _ORDER_ITEMS_PREFETCH_FOR_LIST = Prefetch(
     'items',
     queryset=OrderItem.objects.select_related('buyer', 'product').prefetch_related(
         'product__images',
-        'settlement_allocations',
+        Prefetch(
+            'settlement_allocations',
+            queryset=SettlementAllocation.objects.select_related('payment'),
+        ),
         Prefetch(
             'payments',
             queryset=Payment.objects.prefetch_related(
@@ -1251,7 +1255,9 @@ def api_list_of_orders_for_buyer(request):
     orders_data = []
     for order in orders:
         items_data = []
-        left_to_pay_buyer = 0
+        left_to_pay_buyer = Decimal('0')
+        buyer_payable_total = Decimal('0')
+        payments_by_id = defaultdict(lambda: {'date': None, 'amount': Decimal('0')})
         for item in order.items.all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
@@ -1267,6 +1273,26 @@ def api_list_of_orders_for_buyer(request):
             })
             if item.buyer_id == buyer.id:
                 left_to_pay_buyer += item.left_to_pay
+                buyer_payable_total += item.price
+                for allocation in item.settlement_allocations.all():
+                    payment = allocation.payment
+                    payment_date = payment.payment_date or payment.created_at.date()
+                    payment_bucket = payments_by_id[payment.id]
+                    payment_bucket['date'] = payment_date.isoformat()
+                    payment_bucket['amount'] += allocation.allocated_amount
+
+        buyer_payments = sorted(
+            (
+                {
+                    'date': payload['date'],
+                    'amount': str(payload['amount'].quantize(Decimal('0.01'))),
+                }
+                for payload in payments_by_id.values()
+                if payload['amount'] > Decimal('0')
+            ),
+            key=lambda row: row['date'] or '',
+            reverse=True,
+        )
         orders_data.append({
             'id': order.id,
             'status': order.status,
@@ -1275,6 +1301,8 @@ def api_list_of_orders_for_buyer(request):
             'total_cost': str(order.total_cost),
             'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
             'left_to_pay_buyer': str(left_to_pay_buyer),
+            'buyer_payable_total': str(buyer_payable_total.quantize(Decimal('0.01'))),
+            'buyer_payments': buyer_payments,
             'buyer_id': order.buyer_id,
             'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
             'items': items_data,
