@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/finance/get-all-contributions/', views.get_all_contributions, name='api_get_all_contributions'),
     path('api/finance/get-contributors/', views.api_get_contributors, name='api_get_contributors'),
     path('api/finance/create-payment/', views.api_create_payment, name='api_create_payment'),
+    path('api/finance/update-payment/<int:payment_id>/', views.api_update_payment, name='api_update_payment'),
     path('api/finance/assign-contributions-to-order/', views.api_assign_contributions_to_order, name='api_assign_contributions_to_order'),
     path('api/finance/delete-contribution/<int:payment_id>/', views.api_delete_contribution, name='api_delete_contribution'),
     path('api/finance/get-or-create-monthly-usage-for-buyer/', views.api_get_or_create_monthly_usage_for_buyer, name='api_get_or_create_monthly_usage_for_buyer'),

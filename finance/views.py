@@ -1343,6 +1343,272 @@ def api_create_payment(request):
     )
 
 
+@require_POST
+@staff_member_required
+def api_update_payment(request, payment_id):
+    """
+    Update single payment (JSON API for staff UI).
+    Rebuilds settlement allocations when payment becomes/changes order payment.
+    """
+    payment = get_object_or_404(
+        Payment.objects.select_related('related_order').prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        ),
+        id=payment_id,
+    )
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid JSON body'},
+            status=400,
+        )
+
+    payment_type = data.get('payment_type')
+    if payment_type is None or (isinstance(payment_type, str) and not str(payment_type).strip()):
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'payment_type is required',
+            },
+            status=400,
+        )
+    if payment_type not in VALID_PAYMENT_TYPE_VALUES:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Invalid payment_type',
+                'allowed_payment_types': sorted(VALID_PAYMENT_TYPE_VALUES),
+            },
+            status=400,
+        )
+
+    if 'amount' not in data:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount is required'},
+            status=400,
+        )
+    try:
+        amount = Decimal(str(data['amount']))
+    except (InvalidOperation, ValueError, TypeError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be a valid decimal number'},
+            status=400,
+        )
+    if amount <= 0:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be greater than zero'},
+            status=400,
+        )
+
+    description = data.get('description')
+    if description is None:
+        description = ''
+
+    sender = data.get('sender')
+    if sender is not None and sender != '':
+        sender = str(sender)
+    else:
+        sender = None
+
+    related_user = None
+    ru_id = data.get('related_user_id')
+    if ru_id is not None and ru_id != '':
+        try:
+            related_user = User.objects.get(pk=int(ru_id))
+        except (ValueError, TypeError, User.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is invalid or user does not exist'},
+                status=400,
+            )
+
+    if payment_type == 'contribution':
+        if related_user is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is required for contribution payment'},
+                status=400,
+            )
+        if not getattr(related_user, 'profile', None) or not related_user.profile.is_contributor:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id must point to a contributor user'},
+                status=400,
+            )
+
+    related_order = None
+    ro_id = data.get('related_order_id')
+    if ro_id is not None and ro_id != '':
+        try:
+            related_order = Order.objects.get(pk=int(ro_id))
+        except (ValueError, TypeError, Order.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_order_id is invalid or order does not exist'},
+                status=400,
+            )
+
+    payment_date = None
+    raw_date = data.get('payment_date')
+    if raw_date is not None and raw_date != '':
+        if isinstance(raw_date, str):
+            try:
+                payment_date = date.fromisoformat(raw_date.strip()[:10])
+            except ValueError:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'payment_date must be ISO format YYYY-MM-DD'},
+                    status=400,
+                )
+        else:
+            return JsonResponse(
+                {'status': 'error', 'message': 'payment_date must be a string YYYY-MM-DD'},
+                status=400,
+            )
+
+    raw_payment_method = data.get('payment_method')
+    pm_strip = None
+    if isinstance(raw_payment_method, str):
+        pm_strip = raw_payment_method.strip()
+    elif raw_payment_method is not None:
+        pm_strip = str(raw_payment_method).strip()
+
+    if payment_type == 'order':
+        if related_order is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Dla płatności za zamówienie wymagane jest powiązane zamówienie.'},
+                status=400,
+            )
+        if related_user is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Dla płatności za zamówienie wymagany jest powiązany użytkownik (kupujący).'},
+                status=400,
+            )
+        if related_user.id != related_order.buyer_id:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.'},
+                status=400,
+            )
+        if payment_date is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Data płatności jest wymagana.'},
+                status=400,
+            )
+        if not pm_strip:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Sposób zapłaty jest wymagany.'},
+                status=400,
+            )
+        payment_method = pm_strip
+        if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Invalid payment_method',
+                    'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+    else:
+        if pm_strip:
+            payment_method = pm_strip
+            if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': 'Invalid payment_method',
+                        'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                    },
+                    status=400,
+                )
+        else:
+            payment_method = 'transfer'
+
+    order = None
+    buyer_items = []
+    allocation_pairs = []
+    if payment_type == 'order':
+        order = (
+            Order.objects.filter(pk=related_order.pk)
+            .select_related('buyer')
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        left_total = _order_buyer_left_to_pay_total(order)
+        if amount > left_total:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Kwota przekracza pozostałość do zapłaty w zamówieniu ({left_total} zł).'
+                    ),
+                },
+                status=400,
+            )
+        buyer_items = [it for it in order.items.all() if it.buyer_id == order.buyer_id]
+        if not buyer_items:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Brak pozycji zamówienia do rozliczenia tą płatnością.',
+                },
+                status=400,
+            )
+        try:
+            allocation_pairs = _split_order_payment_amount_across_buyer_line_items(
+                amount, buyer_items
+            )
+        except ValueError as exc:
+            return JsonResponse(
+                {'status': 'error', 'message': str(exc)},
+                status=400,
+            )
+
+    touched_order_ids = _order_ids_touched_by_payment(payment)
+
+    with transaction.atomic():
+        payment = Payment.objects.select_related('related_order').prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        ).get(pk=payment.pk)
+        SettlementAllocation.objects.filter(payment=payment).delete()
+        payment.related_order_items.clear()
+
+        payment.payment_type = payment_type
+        payment.payment_method = payment_method
+        payment.amount = amount
+        payment.description = description
+        payment.sender = sender
+        payment.related_user = related_user
+        payment.related_order = related_order
+        payment.payment_date = payment_date
+        payment.save()
+
+        if payment_type == 'order':
+            payment.related_order_items.set(buyer_items)
+            SettlementAllocation.objects.bulk_create(
+                [
+                    SettlementAllocation(
+                        payment=payment,
+                        order_item=it,
+                        allocated_amount=amt,
+                    )
+                    for it, amt in allocation_pairs
+                ]
+            )
+            touched_order_ids.add(order.pk)
+
+    _refresh_payment_status_for_orders(touched_order_ids)
+    payment = Payment.objects.select_related('related_order').prefetch_related(
+        'settlement_allocations',
+        'related_order_items',
+    ).get(pk=payment.pk)
+    return JsonResponse(
+        {
+            'status': 'success',
+            'payment': _payment_to_api_dict(payment),
+        }
+    )
+
+
 @login_required
 def api_get_or_create_monthly_usage_for_buyer(request):
     buyer_id = request.GET.get('buyer_id')
