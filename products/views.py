@@ -8,12 +8,13 @@ from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 import json
 from decimal import Decimal, InvalidOperation
+from collections import defaultdict
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Sum, F
+from django.db.models import Q, Sum, F, Prefetch
 from django.db import transaction
 from stock.models import StockEntry, StockReduction
 from django.utils import timezone
-from finance.models import MonthlyContributionUsage, Payment
+from finance.models import Payment, SettlementAllocation
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 from users.models import Profile
 
@@ -28,6 +29,7 @@ def _price_list_to_dict(request, price_list):
             'product_id': price.product_id,
             'product_name': price.product.name,
             'image_url': image_url,
+            'vat': str(price.product.vat),
             'net_price': str(price.net_price),
             'gross_price': str(price.gross_price),
         })
@@ -1054,7 +1056,8 @@ def delete_order(request, order_id):
 def _delete_order_impl(order_id):
     """
     Bezpieczne kasowanie Order zgodne z ORDER_DELETE_PROMPT.md:
-    - najpierw odpięcie relacji finansowych (M2M) i cofnięcie MonthlyContributionUsage,
+    - najpierw finanse: jawne usunięcie SettlementAllocation dla pozycji, odpięcie M2M Payment ↔ pozycje
+      (pozostałe CASCADE przy kasowaniu OrderItem); Payment.related_order → SET_NULL przy usunięciu Order,
     - potem usunięcie StockReduction (żeby PROTECT nie blokował),
     - następnie rekalkulacja StockEntry.remaining_quantity,
     - na końcu CASCADE delete Order (OrderItem).
@@ -1072,24 +1075,13 @@ def _delete_order_impl(order_id):
             .distinct()
         )
 
-        # Detach financial M2M relations before deleting Order/OrderItem
         if order_items:
+            item_ids = [oi.id for oi in order_items]
+            SettlementAllocation.objects.filter(order_item_id__in=item_ids).delete()
+
             payments_qs = Payment.objects.filter(related_order_items__in=order_items).distinct()
             for payment in payments_qs:
                 payment.related_order_items.remove(*order_items)
-
-            buyer_profile = None
-            try:
-                buyer_profile = order.buyer.profile
-            except Profile.DoesNotExist:
-                buyer_profile = None
-
-            monthly_usage_qs = MonthlyContributionUsage.objects.filter(order_items__in=order_items).distinct()
-            if buyer_profile is not None:
-                monthly_usage_qs = monthly_usage_qs.filter(profile=buyer_profile)
-
-            for usage in monthly_usage_qs:
-                usage.order_items.remove(*order_items)
 
         # Delete stock reductions before deleting Order/OrderItem (PROTECT)
         stock_reductions_qs.delete()
@@ -1133,7 +1125,12 @@ def api_create_order(request):
     - Staff/superuser: może złożyć zamówienie dla dowolnego kupującego.
     - Zalogowany użytkownik: może złożyć zamówienie tylko dla siebie.
     Pozycje są kopiowane bezpośrednio z koszyka – dofinansowanie przypisywane jest ręcznie po złożeniu zamówienia.
-    Zwraca 201: { "order_id": <id>, "total_cost": "...", "status": "...", "items": [...] }
+
+    Nie tworzy rekordów płatności ani alokacji rozliczenia (`Payment`, `SettlementAllocation`).
+    Rozliczenie zamówienia (wpłaty, powiązanie z pozycjami) odbywa się osobnymi endpointami finansowymi,
+    m.in. POST /api/finance/create-payment/ oraz POST /finance/assign-payment-to-item/ (ścieżki względem roota serwisu).
+
+    Zwraca 201: { "order_id", "total_cost", "max_payable_amount", "status", "payment_status", "items" }.
     """
     if request.method != 'POST':
         return JsonResponse({'detail': 'Method not allowed'}, status=405)
@@ -1207,8 +1204,28 @@ def api_create_order(request):
         'total_cost': str(order.total_cost),
         'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
         'status': order.status,
+        'payment_status': order.payment_status,
         'items': items_data,
     }, status=201, json_dumps_params={'ensure_ascii': False})
+
+
+_ORDER_ITEMS_PREFETCH_FOR_LIST = Prefetch(
+    'items',
+    queryset=OrderItem.objects.select_related('buyer', 'product').prefetch_related(
+        'product__images',
+        Prefetch(
+            'settlement_allocations',
+            queryset=SettlementAllocation.objects.select_related('payment'),
+        ),
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
+    ),
+)
 
 
 def api_list_of_orders_for_buyer(request):
@@ -1231,15 +1248,17 @@ def api_list_of_orders_for_buyer(request):
         Order.objects
         .filter(buyer=buyer)
         .select_related('buyer')
-        .prefetch_related('items__product__images')
+        .prefetch_related(_ORDER_ITEMS_PREFETCH_FOR_LIST)
         .order_by('-created_at')
     )
 
     orders_data = []
     for order in orders:
         items_data = []
-        left_to_pay_buyer = 0
-        for item in order.items.select_related('buyer').all():
+        left_to_pay_buyer = Decimal('0')
+        buyer_payable_total = Decimal('0')
+        payments_by_id = defaultdict(lambda: {'date': None, 'amount': Decimal('0')})
+        for item in order.items.all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
             items_data.append({
@@ -1254,13 +1273,36 @@ def api_list_of_orders_for_buyer(request):
             })
             if item.buyer_id == buyer.id:
                 left_to_pay_buyer += item.left_to_pay
+                buyer_payable_total += item.price
+                for allocation in item.settlement_allocations.all():
+                    payment = allocation.payment
+                    payment_date = payment.payment_date or payment.created_at.date()
+                    payment_bucket = payments_by_id[payment.id]
+                    payment_bucket['date'] = payment_date.isoformat()
+                    payment_bucket['amount'] += allocation.allocated_amount
+
+        buyer_payments = sorted(
+            (
+                {
+                    'date': payload['date'],
+                    'amount': str(payload['amount'].quantize(Decimal('0.01'))),
+                }
+                for payload in payments_by_id.values()
+                if payload['amount'] > Decimal('0')
+            ),
+            key=lambda row: row['date'] or '',
+            reverse=True,
+        )
         orders_data.append({
             'id': order.id,
             'status': order.status,
+            'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
             'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
             'left_to_pay_buyer': str(left_to_pay_buyer),
+            'buyer_payable_total': str(buyer_payable_total.quantize(Decimal('0.01'))),
+            'buyer_payments': buyer_payments,
             'buyer_id': order.buyer_id,
             'buyer_name': order.buyer.get_organization_name_or_full_name() or order.buyer.username,
             'items': items_data,
@@ -1285,14 +1327,14 @@ def api_list_of_orders_for_admin(request):
     orders = (
         Order.objects
         .select_related('buyer')
-        .prefetch_related('items__product__images')
+        .prefetch_related(_ORDER_ITEMS_PREFETCH_FOR_LIST)
         .order_by('-created_at')
     )
 
     orders_data = []
     for order in orders:
         items_data = []
-        for item in order.items.select_related('buyer').all():
+        for item in order.items.all():
             first_image = item.product.images.first()
             image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
             items_data.append({
@@ -1308,6 +1350,7 @@ def api_list_of_orders_for_admin(request):
         orders_data.append({
             'id': order.id,
             'status': order.status,
+            'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),
             'total_cost': str(order.total_cost),
             'max_payable_amount': str(order.max_payable_amount) if order.max_payable_amount is not None else None,
@@ -1316,7 +1359,68 @@ def api_list_of_orders_for_admin(request):
             'items': items_data,
         })
 
-    return JsonResponse({'orders': orders_data}, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse(
+        {
+            'orders': orders_data,
+            'order_status_choices': [{'value': value, 'label': label} for value, label in Order.STATUS_CHOICES],
+            'payment_status_choices': [
+                {'value': value, 'label': label} for value, label in Order.PAYMENT_STATUS_CHOICES
+            ],
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_update_order_status(request, order_id):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    new_status = (data.get('status') or '').strip()
+    valid_statuses = {value for value, _ in Order.STATUS_CHOICES}
+    if new_status not in valid_statuses:
+        return JsonResponse(
+            {
+                'detail': 'Invalid status',
+                'allowed_statuses': sorted(valid_statuses),
+            },
+            status=400,
+        )
+
+    order = get_object_or_404(Order, id=order_id)
+    order.status = new_status
+    order.save(update_fields=['status'])
+    return JsonResponse({'status': 'success', 'order_id': order.id, 'order_status': order.status})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_update_order_payment_status(request, order_id):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    new_payment_status = (data.get('payment_status') or '').strip()
+    valid_payment_statuses = {value for value, _ in Order.PAYMENT_STATUS_CHOICES}
+    if new_payment_status not in valid_payment_statuses:
+        return JsonResponse(
+            {
+                'detail': 'Invalid payment_status',
+                'allowed_payment_statuses': sorted(valid_payment_statuses),
+            },
+            status=400,
+        )
+
+    order = get_object_or_404(Order, id=order_id)
+    order.payment_status = new_payment_status
+    order.save(update_fields=['payment_status'])
+    return JsonResponse(
+        {'status': 'success', 'order_id': order.id, 'payment_status': order.payment_status}
+    )
 
 
 @require_POST

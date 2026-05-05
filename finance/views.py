@@ -1,8 +1,8 @@
 from django.shortcuts import render, redirect
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
-from .models import Payment, Invoice, MonthlyContributionUsage
-from products.models import Order
+from .models import Payment, Invoice, MonthlyContributionUsage, SettlementAllocation
+from products.models import Order, OrderItem, payment_amount_attributed_to_order_item
 from .forms import PaymentForm
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -13,14 +13,11 @@ from django.core.serializers.json import DjangoJSONEncoder
 import json
 from datetime import datetime, date
 import calendar
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Prefetch
 from django.db import transaction
 from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal, InvalidOperation
 from .models import Supplier
-from finance.models import Payment
-from products.models import OrderItem
-
 User = get_user_model()
 
 @staff_member_required
@@ -46,8 +43,14 @@ def finance_main(request):
 @require_POST
 @staff_member_required
 def delete_payment(request, payment_id):
-    payment = get_object_or_404(Payment, id=payment_id)
-    payment.delete()
+    """
+    POST finance/payment/<id>/delete/ — usuwa płatność (m.in. szablon finance/main.html).
+
+    Wspólna ścieżka z api_delete_payment: `_delete_payment_and_refresh_affected_orders`
+    (kaskada SettlementAllocation po FK przy usuwaniu Payment, potem odświeżenie payment_status na zamówieniach).
+    """
+    payment = get_object_or_404(Payment.objects.select_related('related_order'), id=payment_id)
+    _delete_payment_and_refresh_affected_orders(payment)
     return JsonResponse({'status': 'success'})
 
 @staff_member_required
@@ -85,21 +88,66 @@ def get_filtered_users(request):
 
 @staff_member_required
 def get_filtered_orders(request):
-    user_id = request.GET.get('user_id')
-    orders = []
+    """
+    Zamówienia do powiązania z płatnością (Rozliczenia):
+    - status zamówienia inny niż „oczekujące” (pending),
+    - status rozliczenia: oczekujące na rozliczenie lub częściowo opłacone,
+    - opcjonalnie: tylko zamówienia danego kupującego (buyer), gdy user_id > 0.
 
-    if user_id:
-        orders = Order.objects.filter(buyer_id=user_id).order_by('-created_at')
+    Dla każdego zamówienia pole `left_to_pay` w odpowiedzi to suma `OrderItem.left_to_pay`
+    po pozycjach z `item.buyer_id == order.buyer_id` — ta właściwość liczy rozliczenie
+    z `SettlementAllocation`, z przejściowym fallbackiem proporcjonalnym z M2M tam,
+    gdzie nie ma jeszcze wierszy alokacji (zgodnie z modelem `OrderItem`).
+    """
+    user_id_raw = request.GET.get('user_id')
+    user_id = None
+    if user_id_raw not in (None, ''):
+        try:
+            uid = int(user_id_raw)
+            if uid > 0:
+                user_id = uid
+        except (ValueError, TypeError):
+            user_id = None
 
-    return JsonResponse({
-        'orders': [
+    item_qs = OrderItem.objects.select_related('buyer').prefetch_related(
+        'settlement_allocations',
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
+    )
+    qs = (
+        Order.objects.exclude(status='pending')
+        .filter(payment_status__in=['pending', 'partial'])
+        .select_related('buyer')
+        .prefetch_related(Prefetch('items', queryset=item_qs))
+        .order_by('-created_at')
+    )
+    if user_id is not None:
+        qs = qs.filter(buyer_id=user_id)
+
+    orders_payload = []
+    for order in qs:
+        buyer_id = order.buyer_id
+        left_to_pay = Decimal('0.00')
+        for item in order.items.all():
+            if item.buyer_id == buyer_id:
+                left_to_pay += item.left_to_pay
+        date_str = order.created_at.strftime('%d.%m.%Y')
+        orders_payload.append(
             {
                 'id': order.id,
-                'display': f'Zamówienie z {order.created_at.strftime("%d.m.%Y %H:%M")} ({order.total_cost} zł)'
+                'buyer_id': order.buyer_id,
+                'left_to_pay': str(left_to_pay),
+                'created_at': order.created_at.isoformat(),
+                'display': f'#{order.id}, {left_to_pay:.2f} zł, {date_str}',
             }
-            for order in orders
-        ]
-    })
+        )
+
+    return JsonResponse({'orders': orders_payload})
 
 @require_POST
 @staff_member_required
@@ -304,29 +352,47 @@ def get_user_payments(request, user_id):
             'message': str(e)
         }, status=400)
 
+def _contribution_linked_order_items_union(payment):
+    """Pozycje powiązane z kontrybucją: M2M oraz (bez duplikatów) z SettlementAllocation."""
+    by_id = {}
+    for oi in payment.related_order_items.all():
+        by_id[oi.id] = oi
+    for alloc in payment.settlement_allocations.all():
+        by_id[alloc.order_item_id] = alloc.order_item
+    return sorted(by_id.values(), key=lambda oi: oi.id)
+
+
 @staff_member_required
 def get_available_contributions(request):
     """Return all available contribution payments with calculated available amount."""
-    payments = Payment.get_available_contributions().select_related(
-        'related_user',
-        'related_order',
-        'created_by'
-    ).prefetch_related('related_order_items')
+    payments = (
+        Payment.get_available_contributions()
+        .select_related('related_user', 'related_order', 'created_by')
+        .prefetch_related('settlement_allocations', 'related_order_items')
+    )
 
-    payment_data = [{
-        'id': payment.id,
-        'amount': str(payment.amount),
-        'payment_type': payment.payment_type,
-        'description': payment.description,
-        'sender': payment.sender,
-        'related_user': payment.related_user_id,
-        'related_order': payment.related_order_id,
-        'related_order_items': list(payment.related_order_items.values_list('id', flat=True)),
-        'created_by': payment.created_by_id,
-        'created_at': payment.created_at.isoformat(),
-        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-        'available_amount': str(payment.available_amount),
-    } for payment in payments]
+    payment_data = []
+    for payment in payments:
+        item_ids = {oi.id for oi in payment.related_order_items.all()} | {
+            a.order_item_id for a in payment.settlement_allocations.all()
+        }
+        payment_data.append(
+            {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'payment_type': payment.payment_type,
+                'payment_method': payment.payment_method,
+                'description': payment.description,
+                'sender': payment.sender,
+                'related_user': payment.related_user_id,
+                'related_order': payment.related_order_id,
+                'related_order_items': sorted(item_ids),
+                'created_by': payment.created_by_id,
+                'created_at': payment.created_at.isoformat(),
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'available_amount': str(payment.available_amount),
+            }
+        )
 
     return JsonResponse({
         'status': 'success',
@@ -337,11 +403,22 @@ def get_available_contributions(request):
 @staff_member_required
 def get_all_contributions(request):
     """Return all contribution payments with full related objects."""
-    payments = Payment.objects.filter(payment_type='contribution').select_related(
-        'related_user',
-        'related_order',
-        'created_by'
-    ).prefetch_related('related_order_items', 'related_order_items__buyer', 'related_order_items__product__images')
+    payments = (
+        Payment.objects.filter(payment_type='contribution')
+        .select_related('related_user', 'related_order', 'created_by')
+        .prefetch_related(
+            'related_order_items',
+            'related_order_items__buyer',
+            'related_order_items__product__images',
+            Prefetch(
+                'settlement_allocations',
+                queryset=SettlementAllocation.objects.select_related(
+                    'order_item__buyer',
+                    'order_item__product',
+                ).prefetch_related('order_item__product__images'),
+            ),
+        )
+    )
 
     def serialize_order_item(order_item):
         first_image = order_item.product.images.first()
@@ -359,26 +436,33 @@ def get_all_contributions(request):
             ),
         }
 
-    payment_data = [{
-        'id': payment.id,
-        'amount': str(payment.amount),
-        'payment_type': payment.payment_type,
-        'description': payment.description,
-        'sender': payment.sender,
-        'related_user': {
-            'id': payment.related_user.id,
-            'name': payment.related_user.get_organization_name_or_full_name() or payment.related_user.username,
-            'full_name': payment.related_user.get_organization_name_or_full_name(),
-        } if payment.related_user else None,
-        'related_order': payment.related_order_id,
-        'related_order_items': [
-            serialize_order_item(order_item) for order_item in payment.related_order_items.all()
-        ],
-        'created_by': payment.created_by_id,
-        'created_at': payment.created_at.isoformat(),
-        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-        'available_amount': str(payment.available_amount),
-    } for payment in payments]
+    payment_data = []
+    for payment in payments:
+        linked_items = _contribution_linked_order_items_union(payment)
+        payment_data.append(
+            {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'payment_type': payment.payment_type,
+                'payment_method': payment.payment_method,
+                'description': payment.description,
+                'sender': payment.sender,
+                'related_user': {
+                    'id': payment.related_user.id,
+                    'name': payment.related_user.get_organization_name_or_full_name()
+                    or payment.related_user.username,
+                    'full_name': payment.related_user.get_organization_name_or_full_name(),
+                }
+                if payment.related_user
+                else None,
+                'related_order': payment.related_order_id,
+                'related_order_items': [serialize_order_item(oi) for oi in linked_items],
+                'created_by': payment.created_by_id,
+                'created_at': payment.created_at.isoformat(),
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'available_amount': str(payment.available_amount),
+            }
+        )
 
     return JsonResponse({
         'status': 'success',
@@ -409,41 +493,299 @@ def api_get_contributors(request):
 @require_POST
 @staff_member_required
 def assign_payment_to_item(request):
-    """Assign a payment to an order item"""
+    """
+    POST …/finance/assign-payment-to-item/
+    Body JSON: { "payment_id", "order_item_id" [, "allocated_amount" ] }
+
+    Tworzy lub aktualizuje wiersz SettlementAllocation; utrzymuje M2M `related_order_items`.
+    Bez `allocated_amount` ustawiana jest kwota min(dostępność na płatności, miejsce na pozycji).
+    """
     try:
         data = json.loads(request.body)
-        payment_id = data.get('payment_id')
-        order_item_id = data.get('order_item_id')
-        
-        if not payment_id or not order_item_id:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Missing required parameters'
-            }, status=400)
-        
-        payment = get_object_or_404(Payment, id=payment_id)
-        
-        # Use correct import for OrderItem
-        from products.models import OrderItem
-        order_item = get_object_or_404(OrderItem, id=order_item_id)
-        
-        # Add the order item to the payment's related items
-        payment.related_order_items.add(order_item)
-        
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Płatność została przypisana pomyślnie'
-        })
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+
+    payment_id = data.get('payment_id')
+    order_item_id = data.get('order_item_id')
+    raw_allocated = data.get('allocated_amount')
+
+    if not payment_id or not order_item_id:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Missing required parameters'},
+            status=400,
+        )
+
+    payment = get_object_or_404(
+        Payment.objects.prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        ),
+        id=payment_id,
+    )
+    order_item = get_object_or_404(
+        OrderItem.objects.select_related('order').prefetch_related(
+            'settlement_allocations',
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.prefetch_related(
+                    'related_order_items',
+                    'settlement_allocations',
+                ),
+            ),
+        ),
+        id=order_item_id,
+    )
+
+    q = Decimal('0.01')
+    try:
+        with transaction.atomic():
+            payment = Payment.objects.prefetch_related(
+                'settlement_allocations',
+                'related_order_items',
+            ).get(pk=payment.pk)
+            order_item = (
+                OrderItem.objects.select_related('order')
+                .prefetch_related(
+                    'settlement_allocations',
+                    Prefetch(
+                        'payments',
+                        queryset=Payment.objects.prefetch_related(
+                            'related_order_items',
+                            'settlement_allocations',
+                        ),
+                    ),
+                )
+                .get(pk=order_item.pk)
+            )
+
+            used_elsewhere = _payment_settled_amount_excluding_items(
+                payment, {order_item.id}
+            )
+            max_from_payment = (payment.amount - used_elsewhere).quantize(q)
+            if max_from_payment <= Decimal('0.00'):
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': 'Brak dostępnej kwoty na tej płatności do przypisania do pozycji.',
+                    },
+                    status=400,
+                )
+
+            current_on_line = _settled_from_payment_on_order_line(order_item, payment)
+            max_for_line = (order_item.left_to_pay + current_on_line).quantize(q)
+
+            if raw_allocated is not None and raw_allocated != '':
+                try:
+                    allocated_amount = Decimal(str(raw_allocated)).quantize(q)
+                except (InvalidOperation, TypeError, ValueError):
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'allocated_amount must be a valid decimal'},
+                        status=400,
+                    )
+                if allocated_amount <= Decimal('0.00'):
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'allocated_amount must be positive'},
+                        status=400,
+                    )
+            else:
+                allocated_amount = min(max_from_payment, max_for_line)
+
+            if allocated_amount <= Decimal('0.00'):
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': 'Brak kwoty do alokacji (pozycja rozliczona lub brak miejsca).',
+                    },
+                    status=400,
+                )
+
+            if allocated_amount > max_from_payment:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': (
+                            f'Kwota przekracza dostępność na płatności '
+                            f'(max {max_from_payment} zł).'
+                        ),
+                    },
+                    status=400,
+                )
+            if allocated_amount > max_for_line:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': (
+                            f'Kwota przekracza miejsce na pozycji zamówienia '
+                            f'(max {max_for_line} zł).'
+                        ),
+                    },
+                    status=400,
+                )
+
+            SettlementAllocation.objects.update_or_create(
+                payment=payment,
+                order_item=order_item,
+                defaults={'allocated_amount': allocated_amount},
+            )
+            payment.related_order_items.add(order_item)
+
+            order_fresh = (
+                Order.objects.filter(pk=order_item.order_id)
+                .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+                .first()
+            )
+            if order_fresh is not None:
+                order_fresh.update_payment_status_from_settlement()
+
+        return JsonResponse(
+            {
+                'status': 'success',
+                'message': 'Płatność została przypisana pomyślnie',
+                'allocated_amount': str(allocated_amount),
+            }
+        )
     except Exception as e:
         import traceback
-        traceback.print_exc()  # Print traceback to server console for debugging
-        return JsonResponse({
-            'status': 'error',
-            'message': str(e)
-        }, status=400)
+
+        traceback.print_exc()
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
+VALID_PAYMENT_METHOD_VALUES = {choice[0] for choice in Payment.PAYMENT_METHOD_CHOICES}
+
+_ORDER_ITEMS_FOR_PAYMENT_PREFETCH = Prefetch(
+    'items',
+    queryset=OrderItem.objects.select_related('buyer').prefetch_related(
+        'settlement_allocations',
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
+    ),
+)
+
+
+def _order_ids_touched_by_payment(payment):
+    """Orders whose settlement status may change when this payment is removed."""
+    ids = set()
+    if payment.related_order_id:
+        ids.add(payment.related_order_id)
+    ids.update(payment.settlement_allocations.values_list('order_item__order_id', flat=True))
+    ids.update(payment.related_order_items.values_list('order_id', flat=True))
+    return {pk for pk in ids if pk}
+
+
+def _refresh_payment_status_for_orders(order_ids):
+    for order_pk in order_ids:
+        order_fresh = (
+            Order.objects.filter(pk=order_pk)
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        if order_fresh is not None:
+            order_fresh.update_payment_status_from_settlement()
+
+
+def _delete_payment_and_refresh_affected_orders(payment):
+    """
+    Usuwa płatność (kaskada FK usuwa wiersze SettlementAllocation i powiązania M2M),
+    potem przelicza payment_status na zamówieniach z _order_ids_touched_by_payment.
+    """
+    order_ids = _order_ids_touched_by_payment(payment)
+    with transaction.atomic():
+        payment.delete()
+    _refresh_payment_status_for_orders(order_ids)
+
+
+def _order_buyer_left_to_pay_total(order):
+    """
+    Suma pozostałości na pozycjach kupującego zamówienia (`item.buyer_id == order.buyer_id`).
+
+    Równoważnie suma `price - rozliczone` z alokacji (i przejściowo z M2M) — każde `item.left_to_pay`
+    pochodzi z `OrderItem.sum_of_order_item_payments` / `SettlementAllocation`.
+
+    Wywołuj z `order` mającym prefetch `_ORDER_ITEMS_FOR_PAYMENT_PREFETCH` na `items`, żeby uniknąć N+1.
+    """
+    total = Decimal('0.00')
+    for item in order.items.all():
+        if item.buyer_id == order.buyer_id:
+            total += item.left_to_pay
+    return total.quantize(Decimal('0.01'))
+
+
+def _split_order_payment_amount_across_buyer_line_items(amount, buyer_items):
+    """
+    Rozkłada kwotę płatności za zamówienie na pozycje kupującego proporcjonalnie do price
+    (zgodnie z heurystyką payment_amount_attributed_to_order_item). Suma alokacji == amount.
+    Wymaga niepustego buyer_items oraz sumy cen > 0.
+    """
+    q = Decimal('0.01')
+    total_price = sum((it.price for it in buyer_items), start=Decimal('0'))
+    if total_price <= 0:
+        raise ValueError('Suma cen pozycji kupującego musi być dodatnia.')
+    out = []
+    allocated = Decimal('0.00')
+    n = len(buyer_items)
+    for i, it in enumerate(buyer_items):
+        if i == n - 1:
+            part = (amount - allocated).quantize(q)
+        else:
+            part = (amount * it.price / total_price).quantize(q)
+            allocated += part
+        out.append((it, part))
+    return out
+
+
+def _payment_to_api_dict(payment):
+    return {
+        'id': payment.id,
+        'amount': str(payment.amount),
+        'payment_type': payment.payment_type,
+        'payment_method': payment.payment_method,
+        'description': payment.description,
+        'sender': payment.sender,
+        'related_user_id': payment.related_user_id,
+        'related_order_id': payment.related_order_id,
+        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+        'created_at': payment.created_at.isoformat(),
+        'created_by_id': payment.created_by_id,
+    }
+
+
+def _payment_settled_amount_excluding_items(payment, exclude_item_ids):
+    """
+    Kwota kontrybucji już „zużyta” na pozycjach spoza exclude_item_ids.
+    Sumuje SettlementAllocation; dla pozycji tylko w M2M (bez wiersza alokacji) — legacy: price.
+    """
+    exclude_item_ids = set(exclude_item_ids)
+    alloc_total = Decimal('0.00')
+    item_ids_with_alloc = set()
+    for a in payment.settlement_allocations.all():
+        if a.order_item_id in exclude_item_ids:
+            continue
+        alloc_total += a.allocated_amount
+        item_ids_with_alloc.add(a.order_item_id)
+    legacy = Decimal('0.00')
+    for oi in payment.related_order_items.all():
+        if oi.id in exclude_item_ids or oi.id in item_ids_with_alloc:
+            continue
+        legacy += oi.price
+    return alloc_total + legacy
+
+
+def _settled_from_payment_on_order_line(order_item, payment):
+    """Kwota z danej płatności już przypisana do pozycji (alokacja lub legacy M2M proporcjonalnie)."""
+    for a in order_item.settlement_allocations.all():
+        if a.payment_id == payment.id:
+            return a.allocated_amount
+    for p in order_item.payments.all():
+        if p.id == payment.id:
+            return payment_amount_attributed_to_order_item(p, order_item)
+    return Decimal('0.00')
 
 
 @require_POST
@@ -556,7 +898,7 @@ def api_assign_contributions_to_order(request):
     payments = Payment.objects.filter(
         id__in=requested_payment_ids,
         payment_type='contribution',
-    ).prefetch_related('related_order_items')
+    ).prefetch_related('related_order_items', 'settlement_allocations')
     payments_by_id = {payment.id: payment for payment in payments}
 
     missing_payment_ids = sorted(requested_payment_ids - set(payments_by_id.keys()))
@@ -576,10 +918,8 @@ def api_assign_contributions_to_order(request):
 
     requested_order_item_ids = set(requested_item_to_payment.keys())
     for payment_id, payment in payments_by_id.items():
-        used_outside_current_request = sum(
-            order_item.price
-            for order_item in payment.related_order_items.all()
-            if order_item.id not in requested_order_item_ids
+        used_outside_current_request = _payment_settled_amount_excluding_items(
+            payment, requested_order_item_ids
         )
         available_for_request = payment.amount - used_outside_current_request
         requested_sum = requested_sum_by_payment.get(payment_id, Decimal('0.00'))
@@ -596,6 +936,11 @@ def api_assign_contributions_to_order(request):
             )
 
     with transaction.atomic():
+        SettlementAllocation.objects.filter(
+            order_item__order=order,
+            payment__payment_type='contribution',
+        ).delete()
+
         # Persist edited item prices and buyer mapping from assigned contribution.
         for order_item_id, unit_price in requested_item_prices.items():
             order_item = order_items_by_id[order_item_id]
@@ -636,48 +981,31 @@ def api_assign_contributions_to_order(request):
             grouped_item_ids.setdefault(payment_id, [])
             grouped_item_ids[payment_id].append(order_item_id)
 
+        new_allocations = []
         for payment_id, order_item_ids in grouped_item_ids.items():
             payment = payments_by_id[payment_id]
             items_to_add = list(order_items_qs.filter(id__in=order_item_ids))
             payment.related_order_items.add(*items_to_add)
+            for oi in items_to_add:
+                new_allocations.append(
+                    SettlementAllocation(
+                        payment=payment,
+                        order_item=oi,
+                        allocated_amount=requested_item_prices[oi.id],
+                    )
+                )
+        if new_allocations:
+            SettlementAllocation.objects.bulk_create(new_allocations)
 
         if order.status != 'accepted':
             order.status = 'accepted'
             order.save(update_fields=['status'])
 
-        # Sync monthly usage for the beneficiary:
-        # - MonthlyContributionUsage belongs to the order beneficiary (order.buyer.profile)
-        # - OrderItems paid by donors (i.e. every OrderItem whose assigned buyer != order.buyer)
-        #   should be included in that MonthlyContributionUsage.
-        #
-        # Important: do NOT call MonthlyContributionUsage.save()/clean() here.
-        # The "limit" must be enforced only during UI calculation (cart/discount),
-        # while manual contribution assignment must be allowed to exceed the limit.
-        beneficiary_profile = getattr(order.buyer, 'profile', None)
-        if beneficiary_profile is not None:
-            monthly_usage = beneficiary_profile.get_or_create_current_monthly_usage()
-            if monthly_usage is not None:
-                order_item_ids = list(
-                    OrderItem.objects.filter(order=order).values_list('id', flat=True)
-                )
-                if order_item_ids:
-                    # Remove these OrderItems from any MonthlyContributionUsage for this profile,
-                    # so re-assignments don't leave stale entries in other months.
-                    related_monthly_usages = MonthlyContributionUsage.objects.filter(
-                        profile=beneficiary_profile,
-                        order_items__id__in=order_item_ids,
-                    ).distinct()
+        # MonthlyContributionUsage totals are derived from contribution SettlementAllocation
+        # (see MonthlyContributionUsage.donor_contribution_allocations_qs).
 
-                    for usage in related_monthly_usages:
-                        items_to_remove = usage.order_items.filter(id__in=order_item_ids)
-                        if items_to_remove.exists():
-                            usage.order_items.remove(*list(items_to_remove))
-
-                donor_order_items = list(
-                    OrderItem.objects.filter(order=order).exclude(buyer_id=order.buyer_id)
-                )
-                if donor_order_items:
-                    monthly_usage.order_items.add(*donor_order_items)
+    order.refresh_from_db()
+    # Przypisanie kontrybucji nie zmienia order.payment_status (rozliczenie — osobna ścieżka).
 
     return JsonResponse(
         {
@@ -685,6 +1013,7 @@ def api_assign_contributions_to_order(request):
             'order_id': order.id,
             'assigned_items_count': len(requested_order_item_ids),
             'assigned_payments_count': len(grouped_item_ids),
+            'payment_status': order.payment_status,
         }
     )
 
@@ -708,16 +1037,16 @@ def api_delete_contribution(request, payment_id):
         return JsonResponse(
             {
                 'status': 'error',
-                'message': 'Cannot remove Paymetn  with assiged related_order',
+                'message': 'Cannot remove Payment with assigned related_order',
             },
             status=400,
         )
 
-    if payment.related_order_items.exists():
+    if payment.settlement_allocations.exists():
         return JsonResponse(
             {
                 'status': 'error',
-                'message': 'Cannot remove Paymetn  with assiged related_order_items',
+                'message': 'Cannot remove Payment with settlement allocations',
             },
             status=400,
         )
@@ -731,7 +1060,7 @@ def api_delete_contribution(request, payment_id):
 def api_create_payment(request):
     """
     Create a single payment (JSON API for staff UI).
-    Requires payment_type; see docs/API_CREATE_PAYMENT.md.
+    Requires payment_type; optional payment_method (default transfer).
     """
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -842,8 +1171,159 @@ def api_create_payment(request):
                 status=400,
             )
 
+    raw_payment_method = data.get('payment_method')
+    pm_strip = None
+    if isinstance(raw_payment_method, str):
+        pm_strip = raw_payment_method.strip()
+    elif raw_payment_method is not None:
+        pm_strip = str(raw_payment_method).strip()
+
+    if payment_type == 'order':
+        if related_order is None:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Dla płatności za zamówienie wymagane jest powiązane zamówienie.',
+                },
+                status=400,
+            )
+        if related_user is None:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Dla płatności za zamówienie wymagany jest powiązany użytkownik (kupujący).',
+                },
+                status=400,
+            )
+        if related_user.id != related_order.buyer_id:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.',
+                },
+                status=400,
+            )
+        if payment_date is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Data płatności jest wymagana.'},
+                status=400,
+            )
+        if not pm_strip:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Sposób zapłaty jest wymagany.'},
+                status=400,
+            )
+        payment_method = pm_strip
+        if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Invalid payment_method',
+                    'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+
+        order = (
+            Order.objects.filter(pk=related_order.pk)
+            .select_related('buyer')
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        left_total = _order_buyer_left_to_pay_total(order)
+        if amount > left_total:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Kwota przekracza pozostałość do zapłaty w zamówieniu ({left_total} zł).'
+                    ),
+                },
+                status=400,
+            )
+        buyer_items = [
+            it for it in order.items.all() if it.buyer_id == order.buyer_id
+        ]
+        if not buyer_items:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Brak pozycji zamówienia do rozliczenia tą płatnością.',
+                },
+                status=400,
+            )
+
+        try:
+            allocation_pairs = _split_order_payment_amount_across_buyer_line_items(
+                amount, buyer_items
+            )
+        except ValueError as exc:
+            return JsonResponse(
+                {'status': 'error', 'message': str(exc)},
+                status=400,
+            )
+
+        order_pk = order.pk
+        with transaction.atomic():
+            pay = Payment.objects.create(
+                payment_type='order',
+                payment_method=payment_method,
+                amount=amount,
+                description=description,
+                sender=sender,
+                related_user=related_user,
+                related_order_id=order_pk,
+                payment_date=payment_date,
+                created_by=request.user,
+            )
+            pay.related_order_items.set(buyer_items)
+            SettlementAllocation.objects.bulk_create(
+                [
+                    SettlementAllocation(
+                        payment=pay,
+                        order_item=it,
+                        allocated_amount=amt,
+                    )
+                    for it, amt in allocation_pairs
+                ]
+            )
+
+            order_fresh = (
+                Order.objects.filter(pk=order_pk)
+                .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+                .first()
+            )
+            order_fresh.update_payment_status_from_settlement()
+            final_payment_status = order_fresh.payment_status
+
+        payload = [_payment_to_api_dict(pay)]
+        return JsonResponse(
+            {
+                'status': 'success',
+                'payment': payload[0],
+                'payments': payload,
+                'order_payment_status': final_payment_status,
+            },
+            status=201,
+        )
+
+    if pm_strip:
+        payment_method = pm_strip
+        if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Invalid payment_method',
+                    'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+    else:
+        payment_method = 'transfer'
+
     payment = Payment.objects.create(
         payment_type=payment_type,
+        payment_method=payment_method,
         amount=amount,
         description=description,
         sender=sender,
@@ -856,20 +1336,276 @@ def api_create_payment(request):
     return JsonResponse(
         {
             'status': 'success',
-            'payment': {
-                'id': payment.id,
-                'amount': str(payment.amount),
-                'payment_type': payment.payment_type,
-                'description': payment.description,
-                'sender': payment.sender,
-                'related_user_id': payment.related_user_id,
-                'related_order_id': payment.related_order_id,
-                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-                'created_at': payment.created_at.isoformat(),
-                'created_by_id': payment.created_by_id,
-            },
+            'payment': _payment_to_api_dict(payment),
+            'payments': [_payment_to_api_dict(payment)],
         },
         status=201,
+    )
+
+
+@require_POST
+@staff_member_required
+def api_update_payment(request, payment_id):
+    """
+    Update single payment (JSON API for staff UI).
+    Rebuilds settlement allocations when payment becomes/changes order payment.
+    """
+    payment = get_object_or_404(
+        Payment.objects.select_related('related_order').prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        ),
+        id=payment_id,
+    )
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid JSON body'},
+            status=400,
+        )
+
+    payment_type = data.get('payment_type')
+    if payment_type is None or (isinstance(payment_type, str) and not str(payment_type).strip()):
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'payment_type is required',
+            },
+            status=400,
+        )
+    if payment_type not in VALID_PAYMENT_TYPE_VALUES:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Invalid payment_type',
+                'allowed_payment_types': sorted(VALID_PAYMENT_TYPE_VALUES),
+            },
+            status=400,
+        )
+
+    if 'amount' not in data:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount is required'},
+            status=400,
+        )
+    try:
+        amount = Decimal(str(data['amount']))
+    except (InvalidOperation, ValueError, TypeError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be a valid decimal number'},
+            status=400,
+        )
+    if amount <= 0:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount must be greater than zero'},
+            status=400,
+        )
+
+    description = data.get('description')
+    if description is None:
+        description = ''
+
+    sender = data.get('sender')
+    if sender is not None and sender != '':
+        sender = str(sender)
+    else:
+        sender = None
+
+    related_user = None
+    ru_id = data.get('related_user_id')
+    if ru_id is not None and ru_id != '':
+        try:
+            related_user = User.objects.get(pk=int(ru_id))
+        except (ValueError, TypeError, User.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is invalid or user does not exist'},
+                status=400,
+            )
+
+    if payment_type == 'contribution':
+        if related_user is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id is required for contribution payment'},
+                status=400,
+            )
+        if not getattr(related_user, 'profile', None) or not related_user.profile.is_contributor:
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_user_id must point to a contributor user'},
+                status=400,
+            )
+
+    related_order = None
+    ro_id = data.get('related_order_id')
+    if ro_id is not None and ro_id != '':
+        try:
+            related_order = Order.objects.get(pk=int(ro_id))
+        except (ValueError, TypeError, Order.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'related_order_id is invalid or order does not exist'},
+                status=400,
+            )
+
+    payment_date = None
+    raw_date = data.get('payment_date')
+    if raw_date is not None and raw_date != '':
+        if isinstance(raw_date, str):
+            try:
+                payment_date = date.fromisoformat(raw_date.strip()[:10])
+            except ValueError:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'payment_date must be ISO format YYYY-MM-DD'},
+                    status=400,
+                )
+        else:
+            return JsonResponse(
+                {'status': 'error', 'message': 'payment_date must be a string YYYY-MM-DD'},
+                status=400,
+            )
+
+    raw_payment_method = data.get('payment_method')
+    pm_strip = None
+    if isinstance(raw_payment_method, str):
+        pm_strip = raw_payment_method.strip()
+    elif raw_payment_method is not None:
+        pm_strip = str(raw_payment_method).strip()
+
+    if payment_type == 'order':
+        if related_order is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Dla płatności za zamówienie wymagane jest powiązane zamówienie.'},
+                status=400,
+            )
+        if related_user is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Dla płatności za zamówienie wymagany jest powiązany użytkownik (kupujący).'},
+                status=400,
+            )
+        if related_user.id != related_order.buyer_id:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.'},
+                status=400,
+            )
+        if payment_date is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Data płatności jest wymagana.'},
+                status=400,
+            )
+        if not pm_strip:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Sposób zapłaty jest wymagany.'},
+                status=400,
+            )
+        payment_method = pm_strip
+        if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Invalid payment_method',
+                    'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+    else:
+        if pm_strip:
+            payment_method = pm_strip
+            if payment_method not in VALID_PAYMENT_METHOD_VALUES:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': 'Invalid payment_method',
+                        'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                    },
+                    status=400,
+                )
+        else:
+            payment_method = 'transfer'
+
+    order = None
+    buyer_items = []
+    allocation_pairs = []
+    if payment_type == 'order':
+        order = (
+            Order.objects.filter(pk=related_order.pk)
+            .select_related('buyer')
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        left_total = _order_buyer_left_to_pay_total(order)
+        if amount > left_total:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Kwota przekracza pozostałość do zapłaty w zamówieniu ({left_total} zł).'
+                    ),
+                },
+                status=400,
+            )
+        buyer_items = [it for it in order.items.all() if it.buyer_id == order.buyer_id]
+        if not buyer_items:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Brak pozycji zamówienia do rozliczenia tą płatnością.',
+                },
+                status=400,
+            )
+        try:
+            allocation_pairs = _split_order_payment_amount_across_buyer_line_items(
+                amount, buyer_items
+            )
+        except ValueError as exc:
+            return JsonResponse(
+                {'status': 'error', 'message': str(exc)},
+                status=400,
+            )
+
+    touched_order_ids = _order_ids_touched_by_payment(payment)
+
+    with transaction.atomic():
+        payment = Payment.objects.select_related('related_order').prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        ).get(pk=payment.pk)
+        SettlementAllocation.objects.filter(payment=payment).delete()
+        payment.related_order_items.clear()
+
+        payment.payment_type = payment_type
+        payment.payment_method = payment_method
+        payment.amount = amount
+        payment.description = description
+        payment.sender = sender
+        payment.related_user = related_user
+        payment.related_order = related_order
+        payment.payment_date = payment_date
+        payment.save()
+
+        if payment_type == 'order':
+            payment.related_order_items.set(buyer_items)
+            SettlementAllocation.objects.bulk_create(
+                [
+                    SettlementAllocation(
+                        payment=payment,
+                        order_item=it,
+                        allocated_amount=amt,
+                    )
+                    for it, amt in allocation_pairs
+                ]
+            )
+            touched_order_ids.add(order.pk)
+
+    _refresh_payment_status_for_orders(touched_order_ids)
+    payment = Payment.objects.select_related('related_order').prefetch_related(
+        'settlement_allocations',
+        'related_order_items',
+    ).get(pk=payment.pk)
+    return JsonResponse(
+        {
+            'status': 'success',
+            'payment': _payment_to_api_dict(payment),
+        }
     )
 
 
@@ -908,7 +1644,7 @@ def api_get_or_create_monthly_usage_for_buyer(request):
             status=400,
         )
 
-    usage = MonthlyContributionUsage.objects.prefetch_related('order_items').get(id=usage.id)
+    usage = MonthlyContributionUsage.objects.get(id=usage.id)
     has_pending_orders = Order.objects.filter(buyer_id=buyer_id, status='pending').exists()
 
     return JsonResponse(
@@ -921,10 +1657,137 @@ def api_get_or_create_monthly_usage_for_buyer(request):
                 'month': usage.month,
                 'limit': usage.limit,
                 'discount_rate_percent': str(usage.discount_rate_percent),
-                'order_item_ids': list(usage.order_items.values_list('id', flat=True)),
+                'order_item_ids': usage.distinct_order_item_ids_for_month(),
                 'total_usage': str(usage.total_usage),
                 'remaining_limit': str(usage.remaining_limit),
                 'has_pending_orders': has_pending_orders,
             },
         }
     )
+
+
+def _payment_user_display(user):
+    if user is None:
+        return None
+    profile = getattr(user, 'profile', None)
+    if profile and profile.name:
+        return profile.name
+    return user.username
+
+
+def _serialize_payment_list_row(payment):
+    related_order = payment.related_order
+    order_label = None
+    if related_order is not None:
+        order_label = (
+            f'Zamówienie z {related_order.created_at.strftime("%d.%m.%Y %H:%M")} '
+            f'({related_order.total_cost} zł)'
+        )
+    allocations = [
+        {
+            'order_item_id': a.order_item_id,
+            'allocated_amount': str(a.allocated_amount),
+        }
+        for a in payment.settlement_allocations.all()
+    ]
+    return {
+        'id': payment.id,
+        'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+        'payment_type': payment.payment_type,
+        'payment_type_label': payment.get_payment_type_display(),
+        'payment_method': payment.payment_method,
+        'payment_method_label': payment.get_payment_method_display(),
+        'amount': str(payment.amount),
+        'sender': payment.sender or '',
+        'description': payment.description or '',
+        'related_user_id': payment.related_user_id,
+        'related_user_name': _payment_user_display(payment.related_user),
+        'related_order_id': payment.related_order_id,
+        'related_order_label': order_label,
+        'created_by_id': payment.created_by_id,
+        'created_by_name': _payment_user_display(payment.created_by) or '',
+        'created_at': payment.created_at.isoformat(),
+        'allocations': allocations,
+    }
+
+
+@staff_member_required
+def api_list_payments(request):
+    """
+    GET /api/finance/payments/
+    Query: date_from, date_to (YYYY-MM-DD), limit (default 300, max 500), offset (default 0).
+    """
+    if request.method != 'GET':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+
+    qs = (
+        Payment.objects.select_related('related_user__profile', 'created_by__profile', 'related_order')
+        .prefetch_related('settlement_allocations')
+        .order_by('-payment_date', '-created_at', '-id')
+    )
+
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
+    if date_from:
+        try:
+            df = date.fromisoformat(date_from[:10])
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid date_from'}, status=400)
+        qs = qs.filter(payment_date__gte=df)
+    if date_to:
+        try:
+            dt = date.fromisoformat(date_to[:10])
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid date_to'}, status=400)
+        qs = qs.filter(payment_date__lte=dt)
+
+    try:
+        limit = int(request.GET.get('limit') or 300)
+    except (TypeError, ValueError):
+        limit = 300
+    limit = max(1, min(limit, 500))
+
+    try:
+        offset = int(request.GET.get('offset') or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(0, offset)
+
+    total_count = qs.count()
+    rows = [_serialize_payment_list_row(p) for p in qs[offset : offset + limit]]
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'total_count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
+            'payment_method_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_METHOD_CHOICES],
+            'payments': rows,
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@staff_member_required
+def api_delete_payment(request, payment_id):
+    """POST /api/finance/delete-payment/<id>/ — alias API; deleguje do ``delete_payment``."""
+    return delete_payment(request, payment_id)
+
+
+@staff_member_required
+def api_get_filtered_users(request):
+    """GET /api/finance/get-filtered-users/ — alias API dla formularza (React)."""
+    return get_filtered_users(request)
+
+
+@staff_member_required
+def api_get_filtered_orders(request):
+    """
+    GET /api/finance/get-filtered-orders/ — alias API dla formularza (React).
+
+    Deleguje do `get_filtered_orders` (ten sam payload i liczenie `left_to_pay`).
+    """
+    return get_filtered_orders(request)

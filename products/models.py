@@ -1,8 +1,24 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.db.models import Sum
-from django.db.models.functions import Coalesce
+from decimal import Decimal
+
+
+def payment_amount_attributed_to_order_item(payment, order_item):
+    """
+    Legacy: kwota z płatności przypisana do pozycji proporcjonalnie do `price` względem
+    sumy cen pozycji powiązanych M2M — używane tylko gdy brak wiersza
+    `SettlementAllocation` dla tej pary (płatność, pozycja).
+    """
+    linked = list(payment.related_order_items.all())
+    ids = {x.id for x in linked}
+    if order_item.id not in ids:
+        return Decimal('0')
+    denom = sum((x.price for x in linked), start=Decimal('0'))
+    if denom <= 0:
+        return Decimal('0')
+    return payment.amount * order_item.price / denom
+
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -120,6 +136,15 @@ class Order(models.Model):
         ('cancelled', 'Anulowane'),
     ]
 
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Oczekujące na rozliczenie'),
+        ('processing', 'W trakcie rozliczenia'),
+        ('partial', 'Częściowo opłacone'),
+        ('paid', 'Opłacone'),
+        ('rejected', 'Odrzucone'),
+        ('cancelled', 'Rozliczenie anulowane'),
+    ]
+
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     buyer = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='buyer_orders')
     status = models.CharField(
@@ -127,12 +152,50 @@ class Order(models.Model):
         choices=STATUS_CHOICES, 
         default='pending'
     )
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+        verbose_name='Status rozliczenia',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2)
     max_payable_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     def __str__(self):
         return f"Order {self.id} by {self.buyer.profile.name or self.buyer.username}"
+
+    def update_payment_status_from_settlement(self):
+        """
+        Ustawia payment_status na podstawie rozliczenia pozycji kupującego (`buyer_id == order.buyer_id`).
+
+        Sumuje `OrderItem.left_to_pay` i `price` — `left_to_pay` liczy się z `SettlementAllocation`
+        oraz przejściowo z podziału proporcjonalnego M2M tam, gdzie brak wiersza alokacji.
+
+        Nie nadpisuje stanów końcowych ustawianych ręcznie: rejected, cancelled.
+        """
+        if self.payment_status in ('rejected', 'cancelled'):
+            return
+
+        buyer_id = self.buyer_id
+        items = [it for it in self.items.all() if it.buyer_id == buyer_id]
+        if not items:
+            return
+
+        total_left = sum((item.left_to_pay for item in items), start=Decimal('0'))
+        total_price = sum((item.price for item in items), start=Decimal('0'))
+        paid_amount = total_price - total_left
+
+        if total_left <= Decimal('0.01'):
+            new_status = 'paid'
+        elif paid_amount > Decimal('0.01'):
+            new_status = 'partial'
+        else:
+            new_status = 'pending'
+
+        if self.payment_status != new_status:
+            self.payment_status = new_status
+            self.save(update_fields=['payment_status'])
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
@@ -149,11 +212,33 @@ class OrderItem(models.Model):
 
     @property
     def sum_of_order_item_payments(self):
-        return self.payments.aggregate(
-            total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField(max_digits=10, decimal_places=2))
-        )['total']
+        """
+        Rozliczona kwota na pozycji: suma `SettlementAllocation.allocated_amount` dla tej pozycji,
+        plus dla każdej płatności powiązanej M2M bez wiersza alokacji — `payment_amount_attributed_to_order_item`.
+        Alokacje bez M2M (sieroty) wchodzą wyłącznie w pierwszej sumie.
+        """
+        allocations = list(self.settlement_allocations.all())
+        total = sum((a.allocated_amount for a in allocations), start=Decimal('0'))
+        payment_ids_with_allocation = {a.payment_id for a in allocations}
+
+        if 'payments' in getattr(self, '_prefetched_objects_cache', {}):
+            payments_iter = self.payments.all()
+        else:
+            payments_iter = self.payments.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ).all()
+
+        for p in payments_iter:
+            if p.id not in payment_ids_with_allocation:
+                total += payment_amount_attributed_to_order_item(p, self)
+
+        return total
 
     @property
     def left_to_pay(self):
-        return self.price - self.sum_of_order_item_payments
+        raw = self.price - self.sum_of_order_item_payments
+        if raw <= Decimal('0.01'):
+            return Decimal('0.00')
+        return raw.quantize(Decimal('0.01'))
 

@@ -6,9 +6,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 from users.models import Profile
 from products.models import OrderItem
-from django.db.models import Sum, F, ExpressionWrapper, DecimalField
-from django.db.models.functions import Coalesce
-
+from django.db.models import Sum, F, Q, ExpressionWrapper, DecimalField
 class Payment(models.Model):
     PAYMENT_TYPES = [
         ('contribution', 'Wpłata od wspierającego'),
@@ -17,6 +15,15 @@ class Payment(models.Model):
         ('expense', 'Wydatek'),
         ('other', 'Inne'),
         ('invoice', 'Faktura'),
+    ]
+
+    # Kanał / instrument zapłaty (osobno od payment_type — kategoria biznesowa).
+    PAYMENT_METHOD_CHOICES = [
+        ('transfer', 'Przelew'),
+        ('cash', 'Gotówka'),
+        ('cod', 'Pobranie'),
+        ('card', 'Karta'),
+        ('blik', 'BLIK'),
     ]
 
     amount = models.DecimalField(
@@ -28,6 +35,12 @@ class Payment(models.Model):
         max_length=30,
         choices=PAYMENT_TYPES,
         verbose_name="Typ płatności"
+    )
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='transfer',
+        verbose_name="Sposób zapłaty",
     )
     description = models.TextField(
         verbose_name="Opis"
@@ -82,26 +95,98 @@ class Payment(models.Model):
     def __str__(self):
         return f"{self.get_payment_type_display()}: {self.amount} zł"
 
+    def used_amount_settlement_and_legacy(self):
+        """
+        Kwota płatności już „przypięta”: suma SettlementAllocation.allocated_amount
+        plus pełna cena pozycji tylko w M2M bez wiersza alokacji (faza przejściowa).
+        """
+        total_alloc = sum(
+            (a.allocated_amount for a in self.settlement_allocations.all()),
+            start=Decimal('0'),
+        )
+        item_ids_with_alloc = {a.order_item_id for a in self.settlement_allocations.all()}
+        legacy = sum(
+            (oi.price for oi in self.related_order_items.all() if oi.id not in item_ids_with_alloc),
+            start=Decimal('0'),
+        )
+        return (total_alloc + legacy).quantize(Decimal('0.01'))
+
     @property
     def available_amount(self):
-        used_amount = sum(item.price for item in self.related_order_items.all())
-        return self.amount - used_amount
+        """`amount` minus suma alokacji i legacy M2M — patrz `used_amount_settlement_and_legacy`."""
+        return self.amount - self.used_amount_settlement_and_legacy()
 
     @classmethod
     def get_available_contributions(cls):
-        available_contributions = cls.objects.filter(
-            payment_type='contribution'
-        ).annotate(
-            used_amount=Coalesce(Sum('related_order_items__price'), 0, output_field=DecimalField(max_digits=10, decimal_places=2))
-        ).filter(
-            amount__gt=F('used_amount')
-        ).order_by('payment_date')
-        return available_contributions
+        """
+        Kontrybucje z kwotą dostępną do dalszego przypisania (wg alokacji + legacy M2M).
+        """
+        candidates = cls.objects.filter(payment_type='contribution').prefetch_related(
+            'settlement_allocations',
+            'related_order_items',
+        )
+        eligible_ids = [
+            p.pk
+            for p in candidates
+            if p.amount > p.used_amount_settlement_and_legacy()
+        ]
+        if not eligible_ids:
+            return cls.objects.none()
+        return (
+            cls.objects.filter(pk__in=eligible_ids)
+            .prefetch_related('settlement_allocations', 'related_order_items')
+            .order_by('payment_date')
+        )
 
     @classmethod
     def get_available_contributions_amount(cls):
+        """Suma `available_amount` po kontrybucjach z `get_available_contributions()` (alokacje + legacy M2M)."""
         available_contributions = cls.get_available_contributions()
         return sum(contribution.available_amount for contribution in available_contributions)
+
+
+class SettlementAllocation(models.Model):
+    """
+    Jawny podział kwoty płatności na pozycje zamówienia (docelowo zamiast wyłącznie M2M
+    related_order_items + heurystyki w kodzie).
+    """
+
+    payment = models.ForeignKey(
+        Payment,
+        on_delete=models.CASCADE,
+        related_name='settlement_allocations',
+        verbose_name='Płatność',
+    )
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.CASCADE,
+        related_name='settlement_allocations',
+        verbose_name='Pozycja zamówienia',
+    )
+    allocated_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='Kwota przypisana do pozycji',
+    )
+
+    class Meta:
+        verbose_name = 'Alokacja rozliczenia'
+        verbose_name_plural = 'Alokacje rozliczeń'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['payment', 'order_item'],
+                name='finance_settlementallocation_payment_orderitem_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['payment'], name='finance_sa_pay_idx'),
+            models.Index(fields=['order_item'], name='finance_sa_oi_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.payment_id} → item {self.order_item_id}: {self.allocated_amount} zł'
+
 
 class Invoice(models.Model):
     invoice_number = models.CharField(max_length=50, unique=True)
@@ -148,7 +233,6 @@ class MonthlyContributionUsage(models.Model):
         default=Decimal('100.00'),
         validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
     )
-    order_items = models.ManyToManyField(OrderItem, related_name='monthly_usage', blank=True)
 
     class Meta:
         unique_together = ['profile', 'year', 'month']
@@ -157,29 +241,75 @@ class MonthlyContributionUsage(models.Model):
     def __str__(self):
         return f"{self.profile.user.username} - {self.year}/{self.month}"
 
+    def donor_contribution_allocations_qs(self):
+        """
+        Contribution allocations on donor-paid lines for this beneficiary's orders,
+        attributed to this calendar month via payment_date (or created_at if no date).
+        """
+        return SettlementAllocation.objects.filter(
+            payment__payment_type='contribution',
+            order_item__order__buyer_id=self.profile.user_id,
+        ).exclude(
+            order_item__buyer_id=F('order_item__order__buyer_id'),
+        ).filter(
+            Q(
+                payment__payment_date__year=self.year,
+                payment__payment_date__month=self.month,
+            )
+            | Q(
+                payment__payment_date__isnull=True,
+                payment__created_at__year=self.year,
+                payment__created_at__month=self.month,
+            ),
+        )
+
+    def distinct_order_item_ids_for_month(self):
+        return list(
+            self.donor_contribution_allocations_qs()
+            .values_list('order_item_id', flat=True)
+            .distinct()
+        )
+
+    def get_monthly_order_items(self):
+        """Order lines counting toward this usage month (for API / templates)."""
+        ids = self.distinct_order_item_ids_for_month()
+        if not ids:
+            return OrderItem.objects.none()
+        return (
+            OrderItem.objects.filter(id__in=ids)
+            .select_related('product', 'buyer', 'order')
+            .order_by('order_id', 'id')
+        )
+
+    @property
+    def monthly_order_items(self):
+        """Alias for templates (`{% for oi in usage.monthly_order_items %}`)."""
+        return self.get_monthly_order_items()
+
     def clean(self):
-        # Skip validation if this is a new instance (not saved yet)
         if self.pk is None:
             return
-            
-        # Calculate total usage from related order items
-        total_usage = sum(item.price for item in self.order_items.all())
 
-        if total_usage > self.limit:
+        total_usage = self.total_usage
+        if total_usage > Decimal(self.limit):
             raise ValidationError(
                 f"Total usage ({total_usage}) exceeds the monthly limit ({self.limit})"
             )
 
     def save(self, *args, **kwargs):
-        # Only run clean() if the instance already exists
         if self.pk is not None:
             self.clean()
         super().save(*args, **kwargs)
 
     @property
     def total_usage(self):
-        return sum(item.price for item in self.order_items.all())
+        ids = self.distinct_order_item_ids_for_month()
+        if not ids:
+            return Decimal('0.00')
+        agg = OrderItem.objects.filter(id__in=ids).aggregate(s=Sum('price'))
+        val = agg['s'] or Decimal('0')
+        return val.quantize(Decimal('0.01'))
 
     @property
     def remaining_limit(self):
-        return self.limit - self.total_usage
+        return (Decimal(self.limit) - self.total_usage).quantize(Decimal('0.01'))
