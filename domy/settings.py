@@ -253,3 +253,5 @@ MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{UPLOAD_PATH}/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+MAIL_WEBHOOK = os.getenv("MAIL_WEBHOOK", "")

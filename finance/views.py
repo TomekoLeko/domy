@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.serializers.json import DjangoJSONEncoder
+from django.conf import settings
 import json
 from datetime import datetime, date
 import calendar
@@ -18,7 +19,11 @@ from django.db import transaction
 from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal, InvalidOperation
 from .models import Supplier
+import logging
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 @staff_member_required
 def finance_main(request):
@@ -717,6 +722,60 @@ def _order_buyer_left_to_pay_total(order):
     return total.quantize(Decimal('0.01'))
 
 
+def _send_order_ready_for_payment_email(order_id):
+    webhook_url = (getattr(settings, 'MAIL_WEBHOOK', '') or '').strip()
+    if not webhook_url:
+        logger.warning("MAIL_WEBHOOK is not configured; skipping order email for order_id=%s", order_id)
+        return
+
+    order = (
+        Order.objects
+        .filter(id=order_id)
+        .select_related('buyer')
+        .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+        .first()
+    )
+    if order is None or order.buyer is None or not order.buyer.email:
+        return
+
+    left_to_pay = _order_buyer_left_to_pay_total(order)
+    left_to_pay_display = f"{left_to_pay:.2f}"
+
+    subject = f"Zamówienie {order.id} gotowe do opłacenia."
+    message = (
+        "Hej! Twoje zamówienie oczekuje na przelew.\n\n"
+        f"Do zapłaty będzie {left_to_pay_display} zł przelewem na:\n"
+        "LEKO Tomasz Krystyniak\n"
+        "ul. Tatarakowa 7, 11-036 Unieszewo\n"
+        "mBank: 57 1140 2004 0000 3102 7504 5989\n"
+        f'Tytuł: "Zamówienie {order.id}"'
+    )
+
+    payload = {
+        'receiver': order.buyer.email,
+        'subject': subject,
+        'content': message,
+    }
+
+    try:
+        req = Request(
+            webhook_url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            method='POST',
+        )
+        with urlopen(req, timeout=10):
+            pass
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        logger.exception(
+            "Failed to send webhook order email for order_id=%s",
+            order.id,
+        )
+
+
 def _split_order_payment_amount_across_buyer_line_items(amount, buyer_items):
     """
     Rozkłada kwotę płatności za zamówienie na pozycje kupującego proporcjonalnie do price
@@ -1003,6 +1062,8 @@ def api_assign_contributions_to_order(request):
 
         # MonthlyContributionUsage totals are derived from contribution SettlementAllocation
         # (see MonthlyContributionUsage.donor_contribution_allocations_qs).
+
+        transaction.on_commit(lambda: _send_order_ready_for_payment_email(order.id))
 
     order.refresh_from_db()
     # Przypisanie kontrybucji nie zmienia order.payment_status (rozliczenie — osobna ścieżka).
