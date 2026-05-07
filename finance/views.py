@@ -722,6 +722,37 @@ def _order_buyer_left_to_pay_total(order):
     return total.quantize(Decimal('0.01'))
 
 
+def _format_polish_order_date(dt):
+    if not dt:
+        return ""
+
+    weekday_names = [
+        "poniedziałku",
+        "wtorku",
+        "środy",
+        "czwartku",
+        "piątku",
+        "soboty",
+        "niedzieli",
+    ]
+    month_names = [
+        "stycznia",
+        "lutego",
+        "marca",
+        "kwietnia",
+        "maja",
+        "czerwca",
+        "lipca",
+        "sierpnia",
+        "września",
+        "października",
+        "listopada",
+        "grudnia",
+    ]
+
+    return f"{weekday_names[dt.weekday()]}, {dt.day} {month_names[dt.month - 1]} {dt.year}"
+
+
 def _send_order_ready_for_payment_email(order_id):
     webhook_url = (getattr(settings, 'MAIL_WEBHOOK', '') or '').strip()
     if not webhook_url:
@@ -741,14 +772,20 @@ def _send_order_ready_for_payment_email(order_id):
     left_to_pay = _order_buyer_left_to_pay_total(order)
     left_to_pay_display = f"{left_to_pay:.2f}"
 
-    subject = f"Zamówienie {order.id} gotowe do opłacenia."
+    order_date_display = _format_polish_order_date(order.created_at)
+    subject = f"Zamówienie #{order.id} z dn. {order_date_display} gotowe do opłacenia."
     message = (
-        "Hej! Twoje zamówienie oczekuje na przelew.\n\n"
-        f"Do zapłaty będzie {left_to_pay_display} zł przelewem na:\n"
-        "LEKO Tomasz Krystyniak\n"
-        "ul. Tatarakowa 7, 11-036 Unieszewo\n"
-        "mBank: 57 1140 2004 0000 3102 7504 5989\n"
-        f'Tytuł: "Zamówienie {order.id}"'
+        "<p>Hej!</p>"
+        "<p>Twoje zamówienie oczekuje na przelew.</p>"
+        f"<p><strong>Do zapłaty:</strong> {left_to_pay_display} zł</p>"
+        "<p>Przelew na dane:</p>"
+        "<p>"
+        "LEKO Tomasz Krystyniak<br>"
+        "ul. Tatarakowa 7, 11-036 Unieszewo<br>"
+        "mBank: 57 1140 2004 0000 3102 7504 5989<br>"
+        f'Tytuł: "Zamówienie #{order.id}"'
+        "</p>"
+        "<p>Pozdrawiam,<br>Tomasz Krystyniak</p>"
     )
 
     payload = {
