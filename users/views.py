@@ -330,17 +330,23 @@ def api_login(request):
             {"detail": "Login (or email) and password required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    try:
-        if "@" in login_value:
-            user = User.objects.get(email=login_value)
-        else:
-            user = User.objects.get(username=login_value)
-    except User.DoesNotExist:
-        return Response(
-            {"detail": "Invalid credentials"},
-            status=status.HTTP_401_UNAUTHORIZED,
-        )
-    if not user.check_password(password):
+    user = None
+    if "@" in login_value:
+        # Handle duplicated emails gracefully: authenticate against all matching accounts.
+        email_users = User.objects.filter(email=login_value).order_by("id")
+        for candidate in email_users:
+            if candidate.check_password(password):
+                user = candidate
+                break
+    else:
+        try:
+            candidate = User.objects.get(username=login_value)
+        except User.DoesNotExist:
+            candidate = None
+        if candidate and candidate.check_password(password):
+            user = candidate
+
+    if user is None:
         return Response(
             {"detail": "Invalid credentials"},
             status=status.HTTP_401_UNAUTHORIZED,
