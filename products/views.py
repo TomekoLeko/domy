@@ -366,6 +366,34 @@ def api_admin_delete_product_category(request, category_id):
 
 @require_POST
 @require_authenticated_staff_or_superuser
+def api_admin_edit_product_category(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+
+    exists = ProductCategory.objects.filter(name=name).exclude(id=category.id).exists()
+    if exists:
+        return JsonResponse({'detail': 'Category with this name already exists'}, status=400)
+
+    category.name = name
+    category.save(update_fields=['name'])
+    return JsonResponse(
+        {
+            'status': 'success',
+            'category': {'id': category.id, 'name': category.name},
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
 def api_add_price_list(request):
     try:
         data = json.loads(request.body) if request.body else {}

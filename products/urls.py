@@ -19,6 +19,11 @@ urlpatterns = [
         views.api_admin_delete_product_category,
         name='api_admin_delete_product_category',
     ),
+    path(
+        'api/admin/product-categories/edit/<int:category_id>/',
+        views.api_admin_edit_product_category,
+        name='api_admin_edit_product_category',
+    ),
     path('api/buyers/', views.api_buyers_list, name='api_buyers_list'),
     path('api/cart/change-buyer/', views.api_cart_change_buyer, name='api_cart_change_buyer'),
     path('api/cart/items/', views.api_cart_items, name='api_get_cart_items'),
