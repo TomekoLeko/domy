@@ -358,6 +358,14 @@ def api_admin_add_product_category(request):
 
 @require_POST
 @require_authenticated_staff_or_superuser
+def api_admin_delete_product_category(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+    category.delete()
+    return JsonResponse({'status': 'success', 'category_id': category_id})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
 def api_add_price_list(request):
     try:
         data = json.loads(request.body) if request.body else {}
