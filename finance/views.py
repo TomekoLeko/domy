@@ -781,15 +781,9 @@ def _send_order_ready_for_payment_email(order_id):
 
     left_to_pay = _order_buyer_left_to_pay_total(order)
     left_to_pay_display = f"{left_to_pay:.2f}"
-    logo_url = (getattr(settings, 'MAIL_LOGO_URL', '') or '').strip()
 
     order_date_display = _format_polish_order_date(order.created_at)
     subject = f"Zamówienie #{order.id} z {order_date_display} gotowe do opłacenia."
-    footer_logo_html = (
-        f'<img src="{logo_url}" alt="Domy" style="display:block;max-width:160px;height:auto;margin:0 auto 8px auto;">'
-        if logo_url
-        else ''
-    )
     message = (
         '<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.6;">'
         "<p style=\"margin:0 0 12px 0;\">Hej!</p>"
@@ -804,7 +798,6 @@ def _send_order_ready_for_payment_email(order_id):
         "</p>"
         "<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:20px 0 14px 0;\">"
         "<div style=\"text-align:center;color:#6b7280;font-size:13px;\">"
-        f"{footer_logo_html}"
         "<div style=\"font-weight:600;color:#374151;\">Domy</div>"
         "<div>System zamówień i rozliczeń</div>"
         "</div>"
