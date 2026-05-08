@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from decimal import Decimal
+from .category_icons import DEFAULT_CATEGORY_ICON
 
 
 def payment_amount_attributed_to_order_item(payment, order_item):
@@ -22,6 +23,7 @@ def payment_amount_attributed_to_order_item(payment, order_item):
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=50, unique=True)
+    icon = models.CharField(max_length=50, default=DEFAULT_CATEGORY_ICON)
 
     def __str__(self):
         return self.name

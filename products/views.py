@@ -17,6 +17,7 @@ from django.utils import timezone
 from finance.models import Payment, SettlementAllocation
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 from users.models import Profile
+from .category_icons import ALLOWED_CATEGORY_ICONS, ALLOWED_CATEGORY_ICON_KEYS, DEFAULT_CATEGORY_ICON
 
 def _price_list_to_dict(request, price_list):
     prices_data = []
@@ -58,10 +59,14 @@ def _admin_product_to_dict(request, product):
         'volume_unit': product.volume_unit,
         'volume_unit_display': product.get_volume_unit_display(),
         'image_url': image_url,
-        'categories': [{'id': c.id, 'name': c.name} for c in product.categories.all()],
+        'categories': [{'id': c.id, 'name': c.name, 'icon': c.icon} for c in product.categories.all()],
         'physical_stock': calculate_physical_stock_level(product),
         'virtual_stock': calculate_virtual_stock_level(product),
     }
+
+
+def _category_to_dict(category):
+    return {'id': category.id, 'name': category.name, 'icon': category.icon}
 
 
 @require_authenticated_staff_or_superuser
@@ -250,7 +255,7 @@ def api_admin_products(request):
     return JsonResponse(
         {
             'products': [_admin_product_to_dict(request, product) for product in products],
-            'categories': [{'id': c.id, 'name': c.name} for c in categories],
+            'categories': [_category_to_dict(c) for c in categories],
         },
         json_dumps_params={'ensure_ascii': False},
     )
@@ -344,13 +349,71 @@ def api_admin_add_product_category(request):
     name = (data.get('name') or '').strip()
     if not name:
         return JsonResponse({'detail': 'name is required'}, status=400)
+    icon = (data.get('icon') or DEFAULT_CATEGORY_ICON).strip()
+    if icon not in ALLOWED_CATEGORY_ICON_KEYS:
+        return JsonResponse({'detail': 'Invalid icon key'}, status=400)
 
-    category, created = ProductCategory.objects.get_or_create(name=name)
+    category, created = ProductCategory.objects.get_or_create(name=name, defaults={'icon': icon})
+    if not created and category.icon != icon:
+        category.icon = icon
+        category.save(update_fields=['icon'])
     return JsonResponse(
         {
             'status': 'success',
             'created': created,
-            'category': {'id': category.id, 'name': category.name},
+            'category': _category_to_dict(category),
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_delete_product_category(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+    category.delete()
+    return JsonResponse({'status': 'success', 'category_id': category_id})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_admin_edit_product_category(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'detail': 'name is required'}, status=400)
+    icon = (data.get('icon') or category.icon or DEFAULT_CATEGORY_ICON).strip()
+    if icon not in ALLOWED_CATEGORY_ICON_KEYS:
+        return JsonResponse({'detail': 'Invalid icon key'}, status=400)
+
+    exists = ProductCategory.objects.filter(name=name).exclude(id=category.id).exists()
+    if exists:
+        return JsonResponse({'detail': 'Category with this name already exists'}, status=400)
+
+    category.name = name
+    category.icon = icon
+    category.save(update_fields=['name', 'icon'])
+    return JsonResponse(
+        {
+            'status': 'success',
+            'category': _category_to_dict(category),
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_GET
+@require_authenticated_staff_or_superuser
+def api_admin_product_category_icons(request):
+    return JsonResponse(
+        {
+            'icons': [{'key': key, 'label': label} for key, label in ALLOWED_CATEGORY_ICONS],
+            'default_icon': DEFAULT_CATEGORY_ICON,
         },
         json_dumps_params={'ensure_ascii': False},
     )
@@ -484,7 +547,7 @@ def api_products_list(request):
             'name': product.name,
             'description': product.description or '',
             'image_url': image_url,
-            'categories': [{'id': c.id, 'name': c.name} for c in product.categories.all()],
+            'categories': [{'id': c.id, 'name': c.name, 'icon': c.icon} for c in product.categories.all()],
             'volume_value': float(product.volume_value),
             'volume_unit': product.volume_unit,
             'volume_unit_display': product.get_volume_unit_display(),
