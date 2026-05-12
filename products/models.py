@@ -139,7 +139,7 @@ class Order(models.Model):
     ]
 
     PAYMENT_STATUS_CHOICES = [
-        ('pending', 'Oczekujące na rozliczenie'),
+        ('pending', 'Oczekująca'),
         ('processing', 'W trakcie rozliczenia'),
         ('partial', 'Częściowo opłacone'),
         ('paid', 'Opłacone'),
