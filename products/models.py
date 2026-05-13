@@ -211,6 +211,14 @@ class OrderItem(models.Model):
         related_name='assigned_order_items',
         verbose_name="Przypisany odbiorca"
     )
+    shipment = models.ForeignKey(
+        'shipping.Shipment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='items',
+        verbose_name='Wysyłka',
+    )
 
     @property
     def sum_of_order_item_payments(self):
