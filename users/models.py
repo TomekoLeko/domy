@@ -15,6 +15,7 @@ class Profile(models.Model):
     address = models.CharField(max_length=255, blank=True)
     city = models.CharField(max_length=100, blank=True)
     postal = models.CharField(max_length=6, blank=True)
+    parcel_locker_code = models.CharField(max_length=20, blank=True)
     phone = models.CharField(max_length=15, blank=True)
     price_list = models.ForeignKey(PriceList, on_delete=models.SET_NULL, null=True, blank=True)
     monthly_limit = models.IntegerField(null=True, blank=True, help_text="Miesięczny limit dla beneficjenta")

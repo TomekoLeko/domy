@@ -150,6 +150,7 @@ def api_users_list(request):
                 "address": profile.address or "",
                 "city": profile.city or "",
                 "postal": profile.postal or "",
+                "parcel_locker_code": profile.parcel_locker_code or "",
                 "is_beneficiary": bool(profile.is_beneficiary),
                 "monthly_limit": profile.monthly_limit,
                 "discount_rate_percent": (
@@ -200,6 +201,7 @@ def api_update_user_profile(request):
         profile.address = data.get("address", "")
         profile.city = data.get("city", "")
         profile.postal = data.get("postal", "")
+        profile.parcel_locker_code = data.get("parcel_locker_code", "")
         profile.is_beneficiary = bool(data.get("is_beneficiary", False))
         monthly_limit = data.get("monthly_limit")
         profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
@@ -326,6 +328,7 @@ def api_user_shipping_address(request, user_id):
             "recipient_address": profile.address or "",
             "recipient_city": profile.city or "",
             "recipient_postal_code": profile.postal or "",
+            "recipient_parcel_locker_code": profile.parcel_locker_code or "",
         },
         status=status.HTTP_200_OK,
     )
