@@ -1,10 +1,12 @@
 import json
 
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from domy.decorators import require_authenticated_staff_or_superuser
+from products.models import OrderItem
 
 from .models import Carrier, DeliveryMethod, Shipment
 
@@ -132,5 +134,67 @@ def api_list_unassigned_shipments(request):
     )
     return JsonResponse(
         {'shipments': [_shipment_to_dict(shipment) for shipment in shipments]},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+def _order_item_to_dict(item, request):
+    """Reprezentacja `OrderItem` dla listy w widoku administracyjnym wysyłek.
+
+    Kontrakt celowo zbliżony do tego z `products.views.api_list_of_orders_for_admin`,
+    żeby frontend mógł grupować pozycje tymi samymi helperami co na stronie Zamówień.
+    """
+    first_image = item.product.images.first() if item.product_id else None
+    image_url = (
+        request.build_absolute_uri(first_image.image.url)
+        if first_image and first_image.image
+        else None
+    )
+
+    buyer_label = None
+    if item.buyer_id:
+        buyer_label = (
+            item.buyer.get_organization_name_or_full_name()
+            or item.buyer.username
+        )
+
+    return {
+        'id': item.id,
+        'order_id': item.order_id,
+        'product_id': item.product_id,
+        'product_name': item.product.name if item.product_id else '',
+        'image_url': image_url,
+        'price': str(item.price),
+        'buyer_id': item.buyer_id,
+        'buyer_name': buyer_label,
+    }
+
+
+@require_GET
+@require_authenticated_staff_or_superuser
+def api_list_all_shipments(request):
+    """Lista wszystkich wysyłek wraz z przypisanymi pozycjami zamówień.
+
+    Frontend dzieli wyniki na sekcje "Do przypisania" (pozycje puste) oraz "Przypisane".
+    """
+    items_qs = OrderItem.objects.select_related('buyer', 'product').prefetch_related(
+        'product__images'
+    )
+    shipments = (
+        Shipment.objects
+        .prefetch_related(Prefetch('items', queryset=items_qs))
+        .order_by('-created_at')
+    )
+
+    shipments_data = []
+    for shipment in shipments:
+        shipment_dict = _shipment_to_dict(shipment)
+        shipment_dict['items'] = [
+            _order_item_to_dict(item, request) for item in shipment.items.all()
+        ]
+        shipments_data.append(shipment_dict)
+
+    return JsonResponse(
+        {'shipments': shipments_data},
         json_dumps_params={'ensure_ascii': False},
     )
