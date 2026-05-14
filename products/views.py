@@ -1409,6 +1409,7 @@ def api_list_of_orders_for_admin(request):
                 'buyer_id': item.buyer_id,
                 'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
+                'shipment_id': item.shipment_id,
             })
         orders_data.append({
             'id': order.id,
