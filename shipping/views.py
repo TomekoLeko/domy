@@ -1,6 +1,7 @@
 import json
 
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -44,21 +45,14 @@ def _shipment_to_dict(shipment):
     }
 
 
-@require_POST
-@require_authenticated_staff_or_superuser
-def api_create_shipment(request):
-    try:
-        data = json.loads(request.body) if request.body else {}
-    except json.JSONDecodeError:
-        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
-
+def _parse_shipment_payload(data):
     carrier = (data.get('carrier') or '').strip()
     if carrier not in Carrier.values:
-        return JsonResponse({'detail': 'Invalid carrier'}, status=400)
+        return None, JsonResponse({'detail': 'Invalid carrier'}, status=400)
 
     delivery_method = (data.get('delivery_method') or '').strip()
     if delivery_method not in DeliveryMethod.values:
-        return JsonResponse({'detail': 'Invalid delivery_method'}, status=400)
+        return None, JsonResponse({'detail': 'Invalid delivery_method'}, status=400)
 
     payload = {
         'carrier': carrier,
@@ -67,11 +61,26 @@ def api_create_shipment(request):
     for field in REQUIRED_SHIPMENT_FIELDS:
         value = (data.get(field) or '').strip()
         if not value:
-            return JsonResponse({'detail': f'{field} is required'}, status=400)
+            return None, JsonResponse({'detail': f'{field} is required'}, status=400)
         payload[field] = value
 
     for field in OPTIONAL_SHIPMENT_FIELDS:
         payload[field] = (data.get(field) or '').strip()
+
+    return payload, None
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_create_shipment(request):
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    payload, error_response = _parse_shipment_payload(data)
+    if error_response is not None:
+        return error_response
 
     shipment = Shipment.objects.create(**payload)
 
@@ -79,6 +88,38 @@ def api_create_shipment(request):
         {'status': 'success', 'shipment': _shipment_to_dict(shipment)},
         json_dumps_params={'ensure_ascii': False},
     )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_update_shipment(request, shipment_id):
+    shipment = get_object_or_404(Shipment, id=shipment_id)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    payload, error_response = _parse_shipment_payload(data)
+    if error_response is not None:
+        return error_response
+
+    for field, value in payload.items():
+        setattr(shipment, field, value)
+    shipment.save()
+
+    return JsonResponse(
+        {'status': 'success', 'shipment': _shipment_to_dict(shipment)},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_delete_shipment(request, shipment_id):
+    shipment = get_object_or_404(Shipment, id=shipment_id)
+    shipment.delete()
+    return JsonResponse({'status': 'success', 'shipment_id': shipment_id})
 
 
 @require_GET
