@@ -290,6 +290,47 @@ def api_user_monthly_contributions(request, user_id):
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_user_shipping_address(request, user_id):
+    """
+    GET /api/users/<user_id>/shipping-address/
+    Zwraca dane adresowe pojedynczego uzytkownika do uzupelnienia formularza wysylki.
+    Tylko staff/superuser. Pola dopasowane do shipping.models.Shipment (recipient_*).
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    try:
+        target_user = User.objects.select_related('profile').get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "User not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    profile, _ = Profile.objects.get_or_create(user=target_user)
+
+    full_name = (
+        (profile.name or "").strip()
+        or f"{target_user.first_name} {target_user.last_name}".strip()
+        or target_user.username
+    )
+
+    return Response(
+        {
+            "user_id": target_user.id,
+            "recipient_name": full_name,
+            "recipient_phone": profile.phone or "",
+            "recipient_email": target_user.email or "",
+            "recipient_address": profile.address or "",
+            "recipient_city": profile.city or "",
+            "recipient_postal_code": profile.postal or "",
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_delete_monthly_contribution_usage(request, usage_id):
