@@ -1,6 +1,6 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from domy.decorators import require_authenticated_staff_or_superuser
 from .models import Supplier, SupplyOrder, StockEntry
 from finance.models import Invoice
@@ -246,6 +246,34 @@ def calculate_virtual_stock_level(product):
     )['total'] or 0
     
     return virtual_entries_total - virtual_reductions_total
+
+@require_GET
+@require_authenticated_staff_or_superuser
+def api_list_stock_reductions(request):
+    """Lista wszystkich redukcji magazynowych (panel diagnostyczny)."""
+    reductions = (
+        StockReduction.objects.select_related('product', 'order', 'order_item', 'stock_entry')
+        .order_by('-created_at')
+    )
+    data = []
+    for reduction in reductions:
+        data.append({
+            'id': reduction.id,
+            'created_at': reduction.created_at.isoformat() if reduction.created_at else None,
+            'product_id': reduction.product_id,
+            'product_name': reduction.product.name if reduction.product_id else '',
+            'order_id': reduction.order_id,
+            'order_item_id': reduction.order_item_id,
+            'quantity': reduction.quantity,
+            'stock_type': reduction.stock_type,
+            'stock_type_display': reduction.get_stock_type_display(),
+            'stock_entry_id': reduction.stock_entry_id,
+        })
+    return JsonResponse(
+        {'reductions': data},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
 
 @require_authenticated_staff_or_superuser
 def api_products(request):

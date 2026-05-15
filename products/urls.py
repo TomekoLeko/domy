@@ -1,4 +1,5 @@
 from django.urls import path
+from stock.views import api_list_stock_reductions
 from . import views
 from . import carts_views
 from . import cart_create_order
@@ -51,6 +52,7 @@ urlpatterns = [
     path('api/orders/<int:order_id>/status/', views.api_update_order_status, name='api_update_order_status'),
     path('api/orders/<int:order_id>/payment-status/', views.api_update_order_payment_status, name='api_update_order_payment_status'),
     path('api/orders/delete/<int:order_id>/', views.api_delete_order, name='api_delete_order'),
+    path('api/stock/reductions/', api_list_stock_reductions, name='api_list_stock_reductions'),
     path('orders/', views.orders, name='orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
     path('orders/delete/<int:order_id>/', views.delete_order, name='delete_order'),
