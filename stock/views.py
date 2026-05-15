@@ -7,6 +7,7 @@ from finance.models import Invoice
 from products.models import Product, OrderItem
 from stock.models import StockReduction
 from decimal import Decimal
+from django.db import transaction
 from django.db.models import F, ExpressionWrapper, DecimalField, Sum
 import json
 from pprint import pprint
@@ -271,6 +272,38 @@ def api_list_stock_reductions(request):
         })
     return JsonResponse(
         {'reductions': data},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+def _recalculate_stock_entry_remaining_quantity(stock_entry_id):
+    """Ustawia remaining_quantity na podstawie sumy powiązanych redukcji."""
+    entry = StockEntry.objects.get(id=stock_entry_id)
+    used = (
+        StockReduction.objects.filter(stock_entry_id=stock_entry_id).aggregate(
+            total=Sum('quantity')
+        )['total']
+        or 0
+    )
+    entry.remaining_quantity = max(entry.quantity - used, 0)
+    entry.save(update_fields=['remaining_quantity'])
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_delete_stock_reduction(request, reduction_id):
+    """Usuwa redukcję magazynową i przelicza wpis magazynowy, jeśli był powiązany."""
+    reduction = get_object_or_404(StockReduction, id=reduction_id)
+    stock_entry_id = reduction.stock_entry_id
+    deleted_id = reduction.id
+
+    with transaction.atomic():
+        reduction.delete()
+        if stock_entry_id is not None:
+            _recalculate_stock_entry_remaining_quantity(stock_entry_id)
+
+    return JsonResponse(
+        {'status': 'success', 'reduction_id': deleted_id},
         json_dumps_params={'ensure_ascii': False},
     )
 
