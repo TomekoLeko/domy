@@ -7,9 +7,14 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from domy.decorators import require_authenticated_staff_or_superuser
+from products.cart_create_order import create_stock_reduction_for_order_item
 from products.models import OrderItem
+from stock.models import StockReduction
 
 from .models import Carrier, DeliveryMethod, Shipment
+
+
+VALID_STOCK_TYPES = frozenset({'physical', 'virtual'})
 
 
 REQUIRED_SHIPMENT_FIELDS = (
@@ -209,12 +214,17 @@ def api_assign_order_items_to_shipments(request):
     Oczekiwany payload:
         {
             "assignments": [
-                {"shipment_id": 1, "order_item_ids": [10, 11]},
-                {"shipment_id": 2, "order_item_ids": [12]}
+                {
+                    "shipment_id": 1,
+                    "items": [
+                        {"order_item_id": 10, "stock_type": "virtual"},
+                        {"order_item_id": 11, "stock_type": "physical"}
+                    ]
+                }
             ]
         }
 
-    Każda pozycja w `order_item_ids` dostaje ustawione FK `shipment`.
+    Dla każdej pozycji tworzy `StockReduction` wybranego typu, potem ustawia FK `shipment`.
     Operacja jest atomowa - albo zapisujemy wszystkie przypisania, albo żadnego.
     """
     try:
@@ -234,28 +244,34 @@ def api_assign_order_items_to_shipments(request):
         if not isinstance(entry, dict):
             return JsonResponse({'detail': 'assignment must be an object'}, status=400)
         shipment_id = entry.get('shipment_id')
-        items = entry.get('order_item_ids')
+        raw_items = entry.get('items')
         if not isinstance(shipment_id, int) or shipment_id <= 0:
             return JsonResponse({'detail': 'Invalid shipment_id'}, status=400)
-        if not isinstance(items, list) or not items:
-            return JsonResponse(
-                {'detail': 'order_item_ids must be a non-empty list'}, status=400
-            )
+        if not isinstance(raw_items, list) or not raw_items:
+            return JsonResponse({'detail': 'items must be a non-empty list'}, status=400)
 
-        item_ids = []
-        for item_id in items:
-            if not isinstance(item_id, int) or item_id <= 0:
+        parsed_items = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                return JsonResponse({'detail': 'item must be an object'}, status=400)
+            order_item_id = item.get('order_item_id')
+            stock_type = (item.get('stock_type') or '').strip()
+            if not isinstance(order_item_id, int) or order_item_id <= 0:
                 return JsonResponse({'detail': 'Invalid order_item_id'}, status=400)
-            if item_id in order_item_ids:
+            if stock_type not in VALID_STOCK_TYPES:
+                return JsonResponse({'detail': 'Invalid stock_type'}, status=400)
+            if order_item_id in order_item_ids:
                 return JsonResponse(
-                    {'detail': f'Order item {item_id} assigned more than once'},
+                    {'detail': f'Order item {order_item_id} assigned more than once'},
                     status=400,
                 )
-            order_item_ids.add(item_id)
-            item_ids.append(item_id)
+            order_item_ids.add(order_item_id)
+            parsed_items.append(
+                {'order_item_id': order_item_id, 'stock_type': stock_type}
+            )
 
         shipment_ids.add(shipment_id)
-        normalized.append({'shipment_id': shipment_id, 'order_item_ids': item_ids})
+        normalized.append({'shipment_id': shipment_id, 'items': parsed_items})
 
     if not normalized:
         return JsonResponse({'status': 'success', 'updated': 0})
@@ -270,21 +286,55 @@ def api_assign_order_items_to_shipments(request):
             status=404,
         )
 
-    existing_item_ids = set(
-        OrderItem.objects.filter(id__in=order_item_ids).values_list('id', flat=True)
+    order_items_qs = OrderItem.objects.filter(id__in=order_item_ids).select_related(
+        'product', 'order'
     )
-    missing_items = order_item_ids - existing_item_ids
+    order_items_by_id = {item.id: item for item in order_items_qs}
+    missing_items = order_item_ids - set(order_items_by_id)
     if missing_items:
         return JsonResponse(
             {'detail': f'Order items not found: {sorted(missing_items)}'},
             status=404,
         )
 
+    already_assigned = [
+        item_id
+        for item_id, item in order_items_by_id.items()
+        if item.shipment_id is not None
+    ]
+    if already_assigned:
+        return JsonResponse(
+            {'detail': f'Order items already assigned to shipment: {sorted(already_assigned)}'},
+            status=400,
+        )
+
+    already_reduced = list(
+        StockReduction.objects.filter(order_item_id__in=order_item_ids).values_list(
+            'order_item_id', flat=True
+        )
+    )
+    if already_reduced:
+        return JsonResponse(
+            {
+                'detail': (
+                    'Order items already have stock reduction: '
+                    f'{sorted(already_reduced)}'
+                )
+            },
+            status=400,
+        )
+
     updated_total = 0
     with transaction.atomic():
         for entry in normalized:
-            updated_total += OrderItem.objects.filter(
-                id__in=entry['order_item_ids']
-            ).update(shipment_id=entry['shipment_id'])
+            for item in entry['items']:
+                order_item = order_items_by_id[item['order_item_id']]
+                create_stock_reduction_for_order_item(
+                    order_item, stock_type=item['stock_type']
+                )
+            item_ids = [item['order_item_id'] for item in entry['items']]
+            updated_total += OrderItem.objects.filter(id__in=item_ids).update(
+                shipment_id=entry['shipment_id']
+            )
 
     return JsonResponse({'status': 'success', 'updated': updated_total})

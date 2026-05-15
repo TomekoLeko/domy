@@ -12,14 +12,19 @@ from django.contrib import messages
 
 def create_stock_reductions(order, order_items):
     for order_item in order_items:
-        StockReduction.objects.create(
-            product=order_item.product,
-            quantity=1,
-            order=order,
-            order_item=order_item,
-            created_at=timezone.now(),
-            stock_type='virtual'
-        )
+        create_stock_reduction_for_order_item(order_item, stock_type='virtual')
+
+
+def create_stock_reduction_for_order_item(order_item, stock_type='virtual'):
+    """Tworzy pojedynczą redukcję magazynową dla pozycji zamówienia."""
+    return StockReduction.objects.create(
+        product=order_item.product,
+        quantity=1,
+        order=order_item.order,
+        order_item=order_item,
+        created_at=timezone.now(),
+        stock_type=stock_type,
+    )
 
 
 @require_POST
