@@ -150,6 +150,7 @@ def api_users_list(request):
                 "address": profile.address or "",
                 "city": profile.city or "",
                 "postal": profile.postal or "",
+                "parcel_locker_code": profile.parcel_locker_code or "",
                 "is_beneficiary": bool(profile.is_beneficiary),
                 "monthly_limit": profile.monthly_limit,
                 "discount_rate_percent": (
@@ -200,6 +201,7 @@ def api_update_user_profile(request):
         profile.address = data.get("address", "")
         profile.city = data.get("city", "")
         profile.postal = data.get("postal", "")
+        profile.parcel_locker_code = data.get("parcel_locker_code", "")
         profile.is_beneficiary = bool(data.get("is_beneficiary", False))
         monthly_limit = data.get("monthly_limit")
         profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
@@ -285,6 +287,48 @@ def api_user_monthly_contributions(request, user_id):
             "user_id": target_user.id,
             "monthly_usage": monthly_usage,
             "pinned_order_items": pinned_order_items,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_user_shipping_address(request, user_id):
+    """
+    GET /api/users/<user_id>/shipping-address/
+    Zwraca dane adresowe pojedynczego uzytkownika do uzupelnienia formularza wysylki.
+    Tylko staff/superuser. Pola dopasowane do shipping.models.Shipment (recipient_*).
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    try:
+        target_user = User.objects.select_related('profile').get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "User not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    profile, _ = Profile.objects.get_or_create(user=target_user)
+
+    full_name = (
+        (profile.name or "").strip()
+        or f"{target_user.first_name} {target_user.last_name}".strip()
+        or target_user.username
+    )
+
+    return Response(
+        {
+            "user_id": target_user.id,
+            "recipient_name": full_name,
+            "recipient_phone": profile.phone or "",
+            "recipient_email": target_user.email or "",
+            "recipient_address": profile.address or "",
+            "recipient_city": profile.city or "",
+            "recipient_postal_code": profile.postal or "",
+            "recipient_parcel_locker_code": profile.parcel_locker_code or "",
         },
         status=status.HTTP_200_OK,
     )
