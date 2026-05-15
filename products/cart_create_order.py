@@ -42,17 +42,14 @@ def create_order(request):
             max_payable_amount=cart.total_cost,
         )
 
-        order_items = []
         for cart_item in cart.items.all():
             for _ in range(cart_item.quantity):
-                order_item = OrderItem.objects.create(
+                OrderItem.objects.create(
                     order=order,
                     product=cart_item.product,
                     price=cart_item.price,
                 )
-                order_items.append(order_item)
 
-        create_stock_reductions(order, order_items)
         cart.delete()
 
         request.session['cart_open'] = False
