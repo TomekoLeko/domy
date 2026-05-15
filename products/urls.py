@@ -1,5 +1,11 @@
 from django.urls import path
 from stock.views import api_delete_stock_reduction, api_list_stock_reductions
+from stock.supply_orders_api import (
+    api_assign_supply_order_invoice,
+    api_create_supply_order,
+    api_delete_supply_order,
+    api_list_supply_orders,
+)
 from . import views
 from . import carts_views
 from . import cart_create_order
@@ -57,6 +63,18 @@ urlpatterns = [
         'api/stock/reductions/delete/<int:reduction_id>/',
         api_delete_stock_reduction,
         name='api_delete_stock_reduction',
+    ),
+    path('api/supply-orders/', api_list_supply_orders, name='api_list_supply_orders'),
+    path('api/supply-orders/create/', api_create_supply_order, name='api_create_supply_order'),
+    path(
+        'api/supply-orders/delete/<int:supply_order_id>/',
+        api_delete_supply_order,
+        name='api_delete_supply_order',
+    ),
+    path(
+        'api/supply-orders/assign-invoice/',
+        api_assign_supply_order_invoice,
+        name='api_assign_supply_order_invoice',
     ),
     path('orders/', views.orders, name='orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
