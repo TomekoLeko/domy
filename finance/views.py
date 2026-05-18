@@ -1323,27 +1323,11 @@ def api_create_payment(request):
         pm_strip = str(raw_payment_method).strip()
 
     if payment_type == 'order':
-        if related_order is None:
-            return JsonResponse(
-                {
-                    'status': 'error',
-                    'message': 'Dla płatności za zamówienie wymagane jest powiązane zamówienie.',
-                },
-                status=400,
-            )
         if related_user is None:
             return JsonResponse(
                 {
                     'status': 'error',
                     'message': 'Dla płatności za zamówienie wymagany jest powiązany użytkownik (kupujący).',
-                },
-                status=400,
-            )
-        if related_user.id != related_order.buyer_id:
-            return JsonResponse(
-                {
-                    'status': 'error',
-                    'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.',
                 },
                 status=400,
             )
@@ -1364,6 +1348,37 @@ def api_create_payment(request):
                     'status': 'error',
                     'message': 'Invalid payment_method',
                     'allowed_payment_methods': sorted(VALID_PAYMENT_METHOD_VALUES),
+                },
+                status=400,
+            )
+
+        if related_order is None:
+            pay = Payment.objects.create(
+                payment_type='order',
+                payment_method=payment_method,
+                amount=amount,
+                description=description,
+                sender=sender,
+                related_user=related_user,
+                related_order=None,
+                payment_date=payment_date,
+                created_by=request.user,
+            )
+            payload = [_payment_to_api_dict(pay)]
+            return JsonResponse(
+                {
+                    'status': 'success',
+                    'payment': payload[0],
+                    'payments': payload,
+                },
+                status=201,
+            )
+
+        if related_user.id != related_order.buyer_id:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.',
                 },
                 status=400,
             )
@@ -1616,19 +1631,9 @@ def api_update_payment(request, payment_id):
         pm_strip = str(raw_payment_method).strip()
 
     if payment_type == 'order':
-        if related_order is None:
-            return JsonResponse(
-                {'status': 'error', 'message': 'Dla płatności za zamówienie wymagane jest powiązane zamówienie.'},
-                status=400,
-            )
         if related_user is None:
             return JsonResponse(
                 {'status': 'error', 'message': 'Dla płatności za zamówienie wymagany jest powiązany użytkownik (kupujący).'},
-                status=400,
-            )
-        if related_user.id != related_order.buyer_id:
-            return JsonResponse(
-                {'status': 'error', 'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.'},
                 status=400,
             )
         if payment_date is None:
@@ -1651,6 +1656,11 @@ def api_update_payment(request, payment_id):
                 },
                 status=400,
             )
+        if related_order is not None and related_user.id != related_order.buyer_id:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Powiązany użytkownik musi być kupującym wybranego zamówienia.'},
+                status=400,
+            )
     else:
         if pm_strip:
             payment_method = pm_strip
@@ -1669,7 +1679,7 @@ def api_update_payment(request, payment_id):
     order = None
     buyer_items = []
     allocation_pairs = []
-    if payment_type == 'order':
+    if payment_type == 'order' and related_order is not None:
         order = (
             Order.objects.filter(pk=related_order.pk)
             .select_related('buyer')
@@ -1726,7 +1736,7 @@ def api_update_payment(request, payment_id):
         payment.payment_date = payment_date
         payment.save()
 
-        if payment_type == 'order':
+        if payment_type == 'order' and related_order is not None:
             payment.related_order_items.set(buyer_items)
             SettlementAllocation.objects.bulk_create(
                 [
@@ -2106,7 +2116,7 @@ def api_assign_order_settlement(request):
 
     payments = Payment.objects.filter(
         id__in=requested_payment_ids,
-    ).exclude(payment_type='contribution').prefetch_related(
+    ).exclude(payment_type='contribution').select_related('related_order').prefetch_related(
         'related_order_items',
         'settlement_allocations',
     )
@@ -2128,6 +2138,17 @@ def api_assign_order_settlement(request):
                 {
                     'status': 'error',
                     'message': f'Payment {payment.id} is not linked to the order buyer',
+                },
+                status=400,
+            )
+        if payment.related_order_id is not None and payment.related_order_id != order.id:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Płatność #{payment.id} jest już powiązana z innym zamówieniem '
+                        f'(#{payment.related_order_id}).'
+                    ),
                 },
                 status=400,
             )
@@ -2194,6 +2215,12 @@ def api_assign_order_settlement(request):
             )
             payment.related_order_items.add(order_item)
 
+        for payment_id in requested_payment_ids:
+            payment = payments_by_id[payment_id]
+            if payment.related_order_id != order.id:
+                payment.related_order_id = order.id
+                payment.save(update_fields=['related_order_id'])
+
         order_fresh = (
             Order.objects.filter(pk=order.pk)
             .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
@@ -2208,6 +2235,7 @@ def api_assign_order_settlement(request):
             'status': 'success',
             'order_id': order.id,
             'assigned_items_count': len(requested_item_to_payment),
+            'linked_payment_ids': sorted(requested_payment_ids),
             'payment_status': order.payment_status,
         }
     )
