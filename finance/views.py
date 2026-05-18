@@ -1753,6 +1753,421 @@ def api_update_payment(request, payment_id):
     )
 
 
+def _serialize_order_item_row(request, order_item, *, contribution_payment_id=None):
+    first_image = order_item.product.images.first()
+    image_url = (
+        request.build_absolute_uri(first_image.image.url)
+        if first_image and first_image.image
+        else None
+    )
+    price = order_item.price.quantize(Decimal('0.01'))
+    return {
+        'id': order_item.id,
+        'product_id': order_item.product_id,
+        'product_name': order_item.product.name,
+        'image_url': image_url,
+        'quantity': 1,
+        'price': str(price),
+        'line_total': str(price),
+        'buyer_id': order_item.buyer_id,
+        'buyer_name': (
+            order_item.buyer.get_organization_name_or_full_name() or order_item.buyer.username
+            if order_item.buyer
+            else None
+        ),
+        'left_to_pay': str(order_item.left_to_pay),
+        'contribution_payment_id': contribution_payment_id,
+    }
+
+
+def _contribution_payment_id_for_order_item(order_item):
+    for allocation in order_item.settlement_allocations.all():
+        payment = allocation.payment
+        if payment.payment_type == 'contribution':
+            return payment.id
+    return None
+
+
+def _get_available_payments_for_buyer(buyer_id):
+    candidates = (
+        Payment.objects.filter(related_user_id=buyer_id)
+        .exclude(payment_type='contribution')
+        .select_related('related_user', 'related_order', 'created_by')
+        .prefetch_related('settlement_allocations', 'related_order_items')
+        .order_by('-payment_date', '-created_at')
+    )
+    eligible_ids = [
+        p.pk
+        for p in candidates
+        if p.available_amount > Decimal('0.00')
+    ]
+    if not eligible_ids:
+        return Payment.objects.none()
+    return Payment.objects.filter(pk__in=eligible_ids).prefetch_related(
+        'settlement_allocations',
+        'related_order_items',
+    )
+
+
+@staff_member_required
+def api_get_order_settlement_data(request):
+    """
+    GET /api/finance/order-settlement-data/?order_id=<id>
+    Dane do modala „Rozlicz” na stronie Zamówienia.
+    """
+    raw_order_id = (request.GET.get('order_id') or '').strip()
+    if not raw_order_id:
+        return JsonResponse(
+            {'status': 'error', 'message': 'order_id is required'},
+            status=400,
+        )
+    try:
+        order_id = int(raw_order_id)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'order_id must be an integer'},
+            status=400,
+        )
+
+    order = get_object_or_404(
+        Order.objects.select_related('buyer').prefetch_related(
+            Prefetch(
+                'items',
+                queryset=OrderItem.objects.select_related('buyer', 'product').prefetch_related(
+                    'product__images',
+                    Prefetch(
+                        'settlement_allocations',
+                        queryset=SettlementAllocation.objects.select_related('payment'),
+                    ),
+                    Prefetch(
+                        'payments',
+                        queryset=Payment.objects.prefetch_related(
+                            'related_order_items',
+                            'settlement_allocations',
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        id=order_id,
+    )
+
+    paid_from_contributions = []
+    unpaid_items = []
+    q = Decimal('0.01')
+
+    for item in order.items.all():
+        contribution_id = _contribution_payment_id_for_order_item(item)
+        if contribution_id is not None:
+            paid_from_contributions.append(
+                _serialize_order_item_row(
+                    request,
+                    item,
+                    contribution_payment_id=contribution_id,
+                )
+            )
+        if item.left_to_pay > q:
+            unpaid_items.append(_serialize_order_item_row(request, item))
+
+    available_payments = []
+    if order.buyer_id:
+        for payment in _get_available_payments_for_buyer(order.buyer_id):
+            available_payments.append(
+                {
+                    'id': payment.id,
+                    'amount': str(payment.amount),
+                    'payment_type': payment.payment_type,
+                    'payment_method': payment.payment_method,
+                    'description': payment.description,
+                    'sender': payment.sender,
+                    'related_user': payment.related_user_id,
+                    'related_order': payment.related_order_id,
+                    'created_at': payment.created_at.isoformat(),
+                    'payment_date': (
+                        payment.payment_date.isoformat() if payment.payment_date else None
+                    ),
+                    'available_amount': str(payment.available_amount),
+                }
+            )
+
+    buyer = order.buyer
+    return JsonResponse(
+        {
+            'status': 'success',
+            'order_id': order.id,
+            'buyer_id': order.buyer_id,
+            'buyer_name': (
+                buyer.get_organization_name_or_full_name() or buyer.username if buyer else None
+            ),
+            'paid_from_contributions': paid_from_contributions,
+            'unpaid_items': unpaid_items,
+            'available_payments': available_payments,
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@staff_member_required
+def api_assign_order_settlement(request):
+    """
+    POST /api/finance/assign-order-settlement/
+    Body: { order_id, assignments: [{ payment_id, order_item_ids, unit_price }] }
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid JSON body'},
+            status=400,
+        )
+
+    order_id = data.get('order_id')
+    assignments = data.get('assignments')
+
+    if order_id is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'order_id is required'},
+            status=400,
+        )
+    if not isinstance(assignments, list):
+        return JsonResponse(
+            {'status': 'error', 'message': 'assignments must be a list'},
+            status=400,
+        )
+
+    try:
+        order_id = int(order_id)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'order_id must be an integer'},
+            status=400,
+        )
+
+    order = get_object_or_404(Order.objects.select_related('buyer'), id=order_id)
+    if order.buyer_id is None:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Order has no buyer assigned'},
+            status=400,
+        )
+
+    order_items_qs = OrderItem.objects.filter(order=order).select_related('order')
+    order_items_by_id = {item.id: item for item in order_items_qs}
+
+    requested_item_to_payment = {}
+    requested_item_prices = {}
+    requested_payment_ids = set()
+
+    for idx, assignment in enumerate(assignments):
+        if not isinstance(assignment, dict):
+            return JsonResponse(
+                {'status': 'error', 'message': f'assignments[{idx}] must be an object'},
+                status=400,
+            )
+
+        payment_id = assignment.get('payment_id')
+        order_item_ids = assignment.get('order_item_ids') or []
+        raw_unit_price = assignment.get('unit_price')
+
+        try:
+            payment_id = int(payment_id)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': f'assignments[{idx}].payment_id must be an integer',
+                },
+                status=400,
+            )
+
+        if not isinstance(order_item_ids, list) or len(order_item_ids) == 0:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': f'assignments[{idx}].order_item_ids must be a non-empty list',
+                },
+                status=400,
+            )
+
+        try:
+            parsed_price = Decimal(str(raw_unit_price))
+        except (InvalidOperation, TypeError, ValueError):
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': f'assignments[{idx}].unit_price must be a valid decimal',
+                },
+                status=400,
+            )
+
+        if parsed_price < 0:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': f'assignments[{idx}].unit_price cannot be negative',
+                },
+                status=400,
+            )
+
+        requested_payment_ids.add(payment_id)
+
+        for raw_order_item_id in order_item_ids:
+            try:
+                order_item_id = int(raw_order_item_id)
+            except (TypeError, ValueError):
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': f'Invalid order_item_id in assignments[{idx}]',
+                    },
+                    status=400,
+                )
+
+            if order_item_id not in order_items_by_id:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': f'Order item {order_item_id} does not belong to order {order.id}',
+                    },
+                    status=400,
+                )
+
+            if order_item_id in requested_item_to_payment:
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': f'Order item {order_item_id} assigned multiple times',
+                    },
+                    status=400,
+                )
+
+            order_item = order_items_by_id[order_item_id]
+            if order_item.left_to_pay <= Decimal('0.01'):
+                return JsonResponse(
+                    {
+                        'status': 'error',
+                        'message': f'Order item {order_item_id} is already settled',
+                    },
+                    status=400,
+                )
+
+            requested_item_to_payment[order_item_id] = payment_id
+            requested_item_prices[order_item_id] = parsed_price
+
+    if not requested_item_to_payment:
+        return JsonResponse(
+            {'status': 'success', 'order_id': order.id, 'assigned_items_count': 0},
+        )
+
+    payments = Payment.objects.filter(
+        id__in=requested_payment_ids,
+    ).exclude(payment_type='contribution').prefetch_related(
+        'related_order_items',
+        'settlement_allocations',
+    )
+    payments_by_id = {payment.id: payment for payment in payments}
+
+    missing_payment_ids = sorted(requested_payment_ids - set(payments_by_id.keys()))
+    if missing_payment_ids:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': f'Payments not found: {", ".join(str(pid) for pid in missing_payment_ids)}',
+            },
+            status=404,
+        )
+
+    for payment in payments_by_id.values():
+        if payment.related_user_id != order.buyer_id:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': f'Payment {payment.id} is not linked to the order buyer',
+                },
+                status=400,
+            )
+
+    requested_sum_by_payment = {}
+    for order_item_id, payment_id in requested_item_to_payment.items():
+        requested_sum_by_payment.setdefault(payment_id, Decimal('0.00'))
+        requested_sum_by_payment[payment_id] += requested_item_prices[order_item_id]
+
+    requested_order_item_ids = set(requested_item_to_payment.keys())
+    for payment_id, payment in payments_by_id.items():
+        used_outside_current_request = _payment_settled_amount_excluding_items(
+            payment, requested_order_item_ids
+        )
+        available_for_request = payment.amount - used_outside_current_request
+        requested_sum = requested_sum_by_payment.get(payment_id, Decimal('0.00'))
+        if requested_sum > available_for_request:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Payment {payment_id} has insufficient available amount. '
+                        f'Available: {available_for_request}, requested: {requested_sum}'
+                    ),
+                },
+                status=400,
+            )
+
+    q = Decimal('0.01')
+    for order_item_id, payment_id in requested_item_to_payment.items():
+        order_item = order_items_by_id[order_item_id]
+        payment = payments_by_id[payment_id]
+        unit_price = requested_item_prices[order_item_id]
+        current_on_line = _settled_from_payment_on_order_line(order_item, payment)
+        max_for_line = (order_item.left_to_pay + current_on_line).quantize(q)
+        if unit_price > max_for_line:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'Kwota {unit_price} przekracza pozostałość na pozycji {order_item_id} '
+                        f'(max {max_for_line} zł).'
+                    ),
+                },
+                status=400,
+            )
+
+    with transaction.atomic():
+        for order_item_id, unit_price in requested_item_prices.items():
+            order_item = order_items_by_id[order_item_id]
+            if order_item.price != unit_price:
+                order_item.price = unit_price
+                order_item.save(update_fields=['price'])
+
+        for order_item_id, payment_id in requested_item_to_payment.items():
+            payment = payments_by_id[payment_id]
+            order_item = order_items_by_id[order_item_id]
+            unit_price = requested_item_prices[order_item_id]
+
+            SettlementAllocation.objects.update_or_create(
+                payment=payment,
+                order_item=order_item,
+                defaults={'allocated_amount': unit_price},
+            )
+            payment.related_order_items.add(order_item)
+
+        order_fresh = (
+            Order.objects.filter(pk=order.pk)
+            .prefetch_related(_ORDER_ITEMS_FOR_PAYMENT_PREFETCH)
+            .first()
+        )
+        if order_fresh is not None:
+            order_fresh.update_payment_status_from_settlement()
+
+    order.refresh_from_db()
+    return JsonResponse(
+        {
+            'status': 'success',
+            'order_id': order.id,
+            'assigned_items_count': len(requested_item_to_payment),
+            'payment_status': order.payment_status,
+        }
+    )
+
+
 @login_required
 def api_get_or_create_monthly_usage_for_buyer(request):
     buyer_id = request.GET.get('buyer_id')
