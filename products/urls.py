@@ -1,5 +1,11 @@
 from django.urls import path
 from stock.views import api_delete_stock_reduction, api_list_stock_reductions
+from stock.suppliers_api import (
+    api_add_supplier,
+    api_delete_supplier,
+    api_edit_supplier,
+    api_list_suppliers,
+)
 from stock.supply_orders_api import (
     api_assign_supply_order_invoice,
     api_create_supply_order,
@@ -75,6 +81,14 @@ urlpatterns = [
         'api/supply-orders/assign-invoice/',
         api_assign_supply_order_invoice,
         name='api_assign_supply_order_invoice',
+    ),
+    path('api/admin/suppliers/', api_list_suppliers, name='api_list_suppliers'),
+    path('api/admin/suppliers/add/', api_add_supplier, name='api_add_supplier'),
+    path('api/admin/suppliers/edit/<int:supplier_id>/', api_edit_supplier, name='api_edit_supplier'),
+    path(
+        'api/admin/suppliers/delete/<int:supplier_id>/',
+        api_delete_supplier,
+        name='api_delete_supplier',
     ),
     path('orders/', views.orders, name='orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
