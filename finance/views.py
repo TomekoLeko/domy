@@ -1788,6 +1788,49 @@ def _contribution_payment_id_for_order_item(order_item):
     return None
 
 
+def _aggregate_paid_from_contributions(rows):
+    """
+    Grupuje pozycje opłacone z kontrybucji: ten sam produkt, ta sama cena, ta sama kontrybucja.
+    """
+    grouped = {}
+    for row in rows:
+        key = (row['product_id'], row['price'], row['contribution_payment_id'])
+        if key not in grouped:
+            grouped[key] = {
+                **row,
+                'quantity': 0,
+                'line_total': Decimal('0.00'),
+                'order_item_ids': [],
+            }
+        bucket = grouped[key]
+        bucket['quantity'] += row['quantity']
+        bucket['line_total'] += Decimal(row['line_total'])
+        bucket['order_item_ids'].append(row['id'])
+
+    aggregated = []
+    for bucket in grouped.values():
+        line_total = bucket['line_total'].quantize(Decimal('0.01'))
+        aggregated.append(
+            {
+                'id': (
+                    f"{bucket['product_id']}-{bucket['price']}-"
+                    f"{bucket['contribution_payment_id']}"
+                ),
+                'product_id': bucket['product_id'],
+                'product_name': bucket['product_name'],
+                'image_url': bucket['image_url'],
+                'quantity': bucket['quantity'],
+                'price': bucket['price'],
+                'line_total': str(line_total),
+                'contribution_payment_id': bucket['contribution_payment_id'],
+                'order_item_ids': bucket['order_item_ids'],
+            }
+        )
+
+    aggregated.sort(key=lambda row: (row['product_name'] or '', row['price'], row['contribution_payment_id']))
+    return aggregated
+
+
 def _get_available_payments_for_buyer(buyer_id):
     candidates = (
         Payment.objects.filter(related_user_id=buyer_id)
@@ -1868,6 +1911,8 @@ def api_get_order_settlement_data(request):
             )
         if item.left_to_pay > q:
             unpaid_items.append(_serialize_order_item_row(request, item))
+
+    paid_from_contributions = _aggregate_paid_from_contributions(paid_from_contributions)
 
     available_payments = []
     if order.buyer_id:
