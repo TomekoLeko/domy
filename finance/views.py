@@ -878,6 +878,7 @@ def _payment_to_api_dict(payment):
     return {
         'id': payment.id,
         'amount': str(payment.amount),
+        'available_amount': str(payment.available_amount),
         'payment_type': payment.payment_type,
         'payment_method': payment.payment_method,
         'description': payment.description,
@@ -888,6 +889,18 @@ def _payment_to_api_dict(payment):
         'created_at': payment.created_at.isoformat(),
         'created_by_id': payment.created_by_id,
     }
+
+
+def _parse_allocate_to_order_items_flag(data):
+    """Domyślnie True — zachowanie Rozliczeń (auto-alokacja przy related_order_id)."""
+    raw = data.get('allocate_to_order_items')
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() not in ('0', 'false', 'no', '')
+    return bool(raw)
 
 
 def _payment_settled_amount_excluding_items(payment, exclude_item_ids):
@@ -1400,6 +1413,30 @@ def api_create_payment(request):
                 },
                 status=400,
             )
+
+        allocate_to_order_items = _parse_allocate_to_order_items_flag(data)
+        if not allocate_to_order_items:
+            pay = Payment.objects.create(
+                payment_type='order',
+                payment_method=payment_method,
+                amount=amount,
+                description=description,
+                sender=sender,
+                related_user=related_user,
+                related_order_id=order.pk,
+                payment_date=payment_date,
+                created_by=request.user,
+            )
+            payload = [_payment_to_api_dict(pay)]
+            return JsonResponse(
+                {
+                    'status': 'success',
+                    'payment': payload[0],
+                    'payments': payload,
+                },
+                status=201,
+            )
+
         buyer_items = [
             it for it in order.items.all() if it.buyer_id == order.buyer_id
         ]
