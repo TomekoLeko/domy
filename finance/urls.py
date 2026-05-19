@@ -35,6 +35,17 @@ urlpatterns = [
     path('api/finance/delete-payment/<int:payment_id>/', views.api_delete_payment, name='api_delete_payment'),
     path('api/finance/get-filtered-users/', views.api_get_filtered_users, name='api_get_filtered_users'),
     path('api/finance/get-filtered-orders/', views.api_get_filtered_orders, name='api_get_filtered_orders'),
+    path(
+        'api/finance/bulk-transfers-context/',
+        views.api_get_bulk_transfers_context,
+        name='api_get_bulk_transfers_context',
+    ),
+    path(
+        'api/finance/save-multiple-payments/',
+        views.api_save_multiple_payments,
+        name='api_save_multiple_payments',
+    ),
+    path('api/finance/report-data/', views.api_get_report_data, name='api_get_report_data'),
     path('api/finance/invoices/', api_list_invoices, name='api_list_invoices'),
     path('api/finance/invoices/create/', api_create_invoice, name='api_create_invoice'),
     path(

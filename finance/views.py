@@ -25,6 +25,35 @@ from urllib.error import HTTPError, URLError
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
+
+def _parse_bulk_payment_date(value):
+    """Data z wyciągu bankowego (DD.MM.YYYY) lub ISO (YYYY-MM-DD)."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    for fmt in ('%d.%m.%Y', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f'Nieprawidłowa data płatności: {value}')
+
+
+def _create_payments_from_bulk_payload(payments, created_by):
+    for payment_data in payments:
+        Payment.objects.create(
+            payment_date=_parse_bulk_payment_date(payment_data.get('date')),
+            payment_type=payment_data.get('type') or 'other',
+            amount=payment_data['amount'],
+            sender=payment_data.get('sender') or '',
+            description=payment_data.get('description') or '',
+            related_user=None,
+            created_by=created_by,
+        )
+
+
 @staff_member_required
 def finance_main(request):
     payments = Payment.objects.all().select_related('related_user', 'created_by')[:50]
@@ -160,18 +189,7 @@ def save_multiple_payments(request):
     try:
         data = json.loads(request.body)
         payments = data.get('payments', [])
-
-        for payment_data in payments:
-            Payment.objects.create(
-                payment_date=payment_data['date'],
-                payment_type=payment_data['type'] or 'other',
-                amount=payment_data['amount'],
-                sender=payment_data['sender'],
-                description=payment_data['description'],
-                related_user=None,
-                created_by=request.user
-            )
-
+        _create_payments_from_bulk_payload(payments, request.user)
         return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -2460,3 +2478,58 @@ def api_get_filtered_orders(request):
     Deleguje do `get_filtered_orders` (ten sam payload i liczenie `left_to_pay`).
     """
     return get_filtered_orders(request)
+
+
+@staff_member_required
+def api_get_bulk_transfers_context(request):
+    """
+    GET /api/finance/bulk-transfers-context/
+    Kontekst importu wyciągu: typy płatności + istniejące płatności (wykrywanie duplikatów).
+    """
+    if request.method != 'GET':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+
+    existing_payments = []
+    for row in Payment.objects.values('payment_date', 'amount', 'description'):
+        pd = row['payment_date']
+        existing_payments.append(
+            {
+                'payment_date': pd.strftime('%d.%m.%Y') if pd else '',
+                'amount': float(row['amount']),
+                'description': row['description'] or '',
+            }
+        )
+
+    return JsonResponse(
+        {
+            'status': 'success',
+            'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
+            'existing_payments': existing_payments,
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@staff_member_required
+def api_save_multiple_payments(request):
+    """POST /api/finance/save-multiple-payments/ — zapis wielu przelewów z importu wyciągu."""
+    try:
+        data = json.loads(request.body)
+        payments = data.get('payments', [])
+        if not payments:
+            return JsonResponse({'status': 'error', 'message': 'Brak płatności do zapisania'}, status=400)
+        _create_payments_from_bulk_payload(payments, request.user)
+        return JsonResponse({'status': 'success'})
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Nieprawidłowy JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@staff_member_required
+def api_get_report_data(request):
+    """GET /api/finance/report-data/?month=&year= — dane raportu miesięcznego (bez faktur)."""
+    if request.method != 'GET':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+    return get_report_data(request)
