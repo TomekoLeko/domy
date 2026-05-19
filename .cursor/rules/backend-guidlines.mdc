@@ -27,3 +27,15 @@ Endpoint ustawia cookie `csrftoken` i zwraca JSON:
 - `user`: object lub `null`.
 
 Nastepnie frontend wysyla `X-CSRFToken` oraz `credentials: 'include'` przy zapytaniach modyfikujacych.
+
+## Endpointy API dla Reacta (`api_`)
+
+Wszystkie widoki JSON wywolywane z frontendu React musza:
+
+1. Miec sciezke URL pod prefiksem `/api/` (np. `/api/finance/payments/`).
+2. Miec **nazwe widoku** (funkcji) z prefiksem `api_` (np. `api_list_payments`, `api_save_multiple_payments`).
+3. Miec **nazwe URL** w `urls.py` z prefiksem `api_` (np. `name='api_list_payments'`).
+
+Widoki szablonowe Django (HTML, bez Reacta) pozostaja bez prefiksu `api_` — np. `finance/main.html`, `save_multiple_payments` pod `/finance/...`.
+
+Nowe funkcje dla SPA dodawaj jako osobne widoki `api_*` (lub aliasy delegujace do wspolnej logiki), nie jako bezposrednie wywolania starych sciezek `/finance/...` z Reacta.
