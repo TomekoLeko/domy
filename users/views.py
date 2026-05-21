@@ -4,6 +4,8 @@ from .forms import RegisterForm, LoginForm
 from django.urls import reverse
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from products.models import PriceList
 from .models import Profile
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -359,6 +361,133 @@ def api_delete_monthly_contribution_usage(request, usage_id):
 
 
 # --- API Auth (React frontend: sesja + cookie, bez JWT) ---
+
+
+def _serialize_my_account(user):
+    profile, _ = Profile.objects.get_or_create(user=user)
+    price_list_name = profile.price_list.name if profile.price_list_id else ""
+    return {
+        "id": user.id,
+        "username": user.username,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "email": user.email or "",
+        "date_joined": user.date_joined.isoformat() if user.date_joined else None,
+        "last_login": user.last_login.isoformat() if user.last_login else None,
+        "profile": {
+            "name": profile.name or "",
+            "phone": profile.phone or "",
+            "address": profile.address or "",
+            "city": profile.city or "",
+            "postal": profile.postal or "",
+            "parcel_locker_code": profile.parcel_locker_code or "",
+            "is_contributor": bool(profile.is_contributor),
+            "is_beneficiary": bool(profile.is_beneficiary),
+            "monthly_limit": profile.monthly_limit,
+            "discount_rate_percent": (
+                str(profile.discount_rate_percent)
+                if profile.discount_rate_percent is not None
+                else None
+            ),
+            "price_list_id": profile.price_list_id,
+            "price_list_name": price_list_name,
+        },
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_get_my_account(request):
+    """GET /api/auth/account/ — dane zalogowanego użytkownika (tylko własne konto)."""
+    return Response(_serialize_my_account(request.user), status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_update_my_account(request):
+    """
+    POST /api/auth/account/update/ — aktualizacja wyłącznie konta z sesji.
+
+    Edytowalne: username, first_name, last_name, email, pola profilu adresowego,
+    opcjonalnie hasło (current_password + new_password).
+    """
+    data = request.data
+    user = request.user
+    profile, _ = Profile.objects.get_or_create(user=user)
+
+    username = (data.get("username") or "").strip()
+    if not username:
+        return Response(
+            {"detail": "Nazwa użytkownika (login) jest wymagana"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if User.objects.exclude(pk=user.pk).filter(username=username).exists():
+        return Response(
+            {"detail": "Ta nazwa użytkownika jest już zajęta"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    email = (data.get("email") or "").strip()
+    if not email:
+        return Response(
+            {"detail": "Adres e-mail jest wymagany"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if User.objects.exclude(pk=user.pk).filter(email=email).exists():
+        return Response(
+            {"detail": "Ten adres e-mail jest już przypisany do innego konta"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    new_password = data.get("new_password") or ""
+    current_password = data.get("current_password") or ""
+    if new_password:
+        if not current_password:
+            return Response(
+                {"detail": "Podaj obecne hasło, aby ustawić nowe"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.check_password(current_password):
+            return Response(
+                {"detail": "Obecne hasło jest nieprawidłowe"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_password(new_password, user=user)
+        except ValidationError as exc:
+            return Response(
+                {"detail": " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    user.username = username
+    user.first_name = data.get("first_name", "")
+    user.last_name = data.get("last_name", "")
+    user.email = email
+    if new_password:
+        user.set_password(new_password)
+    user.save()
+
+    profile.name = data.get("name", "")
+    profile.phone = data.get("phone", "")
+    profile.address = data.get("address", "")
+    profile.city = data.get("city", "")
+    profile.postal = data.get("postal", "")
+    profile.parcel_locker_code = data.get("parcel_locker_code", "")
+    profile.save()
+
+    if new_password:
+        login(request, user)
+
+    return Response(
+        {
+            "status": "success",
+            "message": "Konto zostało zaktualizowane",
+            "account": _serialize_my_account(user),
+        },
+        status=status.HTTP_200_OK,
+    )
+
 
 @api_view(["POST"])
 def api_login(request):
