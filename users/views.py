@@ -408,36 +408,13 @@ def api_update_my_account(request):
     """
     POST /api/auth/account/update/ — aktualizacja wyłącznie konta z sesji.
 
-    Edytowalne: username, first_name, last_name, email, pola profilu adresowego,
+    Edytowalne: first_name, last_name, pola profilu adresowego,
     opcjonalnie hasło (current_password + new_password).
+    Login (username) i e-mail nie są zmienialne z tego endpointu.
     """
     data = request.data
     user = request.user
     profile, _ = Profile.objects.get_or_create(user=user)
-
-    username = (data.get("username") or "").strip()
-    if not username:
-        return Response(
-            {"detail": "Nazwa użytkownika (login) jest wymagana"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if User.objects.exclude(pk=user.pk).filter(username=username).exists():
-        return Response(
-            {"detail": "Ta nazwa użytkownika jest już zajęta"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    email = (data.get("email") or "").strip()
-    if not email:
-        return Response(
-            {"detail": "Adres e-mail jest wymagany"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if User.objects.exclude(pk=user.pk).filter(email=email).exists():
-        return Response(
-            {"detail": "Ten adres e-mail jest już przypisany do innego konta"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
 
     new_password = data.get("new_password") or ""
     current_password = data.get("current_password") or ""
@@ -460,10 +437,8 @@ def api_update_my_account(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    user.username = username
     user.first_name = data.get("first_name", "")
     user.last_name = data.get("last_name", "")
-    user.email = email
     if new_password:
         user.set_password(new_password)
     user.save()
