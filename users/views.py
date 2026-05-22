@@ -4,8 +4,7 @@ from .forms import RegisterForm, LoginForm
 from django.urls import reverse
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError
+from .password_messages import password_errors_polish
 from products.models import PriceList
 from .models import Profile
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -395,6 +394,17 @@ def _serialize_my_account(user):
     }
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_validate_new_password(request):
+    """POST /api/auth/account/validate-password/ — walidacja nowego hasła (reguły Django)."""
+    password = request.data.get("password") or ""
+    return Response(
+        {"errors": password_errors_polish(password, user=request.user)},
+        status=status.HTTP_200_OK,
+    )
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_get_my_account(request):
@@ -429,11 +439,10 @@ def api_update_my_account(request):
                 {"detail": "Obecne hasło jest nieprawidłowe"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            validate_password(new_password, user=user)
-        except ValidationError as exc:
+        errors = password_errors_polish(new_password, user=user)
+        if errors:
             return Response(
-                {"detail": " ".join(exc.messages)},
+                {"detail": " ".join(errors)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
