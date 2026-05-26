@@ -64,6 +64,21 @@ class Shipment(models.Model):
         verbose_name='Numer paczkomatu',
     )
 
+    shipping_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Koszt wysyłki',
+    )
+    packaging_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Koszt pakowania',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

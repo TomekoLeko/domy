@@ -77,6 +77,13 @@ class StockEntry(models.Model):
     quantity = models.PositiveIntegerField()
     net_cost = models.DecimalField(max_digits=10, decimal_places=2)
     gross_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    receiving_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Koszt obsługi przyjęcia',
+    )
     vat_rate = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     stock_type = models.CharField(max_length=10, choices=STOCK_TYPE_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -119,6 +126,13 @@ class StockReduction(models.Model):
     quantity = models.PositiveIntegerField()
     stock_entry = models.ForeignKey(StockEntry, on_delete=models.SET_NULL, null=True, blank=True, related_name='reductions')
     stock_type = models.CharField(max_length=10, choices=STOCK_TYPE_CHOICES, default='physical')
+    issuing_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Koszt obsługi wydania',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
