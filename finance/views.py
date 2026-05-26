@@ -1842,6 +1842,7 @@ def _serialize_order_item_row(request, order_item, *, contribution_payment_id=No
         ),
         'left_to_pay': str(order_item.left_to_pay),
         'contribution_payment_id': contribution_payment_id,
+        'is_service': order_item.product.is_service,
     }
 
 

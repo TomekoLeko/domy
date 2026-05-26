@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from stock.models import StockReduction
 from django.utils import timezone
 from django.contrib import messages
+from .order_service_fee import maybe_append_low_order_service_item
 
 
 def create_stock_reductions(order, order_items):
@@ -16,7 +17,9 @@ def create_stock_reductions(order, order_items):
 
 
 def create_stock_reduction_for_order_item(order_item, stock_type='virtual'):
-    """Tworzy pojedynczą redukcję magazynową dla pozycji zamówienia."""
+    """Tworzy pojedynczą redukcję magazynową dla pozycji zamówienia (pomija usługi)."""
+    if order_item.product.is_service:
+        return None
     return StockReduction.objects.create(
         product=order_item.product,
         quantity=1,
@@ -54,6 +57,8 @@ def create_order(request):
                     product=cart_item.product,
                     price=cart_item.price,
                 )
+
+        maybe_append_low_order_service_item(order)
 
         cart.delete()
 

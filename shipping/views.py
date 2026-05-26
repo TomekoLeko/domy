@@ -173,6 +173,7 @@ def _order_item_to_dict(item, request):
         'price': str(item.price),
         'buyer_id': item.buyer_id,
         'buyer_name': buyer_label,
+        'is_service': item.product.is_service if item.product_id else False,
     }
 
 
@@ -295,6 +296,22 @@ def api_assign_order_items_to_shipments(request):
         return JsonResponse(
             {'detail': f'Order items not found: {sorted(missing_items)}'},
             status=404,
+        )
+
+    service_item_ids = [
+        item_id
+        for item_id, item in order_items_by_id.items()
+        if item.product.is_service
+    ]
+    if service_item_ids:
+        return JsonResponse(
+            {
+                'detail': (
+                    'Service order items cannot be assigned to shipments: '
+                    f'{sorted(service_item_ids)}'
+                )
+            },
+            status=400,
         )
 
     already_assigned = [

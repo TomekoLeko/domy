@@ -1,4 +1,5 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
+from .order_service_fee import maybe_append_low_order_service_item
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
@@ -1373,6 +1374,8 @@ def api_create_order(request):
                 price=cart_item.price,
             )
 
+    maybe_append_low_order_service_item(order)
+
     cart.delete()
 
     items_data = [
@@ -1382,6 +1385,7 @@ def api_create_order(request):
             'product_name': oi.product.name,
             'price': str(oi.price),
             'buyer_id': oi.buyer_id,
+            'is_service': oi.product.is_service,
         }
         for oi in order.items.select_related('product').all()
     ]
@@ -1457,6 +1461,7 @@ def api_list_of_orders_for_buyer(request):
                 'buyer_id': item.buyer_id,
                 'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
+                'is_service': item.product.is_service,
             })
             if item.buyer_id == buyer.id:
                 left_to_pay_buyer += item.left_to_pay
@@ -1534,6 +1539,7 @@ def api_list_of_orders_for_admin(request):
                 'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
                 'shipment_id': item.shipment_id,
+                'is_service': item.product.is_service,
             })
         orders_data.append({
             'id': order.id,

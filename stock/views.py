@@ -197,7 +197,13 @@ def create_stock_reduction(request):
         
         # Get the order item
         order_item = get_object_or_404(OrderItem, id=order_item_id)
-        
+
+        if order_item.product.is_service:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Usługi nie podlegają redukcji magazynowej.'},
+                status=400,
+            )
+
         # Create the stock reduction
         stock_reduction = StockReduction.objects.create(
             product_id=product_id,
