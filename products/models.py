@@ -42,6 +42,15 @@ class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    is_service = models.BooleanField(
+        default=False,
+        verbose_name='Usługa',
+        help_text='Np. dostawa — nie jest towarem magazynowym.',
+    )
+    exclude_from_catalog = models.BooleanField(
+        default=False,
+        verbose_name='Ukryj w katalogu sklepu',
+    )
     categories = models.ManyToManyField(ProductCategory, related_name='products', blank=True)
     vat = models.DecimalField(max_digits=4, decimal_places=2, default=23.00)
     ean = models.CharField(max_length=13, blank=True, null=True)

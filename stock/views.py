@@ -467,7 +467,11 @@ def api_delete_stock_reduction(request, reduction_id):
 
 @require_authenticated_staff_or_superuser
 def api_products(request):
-    products = Product.objects.filter(is_active=True).prefetch_related('images')
+    products = Product.objects.filter(
+        is_active=True,
+        is_service=False,
+        exclude_from_catalog=False,
+    ).prefetch_related('images')
     
     # Get stock information for each product
     product_data = []
