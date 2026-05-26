@@ -1,5 +1,9 @@
 from django.urls import path
-from stock.views import api_delete_stock_reduction, api_list_stock_reductions
+from stock.views import (
+    api_delete_stock_reduction,
+    api_list_stock_reductions,
+    api_update_stock_reduction,
+)
 from stock.suppliers_api import (
     api_add_supplier,
     api_delete_supplier,
@@ -69,6 +73,11 @@ urlpatterns = [
         'api/stock/reductions/delete/<int:reduction_id>/',
         api_delete_stock_reduction,
         name='api_delete_stock_reduction',
+    ),
+    path(
+        'api/stock/reductions/update/<int:reduction_id>/',
+        api_update_stock_reduction,
+        name='api_update_stock_reduction',
     ),
     path('api/supply-orders/', api_list_supply_orders, name='api_list_supply_orders'),
     path('api/supply-orders/create/', api_create_supply_order, name='api_create_supply_order'),
