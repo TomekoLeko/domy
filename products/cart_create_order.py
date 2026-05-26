@@ -17,8 +17,8 @@ def create_stock_reductions(order, order_items):
 
 
 def create_stock_reduction_for_order_item(order_item, stock_type='virtual'):
-    """Tworzy pojedynczą redukcję magazynową dla pozycji zamówienia (pomija usługi)."""
-    if order_item.product.is_service:
+    """Tworzy pojedynczą redukcję magazynową dla pozycji zamówienia (pomija produkty niebędące towarem)."""
+    if order_item.product.type != Product.TYPE_ITEM:
         return None
     return StockReduction.objects.create(
         product=order_item.product,

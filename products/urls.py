@@ -28,9 +28,9 @@ urlpatterns = [
     path('api/admin/price-lists/save/', views.api_save_price, name='api_save_price'),
     path('api/admin/products/', views.api_admin_products, name='api_admin_products'),
     path('api/admin/products/add/', views.api_admin_add_product, name='api_admin_add_product'),
-    path('api/admin/services/add/', views.api_admin_add_service, name='api_admin_add_service'),
+    path('api/admin/shipments/add/', views.api_admin_add_shipment, name='api_admin_add_shipment'),
     path('api/admin/products/edit/<int:product_id>/', views.api_admin_edit_product, name='api_admin_edit_product'),
-    path('api/admin/services/edit/<int:product_id>/', views.api_admin_edit_service, name='api_admin_edit_service'),
+    path('api/admin/shipments/edit/<int:product_id>/', views.api_admin_edit_shipment, name='api_admin_edit_shipment'),
     path('api/admin/products/delete/<int:product_id>/', views.api_admin_delete_product, name='api_admin_delete_product'),
     path('api/admin/product-categories/add/', views.api_admin_add_product_category, name='api_admin_add_product_category'),
     path(

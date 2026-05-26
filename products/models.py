@@ -33,6 +33,16 @@ class ProductCategory(models.Model):
         verbose_name_plural = "Kategorie produktów"
 
 class Product(models.Model):
+    TYPE_ITEM = 'item'
+    TYPE_SHIPMENT = 'shipment'
+    TYPE_SERVICE = 'service'
+
+    TYPE_CHOICES = [
+        (TYPE_ITEM, 'Towar'),
+        (TYPE_SHIPMENT, 'Wysyłka'),
+        (TYPE_SERVICE, 'Usługa'),
+    ]
+
     UNIT_CHOICES = [
         ("l", "Litry"),
         ("kg", "Kilogramy"),
@@ -42,10 +52,11 @@ class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
-    is_service = models.BooleanField(
-        default=False,
-        verbose_name='Usługa',
-        help_text='Np. dostawa — nie jest towarem magazynowym.',
+    type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default=TYPE_ITEM,
+        verbose_name='Typ',
     )
     exclude_from_catalog = models.BooleanField(
         default=False,

@@ -8,7 +8,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from domy.decorators import require_authenticated_staff_or_superuser
 from products.cart_create_order import create_stock_reduction_for_order_item
-from products.models import OrderItem
+from products.models import OrderItem, Product
 from stock.models import StockReduction
 
 from .models import Carrier, DeliveryMethod, Shipment
@@ -173,7 +173,7 @@ def _order_item_to_dict(item, request):
         'price': str(item.price),
         'buyer_id': item.buyer_id,
         'buyer_name': buyer_label,
-        'is_service': item.product.is_service if item.product_id else False,
+        'product_type': item.product.type if item.product_id else Product.TYPE_ITEM,
     }
 
 
@@ -298,17 +298,17 @@ def api_assign_order_items_to_shipments(request):
             status=404,
         )
 
-    service_item_ids = [
+    non_item_ids = [
         item_id
         for item_id, item in order_items_by_id.items()
-        if item.product.is_service
+        if item.product.type != Product.TYPE_ITEM
     ]
-    if service_item_ids:
+    if non_item_ids:
         return JsonResponse(
             {
                 'detail': (
-                    'Service order items cannot be assigned to shipments: '
-                    f'{sorted(service_item_ids)}'
+                    'Non-item order products cannot be assigned to shipments: '
+                    f'{sorted(non_item_ids)}'
                 )
             },
             status=400,

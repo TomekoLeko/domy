@@ -11,7 +11,7 @@ LOW_ORDER_SERVICE_GROSS_PRICE = Decimal('15.00')
 def maybe_append_low_order_service_item(order):
     """
     Gdy wartość towaru w zamówieniu (order.total_cost w momencie wywołania) jest < 200 zł,
-    dopina pierwszą aktywną usługę (`is_service=True`) jako pozycję po 15 zł brutto.
+    dopina pierwszy aktywny produkt typu wysyłka (`type=shipment`) jako pozycję po 15 zł brutto.
 
     Aktualizuje `total_cost` i `max_payable_amount` (jeśli ustawione). Nie tworzy redukcji magazynowej.
     Zwraca utworzony OrderItem lub None.
@@ -21,7 +21,7 @@ def maybe_append_low_order_service_item(order):
         return None
 
     service_product = (
-        Product.objects.filter(is_service=True, is_active=True).order_by('pk').first()
+        Product.objects.filter(type=Product.TYPE_SHIPMENT, is_active=True).order_by('pk').first()
     )
     if service_product is None:
         return None

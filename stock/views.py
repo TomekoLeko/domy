@@ -198,9 +198,9 @@ def create_stock_reduction(request):
         # Get the order item
         order_item = get_object_or_404(OrderItem, id=order_item_id)
 
-        if order_item.product.is_service:
+        if order_item.product.type != Product.TYPE_ITEM:
             return JsonResponse(
-                {'status': 'error', 'message': 'Usługi nie podlegają redukcji magazynowej.'},
+                {'status': 'error', 'message': 'Produkty inne niż towar nie podlegają redukcji magazynowej.'},
                 status=400,
             )
 
@@ -475,7 +475,7 @@ def api_delete_stock_reduction(request, reduction_id):
 def api_products(request):
     products = Product.objects.filter(
         is_active=True,
-        is_service=False,
+        type=Product.TYPE_ITEM,
         exclude_from_catalog=False,
     ).prefetch_related('images')
     

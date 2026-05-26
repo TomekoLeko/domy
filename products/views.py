@@ -71,7 +71,8 @@ def _admin_product_to_dict(request, product):
         'categories': [{'id': c.id, 'name': c.name, 'icon': c.icon} for c in product.categories.all()],
         'physical_stock': calculate_physical_stock_level(product),
         'virtual_stock': calculate_virtual_stock_level(product),
-        'is_service': product.is_service,
+        'type': product.type,
+        'type_display': product.get_type_display(),
         'exclude_from_catalog': product.exclude_from_catalog,
     }
 
@@ -79,7 +80,7 @@ def _admin_product_to_dict(request, product):
 def _create_admin_catalog_item_from_post(
     request,
     *,
-    is_service,
+    product_type,
     exclude_from_catalog,
     assign_categories=True,
 ):
@@ -94,7 +95,7 @@ def _create_admin_catalog_item_from_post(
         ean=(request.POST.get('ean') or '').strip() or None,
         volume_value=request.POST.get('volume_value') or 1,
         volume_unit=request.POST.get('volume_unit') or 'pcs',
-        is_service=is_service,
+        type=product_type,
         exclude_from_catalog=exclude_from_catalog,
     )
 
@@ -121,7 +122,7 @@ def _update_admin_catalog_item_from_post(
     product,
     request,
     *,
-    is_service,
+    product_type,
     exclude_from_catalog,
     assign_categories=True,
 ):
@@ -135,7 +136,7 @@ def _update_admin_catalog_item_from_post(
     product.ean = (request.POST.get('ean') or '').strip() or None
     product.volume_value = request.POST.get('volume_value') or product.volume_value
     product.volume_unit = request.POST.get('volume_unit') or product.volume_unit
-    product.is_service = is_service
+    product.type = product_type
     product.exclude_from_catalog = exclude_from_catalog
 
     if assign_categories:
@@ -160,7 +161,7 @@ def _category_to_dict(category):
 def products(request):
     products = Product.objects.filter(
         is_active=True,
-        is_service=False,
+        type=Product.TYPE_ITEM,
         exclude_from_catalog=False,
     ).prefetch_related('images')
     categories = ProductCategory.objects.all()
@@ -203,7 +204,7 @@ def add_product(request):
                 ean=ean,
                 volume_value=volume_value,
                 volume_unit=volume_unit,
-                is_service=False,
+                type=Product.TYPE_ITEM,
                 exclude_from_catalog=False,
             )
 
@@ -344,9 +345,17 @@ def api_admin_price_lists(request):
 @require_authenticated_staff_or_superuser
 def api_admin_products(request):
     products = Product.objects.filter(is_active=True).prefetch_related('images', 'categories').order_by('id')
-    include_services = request.GET.get('include_services', '').lower() in ('1', 'true', 'yes')
-    if not include_services:
-        products = products.filter(exclude_from_catalog=False)
+    include_shipments = request.GET.get('include_shipments', '').lower() in ('1', 'true', 'yes')
+    if not include_shipments:
+        legacy_include = request.GET.get('include_services', '').lower() in ('1', 'true', 'yes')
+        include_shipments = legacy_include
+    if include_shipments:
+        products = products.filter(
+            Q(type=Product.TYPE_ITEM, exclude_from_catalog=False)
+            | Q(type=Product.TYPE_SHIPMENT)
+        ).exclude(type=Product.TYPE_SERVICE)
+    else:
+        products = products.filter(type=Product.TYPE_ITEM, exclude_from_catalog=False)
     categories = ProductCategory.objects.all().order_by('name')
     return JsonResponse(
         {
@@ -362,7 +371,7 @@ def api_admin_products(request):
 def api_admin_add_product(request):
     product, error_response = _create_admin_catalog_item_from_post(
         request,
-        is_service=False,
+        product_type=Product.TYPE_ITEM,
         exclude_from_catalog=False,
     )
     if error_response is not None:
@@ -377,14 +386,14 @@ def api_admin_add_product(request):
 
 @require_POST
 @require_authenticated_staff_or_superuser
-def api_admin_add_service(request):
+def api_admin_add_shipment(request):
     exclude_from_catalog = _parse_bool_form_value(
         request.POST.get('exclude_from_catalog'),
         default=True,
     )
     product, error_response = _create_admin_catalog_item_from_post(
         request,
-        is_service=True,
+        product_type=Product.TYPE_SHIPMENT,
         exclude_from_catalog=exclude_from_catalog,
         assign_categories=False,
     )
@@ -404,13 +413,13 @@ def api_admin_edit_product(request, product_id):
     product = get_object_or_404(
         Product.objects.prefetch_related('images', 'categories'),
         id=product_id,
-        is_service=False,
+        type=Product.TYPE_ITEM,
     )
 
     error_response = _update_admin_catalog_item_from_post(
         product,
         request,
-        is_service=False,
+        product_type=Product.TYPE_ITEM,
         exclude_from_catalog=False,
     )
     if error_response is not None:
@@ -425,11 +434,11 @@ def api_admin_edit_product(request, product_id):
 
 @require_POST
 @require_authenticated_staff_or_superuser
-def api_admin_edit_service(request, product_id):
+def api_admin_edit_shipment(request, product_id):
     product = get_object_or_404(
         Product.objects.prefetch_related('images', 'categories'),
         id=product_id,
-        is_service=True,
+        type=Product.TYPE_SHIPMENT,
     )
     exclude_from_catalog = _parse_bool_form_value(
         request.POST.get('exclude_from_catalog'),
@@ -439,7 +448,7 @@ def api_admin_edit_service(request, product_id):
     error_response = _update_admin_catalog_item_from_post(
         product,
         request,
-        is_service=True,
+        product_type=Product.TYPE_SHIPMENT,
         exclude_from_catalog=exclude_from_catalog,
         assign_categories=False,
     )
@@ -652,7 +661,7 @@ def api_products_list(request):
     products = Product.objects.filter(
         is_active=True,
         exclude_from_catalog=False,
-        is_service=False,
+        type=Product.TYPE_ITEM,
     ).prefetch_related(
         'images', 'prices__price_list', 'categories'
     )
@@ -803,7 +812,7 @@ def api_add_cart_item(request):
     except (Product.DoesNotExist, ValueError):
         return JsonResponse({'detail': 'Product not found'}, status=404)
 
-    if product.is_service or product.exclude_from_catalog:
+    if product.type != Product.TYPE_ITEM or product.exclude_from_catalog:
         return JsonResponse({'detail': 'Ten produkt nie jest dostępny w sklepie.'}, status=400)
 
     price_list = getattr(buyer, 'profile', None) and getattr(buyer.profile, 'price_list', None)
@@ -1385,7 +1394,7 @@ def api_create_order(request):
             'product_name': oi.product.name,
             'price': str(oi.price),
             'buyer_id': oi.buyer_id,
-            'is_service': oi.product.is_service,
+            'product_type': oi.product.type,
         }
         for oi in order.items.select_related('product').all()
     ]
@@ -1461,7 +1470,7 @@ def api_list_of_orders_for_buyer(request):
                 'buyer_id': item.buyer_id,
                 'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
-                'is_service': item.product.is_service,
+                'product_type': item.product.type,
             })
             if item.buyer_id == buyer.id:
                 left_to_pay_buyer += item.left_to_pay
@@ -1539,7 +1548,7 @@ def api_list_of_orders_for_admin(request):
                 'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
                 'left_to_pay': str(item.left_to_pay),
                 'shipment_id': item.shipment_id,
-                'is_service': item.product.is_service,
+                'product_type': item.product.type,
             })
         orders_data.append({
             'id': order.id,
