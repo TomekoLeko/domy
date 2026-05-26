@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import views
 from .invoices_api import api_create_invoice, api_delete_invoice, api_list_invoices
+from .order_summary_api import api_list_order_summaries
 
 app_name = 'finance'
 
@@ -46,6 +47,11 @@ urlpatterns = [
         name='api_save_multiple_payments',
     ),
     path('api/finance/report-data/', views.api_get_report_data, name='api_get_report_data'),
+    path(
+        'api/finance/order-summaries/',
+        api_list_order_summaries,
+        name='api_list_order_summaries',
+    ),
     path('api/finance/invoices/', api_list_invoices, name='api_list_invoices'),
     path('api/finance/invoices/create/', api_create_invoice, name='api_create_invoice'),
     path(
