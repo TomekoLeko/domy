@@ -26,26 +26,64 @@ def _product_image_url(request, product):
     return None
 
 
-def _order_item_purchase_cost(order_item):
+def _order_item_line_costs(order_item):
     """
-    Koszt zakupu jednej pozycji OrderItem (zwykle 1 szt.) z powiązań StockReduction → StockEntry.
-    Zwraca (koszt_jednostkowy, kompletne_pokrycie).
+    Koszty jednej pozycji OrderItem z powiązań StockReduction → StockEntry.
+
+    Koszt zakupu (Koszt) liczony jest jak wcześniej — z net_cost i StockEntry,
+    niezależnie od uzupełnienia kosztów operacyjnych.
+    `complete` jest False, gdy brak redukcji, niepełne pokrycie magazynowe lub
+    którekolwiek z pól receiving_cost / issuing_cost jest nieuzupełnione.
     """
     reductions = list(order_item.stock_reductions.all())
     if not reductions:
-        return Decimal('0'), False
+        return {
+            'purchase_cost': Decimal('0'),
+            'receiving_cost': Decimal('0'),
+            'issuing_cost': Decimal('0'),
+            'complete': False,
+        }
 
+    purchase_cost = Decimal('0')
+    receiving_cost = Decimal('0')
+    issuing_cost = Decimal('0')
     covered_qty = 0
-    total_cost = Decimal('0')
+    seen_entry_ids = set()
+    purchase_complete = True
+    receiving_complete = True
+    issuing_complete = True
+
     for reduction in reductions:
         if reduction.stock_entry_id is None:
-            return total_cost, False
+            purchase_complete = False
+            continue
+
+        entry = reduction.stock_entry
         covered_qty += reduction.quantity
-        total_cost += reduction.quantity * reduction.stock_entry.net_cost
+        purchase_cost += reduction.quantity * entry.net_cost
+
+        if entry.receiving_cost is None:
+            receiving_complete = False
+        elif entry.id not in seen_entry_ids:
+            receiving_cost += entry.receiving_cost
+            seen_entry_ids.add(entry.id)
+
+        if reduction.issuing_cost is None:
+            issuing_complete = False
+        else:
+            issuing_cost += reduction.issuing_cost
 
     if covered_qty < 1:
-        return total_cost, False
-    return total_cost, True
+        purchase_complete = False
+
+    complete = purchase_complete and receiving_complete and issuing_complete
+
+    return {
+        'purchase_cost': purchase_cost.quantize(MONEY_QUANT),
+        'receiving_cost': receiving_cost.quantize(MONEY_QUANT),
+        'issuing_cost': issuing_cost.quantize(MONEY_QUANT),
+        'complete': complete,
+    }
 
 
 def _linked_shipments_for_order(order_items):
@@ -104,6 +142,9 @@ def _aggregate_order_lines(request, order_items):
             'quantity': 0,
             'unit_price': Decimal('0'),
             'unit_cost': Decimal('0'),
+            'purchase_cost': Decimal('0'),
+            'receiving_cost': Decimal('0'),
+            'issuing_cost': Decimal('0'),
             'has_incomplete_calculations': False,
         }
     )
@@ -137,28 +178,43 @@ def _aggregate_order_lines(request, order_items):
         if product.type != Product.TYPE_ITEM:
             continue
 
-        unit_cost, complete = _order_item_purchase_cost(order_item)
-        unit_cost = unit_cost.quantize(MONEY_QUANT)
-        if not complete:
+        costs = _order_item_line_costs(order_item)
+        if not costs['complete']:
             has_incomplete = True
 
-        # Dla spójności z flagą — rozdzielamy też bucket po `complete`,
-        # żeby wiersz odpowiadał konkretnemu statusowi pokrycia.
-        key = (product.id, unit_price, unit_cost, complete)
+        # Dla spójności z flagą — rozdzielamy bucket po statusie i kwotach jednostkowych.
+        key = (
+            product.id,
+            unit_price,
+            costs['purchase_cost'],
+            costs['receiving_cost'],
+            costs['issuing_cost'],
+            costs['complete'],
+        )
         bucket = item_buckets[key]
         bucket['product_id'] = product.id
         bucket['product_name'] = product.name
         bucket['image_url'] = _product_image_url(request, product)
         bucket['product_type'] = Product.TYPE_ITEM
         bucket['unit_price'] = unit_price
-        bucket['unit_cost'] = unit_cost
-        bucket['has_incomplete_calculations'] = not complete
+        bucket['unit_cost'] = costs['purchase_cost']
+        bucket['has_incomplete_calculations'] = not costs['complete']
         bucket['quantity'] += 1
+        bucket['purchase_cost'] += costs['purchase_cost']
+        bucket['receiving_cost'] += costs['receiving_cost']
+        bucket['issuing_cost'] += costs['issuing_cost']
 
     def bucket_to_product_line(bucket):
         quantity = bucket['quantity']
         unit_price = bucket['unit_price']
-        unit_cost = bucket['unit_cost']
+        purchase_cost = bucket['purchase_cost']
+        receiving_cost = bucket['receiving_cost']
+        issuing_cost = bucket['issuing_cost']
+        amount = unit_price * quantity
+        incomplete = bucket['has_incomplete_calculations']
+        total_costs = purchase_cost + receiving_cost + issuing_cost
+        profit = amount - total_costs
+
         return {
             'product_id': bucket['product_id'],
             'product_name': bucket['product_name'],
@@ -166,10 +222,13 @@ def _aggregate_order_lines(request, order_items):
             'product_type': bucket['product_type'],
             'quantity': quantity,
             'unit_price': _money_str(unit_price),
-            'amount': _money_str(unit_price * quantity),
-            'unit_cost': _money_str(unit_cost),
-            'cost': _money_str(unit_cost * quantity),
-            'has_incomplete_calculations': bucket['has_incomplete_calculations'],
+            'amount': _money_str(amount),
+            'receiving_cost': _money_str(receiving_cost),
+            'issuing_cost': _money_str(issuing_cost),
+            'unit_cost': _money_str(bucket['unit_cost']),
+            'cost': _money_str(purchase_cost),
+            'profit': None if incomplete else _money_str(profit),
+            'has_incomplete_calculations': incomplete,
         }
 
     product_lines = [bucket_to_product_line(b) for b in item_buckets.values()]
