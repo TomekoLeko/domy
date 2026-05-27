@@ -52,6 +52,10 @@ def _aggregate_order_lines(request, order_items):
     """
     Grupuje pozycje po (produkt, cena sprzedaży, koszt jednostkowy zakupu).
     Zwraca (linie_wyświetlane, has_incomplete_calculations).
+
+    Każda linia ma też `has_incomplete_calculations`, odpowiadającą temu,
+    czy przynajmniej jedna (towarowa) `OrderItem` w danym wierszu ma niepełne
+    pokrycie kosztu magazynowego.
     """
     item_buckets = defaultdict(
         lambda: {
@@ -63,6 +67,7 @@ def _aggregate_order_lines(request, order_items):
             'quantity': 0,
             'unit_price': Decimal('0'),
             'unit_cost': Decimal('0'),
+            'has_incomplete_calculations': False,
         }
     )
     shipment_buckets = defaultdict(
@@ -75,6 +80,7 @@ def _aggregate_order_lines(request, order_items):
             'quantity': 0,
             'unit_price': Decimal('0'),
             'unit_cost': Decimal('0'),
+            'has_incomplete_calculations': False,
         }
     )
     has_incomplete = False
@@ -106,7 +112,9 @@ def _aggregate_order_lines(request, order_items):
         if not complete:
             has_incomplete = True
 
-        key = (product.id, unit_price, unit_cost)
+        # Dla spójności z flagą — rozdzielamy też bucket po `complete`,
+        # żeby wiersz odpowiadał konkretnemu statusowi pokrycia.
+        key = (product.id, unit_price, unit_cost, complete)
         bucket = item_buckets[key]
         bucket['product_id'] = product.id
         bucket['product_name'] = product.name
@@ -114,6 +122,7 @@ def _aggregate_order_lines(request, order_items):
         bucket['product_type'] = Product.TYPE_ITEM
         bucket['unit_price'] = unit_price
         bucket['unit_cost'] = unit_cost
+        bucket['has_incomplete_calculations'] = not complete
         bucket['quantity'] += 1
 
     def bucket_to_line(bucket):
@@ -131,6 +140,7 @@ def _aggregate_order_lines(request, order_items):
             'amount': _money_str(unit_price * quantity),
             'unit_cost': _money_str(unit_cost),
             'cost': _money_str(unit_cost * quantity),
+            'has_incomplete_calculations': bucket['has_incomplete_calculations'],
         }
 
     lines = [bucket_to_line(b) for b in item_buckets.values()]
@@ -152,6 +162,7 @@ def _aggregate_order_lines(request, order_items):
                 'amount': _money_str(Decimal('0')),
                 'unit_cost': _money_str(Decimal('0')),
                 'cost': _money_str(Decimal('0')),
+                'has_incomplete_calculations': False,
             }
         )
 
