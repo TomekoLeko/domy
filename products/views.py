@@ -1,5 +1,5 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
-from .order_service_fee import maybe_append_low_order_service_item
+from .order_service_fee import append_shipment_order_item
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
@@ -1383,7 +1383,7 @@ def api_create_order(request):
                 price=cart_item.price,
             )
 
-    maybe_append_low_order_service_item(order)
+    append_shipment_order_item(order)
 
     cart.delete()
 

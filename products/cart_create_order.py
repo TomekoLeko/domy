@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from stock.models import StockReduction
 from django.utils import timezone
 from django.contrib import messages
-from .order_service_fee import maybe_append_low_order_service_item
+from .order_service_fee import append_shipment_order_item
 
 
 def create_stock_reductions(order, order_items):
@@ -58,7 +58,7 @@ def create_order(request):
                     price=cart_item.price,
                 )
 
-        maybe_append_low_order_service_item(order)
+        append_shipment_order_item(order)
 
         cart.delete()
 
