@@ -15,6 +15,7 @@ from stock.supply_orders_api import (
     api_create_supply_order,
     api_delete_supply_order,
     api_list_supply_orders,
+    api_update_supply_order,
 )
 from . import views
 from . import carts_views
@@ -83,6 +84,11 @@ urlpatterns = [
     ),
     path('api/supply-orders/', api_list_supply_orders, name='api_list_supply_orders'),
     path('api/supply-orders/create/', api_create_supply_order, name='api_create_supply_order'),
+    path(
+        'api/supply-orders/update/<int:supply_order_id>/',
+        api_update_supply_order,
+        name='api_update_supply_order',
+    ),
     path(
         'api/supply-orders/delete/<int:supply_order_id>/',
         api_delete_supply_order,
