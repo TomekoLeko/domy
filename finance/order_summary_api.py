@@ -70,21 +70,23 @@ def _aggregate_order_lines(request, order_items):
             'has_incomplete_calculations': False,
         }
     )
-    shipment_buckets = defaultdict(
-        lambda: {
-            'product_id': None,
-            'product_name': '',
-            'image_url': None,
-            'product_type': Product.TYPE_SHIPMENT,
-            'is_virtual': False,
-            'quantity': 0,
-            'unit_price': Decimal('0'),
-            'unit_cost': Decimal('0'),
-            'has_incomplete_calculations': False,
-        }
-    )
+    shipment_bucket = {
+        'product_id': None,
+        'product_name': VIRTUAL_SHIPMENT_NAME,
+        'image_url': None,
+        'product_type': Product.TYPE_SHIPMENT,
+        'is_virtual': False,
+        'quantity': 0,
+        'unit_price': Decimal('0'),
+        'unit_cost': Decimal('0'),
+        'has_incomplete_calculations': False,
+        'shipment_amount': Decimal('0'),
+        'shipment_shipping_cost': Decimal('0'),
+        'shipment_packaging_cost': Decimal('0'),
+    }
     has_incomplete = False
     has_shipment_line = False
+    seen_shipment_ids = set()
 
     for order_item in order_items:
         product = order_item.product
@@ -92,16 +94,26 @@ def _aggregate_order_lines(request, order_items):
 
         if product.type == Product.TYPE_SHIPMENT:
             has_shipment_line = True
-            unit_cost = Decimal('0')
-            key = (product.id, unit_price, unit_cost)
-            bucket = shipment_buckets[key]
-            bucket['product_id'] = product.id
-            bucket['product_name'] = product.name
-            bucket['image_url'] = _product_image_url(request, product)
-            bucket['product_type'] = Product.TYPE_SHIPMENT
-            bucket['unit_price'] = unit_price
-            bucket['unit_cost'] = unit_cost
-            bucket['quantity'] += 1
+            shipment_bucket['quantity'] += 1
+            shipment_bucket['shipment_amount'] += unit_price
+
+            if order_item.shipment_id is None:
+                shipment_bucket['has_incomplete_calculations'] = True
+                has_incomplete = True
+                continue
+
+            if order_item.shipment_id in seen_shipment_ids:
+                continue
+
+            seen_shipment_ids.add(order_item.shipment_id)
+            shipment = order_item.shipment
+            if shipment.shipping_cost is None or shipment.packaging_cost is None:
+                shipment_bucket['has_incomplete_calculations'] = True
+                has_incomplete = True
+                continue
+
+            shipment_bucket['shipment_shipping_cost'] += shipment.shipping_cost
+            shipment_bucket['shipment_packaging_cost'] += shipment.packaging_cost
             continue
 
         if product.type != Product.TYPE_ITEM:
@@ -129,6 +141,11 @@ def _aggregate_order_lines(request, order_items):
         quantity = bucket['quantity']
         unit_price = bucket['unit_price']
         unit_cost = bucket['unit_cost']
+        is_shipment = bucket['product_type'] == Product.TYPE_SHIPMENT
+        shipment_amount = bucket.get('shipment_amount', Decimal('0'))
+        shipment_shipping_cost = bucket.get('shipment_shipping_cost', Decimal('0'))
+        shipment_packaging_cost = bucket.get('shipment_packaging_cost', Decimal('0'))
+
         return {
             'product_id': bucket['product_id'],
             'product_name': bucket['product_name'],
@@ -137,19 +154,28 @@ def _aggregate_order_lines(request, order_items):
             'is_virtual': bucket['is_virtual'],
             'quantity': quantity,
             'unit_price': _money_str(unit_price),
-            'amount': _money_str(unit_price * quantity),
+            'amount': _money_str(shipment_amount if is_shipment else unit_price * quantity),
             'unit_cost': _money_str(unit_cost),
-            'cost': _money_str(unit_cost * quantity),
+            'cost': _money_str(
+                (shipment_shipping_cost + shipment_packaging_cost)
+                if is_shipment
+                else unit_cost * quantity
+            ),
             'has_incomplete_calculations': bucket['has_incomplete_calculations'],
+            'shipment_shipping_cost': _money_str(shipment_shipping_cost),
+            'shipment_packaging_cost': _money_str(shipment_packaging_cost),
         }
 
     lines = [bucket_to_line(b) for b in item_buckets.values()]
     lines.sort(key=lambda row: (row['product_name'] or '', row['unit_price']))
 
-    shipment_lines = [bucket_to_line(b) for b in shipment_buckets.values()]
-    shipment_lines.sort(key=lambda row: (row['product_name'] or '', row['unit_price']))
-
-    if not has_shipment_line:
+    shipment_lines = []
+    if has_shipment_line:
+        shipment_bucket['unit_cost'] = (
+            shipment_bucket['shipment_shipping_cost'] + shipment_bucket['shipment_packaging_cost']
+        ).quantize(MONEY_QUANT)
+        shipment_lines.append(bucket_to_line(shipment_bucket))
+    else:
         shipment_lines.append(
             {
                 'product_id': None,
@@ -163,6 +189,9 @@ def _aggregate_order_lines(request, order_items):
                 'unit_cost': _money_str(Decimal('0')),
                 'cost': _money_str(Decimal('0')),
                 'has_incomplete_calculations': False,
+                'shipment_amount': _money_str(Decimal('0')),
+                'shipment_shipping_cost': _money_str(Decimal('0')),
+                'shipment_packaging_cost': _money_str(Decimal('0')),
             }
         )
 
@@ -173,7 +202,7 @@ def _aggregate_order_lines(request, order_items):
 def _order_items_prefetch():
     return Prefetch(
         'items',
-        queryset=OrderItem.objects.select_related('product').prefetch_related(
+        queryset=OrderItem.objects.select_related('product', 'shipment').prefetch_related(
             'product__images',
             Prefetch(
                 'stock_reductions',
