@@ -1,6 +1,7 @@
 from django.db import models
 from products.models import Product, Order
 from datetime import datetime
+from django.utils import timezone
 
 class Supplier(models.Model):
     name = models.CharField(max_length=255)
@@ -90,13 +91,34 @@ class StockEntry(models.Model):
     remaining_quantity = models.PositiveIntegerField()
 
     def save(self, *args, **kwargs):
-        if not self.id:  # Only on creation
+        is_new = self.pk is None
+        if is_new:  # Only on creation
             # Copy VAT rate from product if available
             if hasattr(self.product, 'vat_rate'):
                 self.vat_rate = self.product.vat_rate
             # Set remaining_quantity
             self.remaining_quantity = self.quantity
         super().save(*args, **kwargs)
+        if is_new:
+            self._assign_pending_stock_reductions()
+
+    def _assign_pending_stock_reductions(self):
+        """
+        Gdy pozycje zamówień zostały utworzone zanim towar pojawił się w magazynie,
+        `StockReduction.stock_entry` może pozostać puste. Po dodaniu nowego `StockEntry`
+        przypisujemy FIFO brakujące `StockEntry` do takich pending redukcji.
+        """
+        pending_reductions = (
+            StockReduction.objects.filter(product=self.product, stock_entry__isnull=True)
+            .order_by('created_at', 'id')
+        )
+
+        # Ustawiamy redukcje po kolei, żeby wcześniejsze redukcje “zjadały” zapas pierwsze (FIFO).
+        for reduction in pending_reductions:
+            # Jeśli w międzyczasie ktoś przypisał stock_entry — pomijamy.
+            if reduction.stock_entry_id is not None:
+                continue
+            reduction.save()
 
     def __str__(self):
         return f"{self.product.name} - {self.quantity} szt. ({self.get_stock_type_display()})"
@@ -166,6 +188,8 @@ class StockReduction(models.Model):
                     new_reduction = StockReduction.objects.create(
                         product=self.product,
                         order=self.order,
+                        order_item=self.order_item,
+                        stock_type=self.stock_type,
                         quantity=remaining_quantity
                     )
         
