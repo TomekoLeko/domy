@@ -4,11 +4,13 @@ from django.views.decorators.http import require_GET, require_POST
 from domy.decorators import require_authenticated_staff_or_superuser
 from .models import Supplier, SupplyOrder, StockEntry
 from finance.models import Invoice
-from products.models import Product, OrderItem
+from products.models import Product, Order, OrderItem
 from stock.models import StockReduction
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models import F, ExpressionWrapper, DecimalField, Sum
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 import json
 from pprint import pprint
 
@@ -195,7 +197,13 @@ def create_stock_reduction(request):
         
         # Get the order item
         order_item = get_object_or_404(OrderItem, id=order_item_id)
-        
+
+        if order_item.product.type != Product.TYPE_ITEM:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Produkty inne niż towar nie podlegają redukcji magazynowej.'},
+                status=400,
+            )
+
         # Create the stock reduction
         stock_reduction = StockReduction.objects.create(
             product_id=product_id,
@@ -248,30 +256,185 @@ def calculate_virtual_stock_level(product):
     
     return virtual_entries_total - virtual_reductions_total
 
+def _stock_reduction_to_dict(reduction):
+    return {
+        'id': reduction.id,
+        'created_at': reduction.created_at.isoformat() if reduction.created_at else None,
+        'product_id': reduction.product_id,
+        'product_name': reduction.product.name if reduction.product_id else '',
+        'order_id': reduction.order_id,
+        'order_item_id': reduction.order_item_id,
+        'quantity': reduction.quantity,
+        'stock_type': reduction.stock_type,
+        'stock_type_display': reduction.get_stock_type_display(),
+        'stock_entry_id': reduction.stock_entry_id,
+        'issuing_cost': (
+            str(reduction.issuing_cost.quantize(Decimal('0.01')))
+            if reduction.issuing_cost is not None
+            else None
+        ),
+    }
+
+
+def _parse_optional_int(value, field_name, *, required=False, min_value=None):
+    if value is None or value == '':
+        if required:
+            return None, JsonResponse(
+                {'detail': f'Pole {field_name} jest wymagane.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+        return None, None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None, JsonResponse(
+            {'detail': f'Nieprawidłowa wartość pola {field_name}.'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+    if min_value is not None and parsed < min_value:
+        return None, JsonResponse(
+            {'detail': f'Pole {field_name} musi być >= {min_value}.'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+    return parsed, None
+
+
+def _parse_optional_decimal(value, field_name):
+    if value is None or value == '':
+        return None, None
+    try:
+        return Decimal(str(value).replace(',', '.')), None
+    except (InvalidOperation, ValueError):
+        return None, JsonResponse(
+            {'detail': f'Nieprawidłowa wartość pola {field_name}.'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+
+
 @require_GET
 @require_authenticated_staff_or_superuser
 def api_list_stock_reductions(request):
-    """Lista wszystkich redukcji magazynowych (panel diagnostyczny)."""
+    """Lista wszystkich wydań towaru z magazynu."""
     reductions = (
         StockReduction.objects.select_related('product', 'order', 'order_item', 'stock_entry')
         .order_by('-created_at')
     )
-    data = []
-    for reduction in reductions:
-        data.append({
-            'id': reduction.id,
-            'created_at': reduction.created_at.isoformat() if reduction.created_at else None,
-            'product_id': reduction.product_id,
-            'product_name': reduction.product.name if reduction.product_id else '',
-            'order_id': reduction.order_id,
-            'order_item_id': reduction.order_item_id,
-            'quantity': reduction.quantity,
-            'stock_type': reduction.stock_type,
-            'stock_type_display': reduction.get_stock_type_display(),
-            'stock_entry_id': reduction.stock_entry_id,
-        })
+    data = [_stock_reduction_to_dict(reduction) for reduction in reductions]
     return JsonResponse(
         {'reductions': data},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
+def api_update_stock_reduction(request, reduction_id):
+    """Aktualizuje wydanie magazynowe (bez logiki FIFO z `StockReduction.save`)."""
+    reduction = get_object_or_404(StockReduction, id=reduction_id)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+    product_id, err = _parse_optional_int(data.get('product_id'), 'product_id', required=True)
+    if err:
+        return err
+    order_id, err = _parse_optional_int(data.get('order_id'), 'order_id', required=True)
+    if err:
+        return err
+    quantity, err = _parse_optional_int(data.get('quantity'), 'quantity', required=True, min_value=1)
+    if err:
+        return err
+
+    stock_type = data.get('stock_type')
+    if stock_type not in dict(StockReduction.STOCK_TYPE_CHOICES):
+        return JsonResponse(
+            {'detail': 'Nieprawidłowy typ magazynu.'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+
+    order_item_id, err = _parse_optional_int(data.get('order_item_id'), 'order_item_id')
+    if err:
+        return err
+    stock_entry_id, err = _parse_optional_int(data.get('stock_entry_id'), 'stock_entry_id')
+    if err:
+        return err
+
+    issuing_cost, err = _parse_optional_decimal(data.get('issuing_cost'), 'issuing_cost')
+    if err:
+        return err
+
+    if not Product.objects.filter(pk=product_id).exists():
+        return JsonResponse({'detail': 'Nie znaleziono produktu.'}, status=400)
+    if not Order.objects.filter(pk=order_id).exists():
+        return JsonResponse({'detail': 'Nie znaleziono zamówienia.'}, status=400)
+
+    if order_item_id is not None:
+        order_item = get_object_or_404(OrderItem, pk=order_item_id)
+        if order_item.order_id != order_id:
+            return JsonResponse(
+                {'detail': 'Pozycja zamówienia nie należy do wskazanego zamówienia.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+        if order_item.product_id != product_id:
+            return JsonResponse(
+                {'detail': 'Produkt pozycji zamówienia nie zgadza się z produktem wydania.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+
+    if stock_entry_id is not None:
+        stock_entry = get_object_or_404(StockEntry, pk=stock_entry_id)
+        if stock_entry.product_id != product_id:
+            return JsonResponse(
+                {'detail': 'Wpis magazynowy dotyczy innego produktu.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+
+    created_at_raw = data.get('created_at')
+    created_at = None
+    if created_at_raw not in (None, ''):
+        created_at = parse_datetime(str(created_at_raw))
+        if created_at is None:
+            return JsonResponse(
+                {'detail': 'Nieprawidłowa data utworzenia.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+        if timezone.is_naive(created_at):
+            created_at = timezone.make_aware(created_at, timezone.get_current_timezone())
+
+    old_stock_entry_id = reduction.stock_entry_id
+
+    update_kwargs = {
+        'product_id': product_id,
+        'order_id': order_id,
+        'order_item_id': order_item_id,
+        'quantity': quantity,
+        'stock_type': stock_type,
+        'stock_entry_id': stock_entry_id,
+        'issuing_cost': issuing_cost,
+    }
+    if created_at is not None:
+        update_kwargs['created_at'] = created_at
+
+    with transaction.atomic():
+        StockReduction.objects.filter(pk=reduction_id).update(**update_kwargs)
+        affected_entry_ids = {eid for eid in (old_stock_entry_id, stock_entry_id) if eid is not None}
+        for entry_id in affected_entry_ids:
+            _recalculate_stock_entry_remaining_quantity(entry_id)
+
+    reduction.refresh_from_db()
+    return JsonResponse(
+        {'status': 'success', 'reduction': _stock_reduction_to_dict(reduction)},
         json_dumps_params={'ensure_ascii': False},
     )
 
@@ -310,7 +473,11 @@ def api_delete_stock_reduction(request, reduction_id):
 
 @require_authenticated_staff_or_superuser
 def api_products(request):
-    products = Product.objects.filter(is_active=True).prefetch_related('images')
+    products = Product.objects.filter(
+        is_active=True,
+        type=Product.TYPE_ITEM,
+        exclude_from_catalog=False,
+    ).prefetch_related('images')
     
     # Get stock information for each product
     product_data = []

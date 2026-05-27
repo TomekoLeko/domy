@@ -33,6 +33,16 @@ class ProductCategory(models.Model):
         verbose_name_plural = "Kategorie produktów"
 
 class Product(models.Model):
+    TYPE_ITEM = 'item'
+    TYPE_SHIPMENT = 'shipment'
+    TYPE_SERVICE = 'service'
+
+    TYPE_CHOICES = [
+        (TYPE_ITEM, 'Towar'),
+        (TYPE_SHIPMENT, 'Wysyłka'),
+        (TYPE_SERVICE, 'Usługa'),
+    ]
+
     UNIT_CHOICES = [
         ("l", "Litry"),
         ("kg", "Kilogramy"),
@@ -42,6 +52,16 @@ class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default=TYPE_ITEM,
+        verbose_name='Typ',
+    )
+    exclude_from_catalog = models.BooleanField(
+        default=False,
+        verbose_name='Ukryj w katalogu sklepu',
+    )
     categories = models.ManyToManyField(ProductCategory, related_name='products', blank=True)
     vat = models.DecimalField(max_digits=4, decimal_places=2, default=23.00)
     ean = models.CharField(max_length=13, blank=True, null=True)

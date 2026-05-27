@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Prefetch
@@ -8,7 +9,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from domy.decorators import require_authenticated_staff_or_superuser
 from products.cart_create_order import create_stock_reduction_for_order_item
-from products.models import OrderItem
+from products.models import OrderItem, Product
 from stock.models import StockReduction
 
 from .models import Carrier, DeliveryMethod, Shipment
@@ -49,6 +50,12 @@ def _shipment_to_dict(shipment):
         'recipient_address': shipment.recipient_address,
         'recipient_city': shipment.recipient_city,
         'parcel_locker_code': shipment.parcel_locker_code,
+        'shipping_cost': (
+            str(shipment.shipping_cost) if shipment.shipping_cost is not None else None
+        ),
+        'packaging_cost': (
+            str(shipment.packaging_cost) if shipment.packaging_cost is not None else None
+        ),
         'created_at': shipment.created_at.isoformat() if shipment.created_at else None,
     }
 
@@ -74,6 +81,32 @@ def _parse_shipment_payload(data):
 
     for field in OPTIONAL_SHIPMENT_FIELDS:
         payload[field] = (data.get(field) or '').strip()
+
+    def _parse_optional_decimal(value, field_name):
+        if value is None or value == '':
+            return None, None
+        try:
+            return Decimal(str(value).replace(',', '.')), None
+        except (InvalidOperation, ValueError):
+            return None, JsonResponse(
+                {'detail': f'Nieprawidłowa wartość pola {field_name}.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+
+    shipping_cost, err = _parse_optional_decimal(
+        data.get('shipping_cost'), 'shipping_cost'
+    )
+    if err:
+        return None, err
+    packaging_cost, err = _parse_optional_decimal(
+        data.get('packaging_cost'), 'packaging_cost'
+    )
+    if err:
+        return None, err
+
+    payload['shipping_cost'] = shipping_cost
+    payload['packaging_cost'] = packaging_cost
 
     return payload, None
 
@@ -173,6 +206,7 @@ def _order_item_to_dict(item, request):
         'price': str(item.price),
         'buyer_id': item.buyer_id,
         'buyer_name': buyer_label,
+        'product_type': item.product.type if item.product_id else Product.TYPE_ITEM,
     }
 
 
@@ -295,6 +329,22 @@ def api_assign_order_items_to_shipments(request):
         return JsonResponse(
             {'detail': f'Order items not found: {sorted(missing_items)}'},
             status=404,
+        )
+
+    non_item_ids = [
+        item_id
+        for item_id, item in order_items_by_id.items()
+        if item.product.type != Product.TYPE_ITEM
+    ]
+    if non_item_ids:
+        return JsonResponse(
+            {
+                'detail': (
+                    'Non-item order products cannot be assigned to shipments: '
+                    f'{sorted(non_item_ids)}'
+                )
+            },
+            status=400,
         )
 
     already_assigned = [

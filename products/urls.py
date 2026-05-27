@@ -1,5 +1,9 @@
 from django.urls import path
-from stock.views import api_delete_stock_reduction, api_list_stock_reductions
+from stock.views import (
+    api_delete_stock_reduction,
+    api_list_stock_reductions,
+    api_update_stock_reduction,
+)
 from stock.suppliers_api import (
     api_add_supplier,
     api_delete_supplier,
@@ -24,7 +28,9 @@ urlpatterns = [
     path('api/admin/price-lists/save/', views.api_save_price, name='api_save_price'),
     path('api/admin/products/', views.api_admin_products, name='api_admin_products'),
     path('api/admin/products/add/', views.api_admin_add_product, name='api_admin_add_product'),
+    path('api/admin/shipments/add/', views.api_admin_add_shipment, name='api_admin_add_shipment'),
     path('api/admin/products/edit/<int:product_id>/', views.api_admin_edit_product, name='api_admin_edit_product'),
+    path('api/admin/shipments/edit/<int:product_id>/', views.api_admin_edit_shipment, name='api_admin_edit_shipment'),
     path('api/admin/products/delete/<int:product_id>/', views.api_admin_delete_product, name='api_admin_delete_product'),
     path('api/admin/product-categories/add/', views.api_admin_add_product_category, name='api_admin_add_product_category'),
     path(
@@ -69,6 +75,11 @@ urlpatterns = [
         'api/stock/reductions/delete/<int:reduction_id>/',
         api_delete_stock_reduction,
         name='api_delete_stock_reduction',
+    ),
+    path(
+        'api/stock/reductions/update/<int:reduction_id>/',
+        api_update_stock_reduction,
+        name='api_update_stock_reduction',
     ),
     path('api/supply-orders/', api_list_supply_orders, name='api_list_supply_orders'),
     path('api/supply-orders/create/', api_create_supply_order, name='api_create_supply_order'),
