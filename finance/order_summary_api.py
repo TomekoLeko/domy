@@ -48,14 +48,51 @@ def _order_item_purchase_cost(order_item):
     return total_cost, True
 
 
+def _linked_shipments_for_order(order_items):
+    """
+    Unikalne obiekty Shipment powiązane z pozycjami zamówienia (FK `OrderItem.shipment`).
+
+    W module Wysyłki FK ustawiane jest na pozycjach towarowych (`TYPE_ITEM`), nie na
+    pozycji opłaty za wysyłkę (`TYPE_SHIPMENT`).
+    """
+    by_id = {}
+    for order_item in order_items:
+        if order_item.shipment_id is None:
+            continue
+        if order_item.shipment_id not in by_id:
+            by_id[order_item.shipment_id] = order_item.shipment
+    return list(by_id.values())
+
+
+def _shipment_line_payload(bucket):
+    """Jedna zagregowana pozycja wysyłki dla osobnej tabeli w UI."""
+    shipment_amount = bucket.get('shipment_amount', Decimal('0'))
+    shipment_shipping_cost = bucket.get('shipment_shipping_cost', Decimal('0'))
+    shipment_packaging_cost = bucket.get('shipment_packaging_cost', Decimal('0'))
+    total_cost = shipment_shipping_cost + shipment_packaging_cost
+    incomplete = bucket['has_incomplete_calculations']
+    profit = shipment_amount - total_cost
+
+    return {
+        'product_name': bucket['product_name'],
+        'linked_shipment_count': bucket.get('linked_shipment_count', 0),
+        'is_virtual': bucket['is_virtual'],
+        'quantity': bucket['quantity'],
+        'price': _money_str(shipment_amount),
+        'packaging_cost': _money_str(shipment_packaging_cost),
+        'shipping_cost': _money_str(shipment_shipping_cost),
+        'profit': None if incomplete else _money_str(profit),
+        'has_incomplete_calculations': incomplete,
+    }
+
+
 def _aggregate_order_lines(request, order_items):
     """
-    Grupuje pozycje po (produkt, cena sprzedaży, koszt jednostkowy zakupu).
-    Zwraca (linie_wyświetlane, has_incomplete_calculations).
+    Grupuje pozycje towarowe i jedną linię wysyłki.
+    Zwraca (linie_produktów, wysyłka, has_incomplete_calculations).
 
-    Każda linia ma też `has_incomplete_calculations`, odpowiadającą temu,
-    czy przynajmniej jedna (towarowa) `OrderItem` w danym wierszu ma niepełne
-    pokrycie kosztu magazynowego.
+    Każda linia produktowa ma `has_incomplete_calculations`, gdy przynajmniej jedna
+    `OrderItem` w wierszu ma niepełne pokrycie kosztu magazynowego.
     """
     item_buckets = defaultdict(
         lambda: {
@@ -86,7 +123,6 @@ def _aggregate_order_lines(request, order_items):
     }
     has_incomplete = False
     has_shipment_line = False
-    seen_shipment_ids = set()
 
     for order_item in order_items:
         product = order_item.product
@@ -96,24 +132,6 @@ def _aggregate_order_lines(request, order_items):
             has_shipment_line = True
             shipment_bucket['quantity'] += 1
             shipment_bucket['shipment_amount'] += unit_price
-
-            if order_item.shipment_id is None:
-                shipment_bucket['has_incomplete_calculations'] = True
-                has_incomplete = True
-                continue
-
-            if order_item.shipment_id in seen_shipment_ids:
-                continue
-
-            seen_shipment_ids.add(order_item.shipment_id)
-            shipment = order_item.shipment
-            if shipment.shipping_cost is None or shipment.packaging_cost is None:
-                shipment_bucket['has_incomplete_calculations'] = True
-                has_incomplete = True
-                continue
-
-            shipment_bucket['shipment_shipping_cost'] += shipment.shipping_cost
-            shipment_bucket['shipment_packaging_cost'] += shipment.packaging_cost
             continue
 
         if product.type != Product.TYPE_ITEM:
@@ -137,66 +155,45 @@ def _aggregate_order_lines(request, order_items):
         bucket['has_incomplete_calculations'] = not complete
         bucket['quantity'] += 1
 
-    def bucket_to_line(bucket):
+    def bucket_to_product_line(bucket):
         quantity = bucket['quantity']
         unit_price = bucket['unit_price']
         unit_cost = bucket['unit_cost']
-        is_shipment = bucket['product_type'] == Product.TYPE_SHIPMENT
-        shipment_amount = bucket.get('shipment_amount', Decimal('0'))
-        shipment_shipping_cost = bucket.get('shipment_shipping_cost', Decimal('0'))
-        shipment_packaging_cost = bucket.get('shipment_packaging_cost', Decimal('0'))
-
         return {
             'product_id': bucket['product_id'],
             'product_name': bucket['product_name'],
             'image_url': bucket['image_url'],
             'product_type': bucket['product_type'],
-            'is_virtual': bucket['is_virtual'],
             'quantity': quantity,
             'unit_price': _money_str(unit_price),
-            'amount': _money_str(shipment_amount if is_shipment else unit_price * quantity),
+            'amount': _money_str(unit_price * quantity),
             'unit_cost': _money_str(unit_cost),
-            'cost': _money_str(
-                (shipment_shipping_cost + shipment_packaging_cost)
-                if is_shipment
-                else unit_cost * quantity
-            ),
+            'cost': _money_str(unit_cost * quantity),
             'has_incomplete_calculations': bucket['has_incomplete_calculations'],
-            'shipment_shipping_cost': _money_str(shipment_shipping_cost),
-            'shipment_packaging_cost': _money_str(shipment_packaging_cost),
         }
 
-    lines = [bucket_to_line(b) for b in item_buckets.values()]
-    lines.sort(key=lambda row: (row['product_name'] or '', row['unit_price']))
+    product_lines = [bucket_to_product_line(b) for b in item_buckets.values()]
+    product_lines.sort(key=lambda row: (row['product_name'] or '', row['unit_price']))
 
-    shipment_lines = []
-    if has_shipment_line:
-        shipment_bucket['unit_cost'] = (
-            shipment_bucket['shipment_shipping_cost'] + shipment_bucket['shipment_packaging_cost']
-        ).quantize(MONEY_QUANT)
-        shipment_lines.append(bucket_to_line(shipment_bucket))
-    else:
-        shipment_lines.append(
-            {
-                'product_id': None,
-                'product_name': VIRTUAL_SHIPMENT_NAME,
-                'image_url': None,
-                'product_type': Product.TYPE_SHIPMENT,
-                'is_virtual': True,
-                'quantity': 1,
-                'unit_price': _money_str(Decimal('0')),
-                'amount': _money_str(Decimal('0')),
-                'unit_cost': _money_str(Decimal('0')),
-                'cost': _money_str(Decimal('0')),
-                'has_incomplete_calculations': False,
-                'shipment_amount': _money_str(Decimal('0')),
-                'shipment_shipping_cost': _money_str(Decimal('0')),
-                'shipment_packaging_cost': _money_str(Decimal('0')),
-            }
-        )
+    linked_shipments = _linked_shipments_for_order(order_items)
+    shipment_bucket['linked_shipment_count'] = len(linked_shipments)
 
-    lines.extend(shipment_lines)
-    return lines, has_incomplete
+    for shipment in linked_shipments:
+        if shipment.shipping_cost is None or shipment.packaging_cost is None:
+            shipment_bucket['has_incomplete_calculations'] = True
+            has_incomplete = True
+            continue
+        shipment_bucket['shipment_shipping_cost'] += shipment.shipping_cost
+        shipment_bucket['shipment_packaging_cost'] += shipment.packaging_cost
+
+    if not has_shipment_line and not linked_shipments:
+        shipment_bucket['is_virtual'] = True
+        shipment_bucket['quantity'] = 1
+    elif linked_shipments:
+        has_shipment_line = True
+
+    shipment = _shipment_line_payload(shipment_bucket)
+    return product_lines, shipment, has_incomplete or shipment['has_incomplete_calculations']
 
 
 def _order_items_prefetch():
@@ -229,7 +226,9 @@ def api_list_order_summaries(request):
     for order in orders:
         order_items = list(order.items.all())
         total_amount = sum((item.price for item in order_items), start=Decimal('0'))
-        lines, has_incomplete = _aggregate_order_lines(request, order_items)
+        product_lines, shipment, has_incomplete = _aggregate_order_lines(
+            request, order_items
+        )
 
         orders_payload.append(
             {
@@ -237,7 +236,8 @@ def api_list_order_summaries(request):
                 'created_at': order.created_at.isoformat(),
                 'total_amount': _money_str(total_amount),
                 'has_incomplete_calculations': has_incomplete,
-                'lines': lines,
+                'lines': product_lines,
+                'shipment': shipment,
             }
         )
 
