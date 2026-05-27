@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Prefetch
@@ -49,6 +50,12 @@ def _shipment_to_dict(shipment):
         'recipient_address': shipment.recipient_address,
         'recipient_city': shipment.recipient_city,
         'parcel_locker_code': shipment.parcel_locker_code,
+        'shipping_cost': (
+            str(shipment.shipping_cost) if shipment.shipping_cost is not None else None
+        ),
+        'packaging_cost': (
+            str(shipment.packaging_cost) if shipment.packaging_cost is not None else None
+        ),
         'created_at': shipment.created_at.isoformat() if shipment.created_at else None,
     }
 
@@ -74,6 +81,32 @@ def _parse_shipment_payload(data):
 
     for field in OPTIONAL_SHIPMENT_FIELDS:
         payload[field] = (data.get(field) or '').strip()
+
+    def _parse_optional_decimal(value, field_name):
+        if value is None or value == '':
+            return None, None
+        try:
+            return Decimal(str(value).replace(',', '.')), None
+        except (InvalidOperation, ValueError):
+            return None, JsonResponse(
+                {'detail': f'Nieprawidłowa wartość pola {field_name}.'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+
+    shipping_cost, err = _parse_optional_decimal(
+        data.get('shipping_cost'), 'shipping_cost'
+    )
+    if err:
+        return None, err
+    packaging_cost, err = _parse_optional_decimal(
+        data.get('packaging_cost'), 'packaging_cost'
+    )
+    if err:
+        return None, err
+
+    payload['shipping_cost'] = shipping_cost
+    payload['packaging_cost'] = packaging_cost
 
     return payload, None
 
