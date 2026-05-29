@@ -2532,6 +2532,29 @@ def api_get_filtered_orders(request):
     return get_filtered_orders(request)
 
 
+def _bulk_transfer_lob_match_names():
+    """
+    Imiona i nazwiska aktywnych użytkowników do heurystyki LOB „foster” przy imporcie wyciągu.
+    User.first_name / User.last_name oraz słowa z Profile.name.
+    """
+    names = set()
+    users = User.objects.filter(is_active=True).select_related('profile')
+    for user in users:
+        first = (user.first_name or '').strip()
+        last = (user.last_name or '').strip()
+        if first:
+            names.add(first)
+        if last:
+            names.add(last)
+        profile = getattr(user, 'profile', None)
+        if profile and profile.name:
+            for part in profile.name.split():
+                token = part.strip()
+                if token:
+                    names.add(token)
+    return sorted(names, key=lambda s: s.casefold())
+
+
 @staff_member_required
 def api_get_bulk_transfers_context(request):
     """
@@ -2557,6 +2580,7 @@ def api_get_bulk_transfers_context(request):
             'status': 'success',
             'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
             'lob_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.LOB_CHOICES],
+            'lob_match_names': _bulk_transfer_lob_match_names(),
             'existing_payments': existing_payments,
         },
         json_dumps_params={'ensure_ascii': False},
