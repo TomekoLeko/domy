@@ -9,12 +9,18 @@ from products.models import OrderItem
 from django.db.models import Sum, F, Q, ExpressionWrapper, DecimalField
 class Payment(models.Model):
     PAYMENT_TYPES = [
-        ('contribution', 'Wpłata od wspierającego'),
-        ('order', 'Płatność za zamówienie'),
-        ('refund', 'Zwrot środków'),
+        ('contribution', 'Wsparcie'),
+        ('order', 'Zamówienie'),
+        ('refund', 'Zwrot'),
         ('expense', 'Wydatek'),
         ('other', 'Inne'),
         ('invoice', 'Faktura'),
+    ]
+
+    LOB_CHOICES = [
+        ('foster', 'Wspieramy'),
+        ('clothes', 'Ubrania'),
+        ('it', 'Programowanie'),
     ]
 
     # Kanał / instrument zapłaty (osobno od payment_type — kategoria biznesowa).
@@ -35,6 +41,13 @@ class Payment(models.Model):
         max_length=30,
         choices=PAYMENT_TYPES,
         verbose_name="Typ płatności"
+    )
+    lob = models.CharField(
+        max_length=20,
+        choices=LOB_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name="Linia działalności",
     )
     payment_method = models.CharField(
         max_length=20,
