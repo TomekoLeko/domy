@@ -43,6 +43,7 @@ def _parse_bulk_payment_date(value):
 
 def _create_payments_from_bulk_payload(payments, created_by):
     for payment_data in payments:
+        lob = _parse_optional_lob_from_payload(payment_data)
         Payment.objects.create(
             payment_date=_parse_bulk_payment_date(payment_data.get('date')),
             payment_type=payment_data.get('type') or 'other',
@@ -50,6 +51,7 @@ def _create_payments_from_bulk_payload(payments, created_by):
             sender=payment_data.get('sender') or '',
             description=payment_data.get('description') or '',
             related_user=None,
+            lob=lob,
             created_by=created_by,
         )
 
@@ -676,6 +678,35 @@ def assign_payment_to_item(request):
 
 VALID_PAYMENT_TYPE_VALUES = {choice[0] for choice in Payment.PAYMENT_TYPES}
 VALID_PAYMENT_METHOD_VALUES = {choice[0] for choice in Payment.PAYMENT_METHOD_CHOICES}
+VALID_LOB_VALUES = {choice[0] for choice in Payment.LOB_CHOICES}
+
+
+def _parse_optional_lob_from_payload(data):
+    """Missing or blank lob -> None; invalid value raises ValueError."""
+    if 'lob' not in data:
+        return None
+    raw = data.get('lob')
+    if raw is None:
+        return None
+    lob = raw.strip() if isinstance(raw, str) else str(raw).strip()
+    if not lob:
+        return None
+    if lob not in VALID_LOB_VALUES:
+        raise ValueError(
+            f'Invalid lob. Allowed values: {", ".join(sorted(VALID_LOB_VALUES))}'
+        )
+    return lob
+
+
+def _lob_validation_json_response(exc):
+    return JsonResponse(
+        {
+            'status': 'error',
+            'message': str(exc),
+            'allowed_lob_values': sorted(VALID_LOB_VALUES),
+        },
+        status=400,
+    )
 
 _ORDER_ITEMS_FOR_PAYMENT_PREFETCH = Prefetch(
     'items',
@@ -898,6 +929,8 @@ def _payment_to_api_dict(payment):
         'amount': str(payment.amount),
         'available_amount': str(payment.available_amount),
         'payment_type': payment.payment_type,
+        'lob': payment.lob,
+        'lob_label': payment.get_lob_display() if payment.lob else '',
         'payment_method': payment.payment_method,
         'description': payment.description,
         'sender': payment.sender,
@@ -1265,6 +1298,11 @@ def api_create_payment(request):
             status=400,
         )
 
+    try:
+        lob = _parse_optional_lob_from_payload(data)
+    except ValueError as exc:
+        return _lob_validation_json_response(exc)
+
     if 'amount' not in data:
         return JsonResponse(
             {'status': 'error', 'message': 'amount is required'},
@@ -1393,6 +1431,7 @@ def api_create_payment(request):
                 related_user=related_user,
                 related_order=None,
                 payment_date=payment_date,
+                lob=lob,
                 created_by=request.user,
             )
             payload = [_payment_to_api_dict(pay)]
@@ -1443,6 +1482,7 @@ def api_create_payment(request):
                 related_user=related_user,
                 related_order_id=order.pk,
                 payment_date=payment_date,
+                lob=lob,
                 created_by=request.user,
             )
             payload = [_payment_to_api_dict(pay)]
@@ -1488,6 +1528,7 @@ def api_create_payment(request):
                 related_user=related_user,
                 related_order_id=order_pk,
                 payment_date=payment_date,
+                lob=lob,
                 created_by=request.user,
             )
             pay.related_order_items.set(buyer_items)
@@ -1544,6 +1585,7 @@ def api_create_payment(request):
         related_user=related_user,
         related_order=related_order,
         payment_date=payment_date,
+        lob=lob,
         created_by=request.user,
     )
 
@@ -1598,6 +1640,11 @@ def api_update_payment(request, payment_id):
             },
             status=400,
         )
+
+    try:
+        lob = _parse_optional_lob_from_payload(data)
+    except ValueError as exc:
+        return _lob_validation_json_response(exc)
 
     if 'amount' not in data:
         return JsonResponse(
@@ -1789,6 +1836,7 @@ def api_update_payment(request, payment_id):
         payment.related_user = related_user
         payment.related_order = related_order
         payment.payment_date = payment_date
+        payment.lob = lob
         payment.save()
 
         if payment_type == 'order' and related_order is not None:
@@ -2383,6 +2431,8 @@ def _serialize_payment_list_row(payment):
         'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
         'payment_type': payment.payment_type,
         'payment_type_label': payment.get_payment_type_display(),
+        'lob': payment.lob,
+        'lob_label': payment.get_lob_display() if payment.lob else '',
         'payment_method': payment.payment_method,
         'payment_method_label': payment.get_payment_method_display(),
         'amount': str(payment.amount),
@@ -2452,6 +2502,7 @@ def api_list_payments(request):
             'offset': offset,
             'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
             'payment_method_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_METHOD_CHOICES],
+            'lob_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.LOB_CHOICES],
             'payments': rows,
         },
         json_dumps_params={'ensure_ascii': False},
@@ -2505,6 +2556,7 @@ def api_get_bulk_transfers_context(request):
         {
             'status': 'success',
             'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
+            'lob_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.LOB_CHOICES],
             'existing_payments': existing_payments,
         },
         json_dumps_params={'ensure_ascii': False},

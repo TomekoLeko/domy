@@ -10,6 +10,7 @@ class PaymentForm(forms.ModelForm):
         model = Payment
         fields = [
             'payment_type',
+            'lob',
             'payment_method',
             'related_user',
             'related_order',
@@ -46,6 +47,7 @@ class PaymentForm(forms.ModelForm):
         self.fields['related_order'].required = False
         self.fields['description'].required = False
         self.fields['payment_date'].required = True
+        self.fields['lob'].required = False
 
         # Override the label_from_instance method to show name or username
         self.fields['related_user'].label_from_instance = lambda user: (
