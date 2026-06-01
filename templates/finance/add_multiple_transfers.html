@@ -98,6 +98,7 @@
 {% autoescape off %}
 const PAYMENT_TYPES = {{ payment_types|safe }};
 const ALL_PAYMENTS = {{ all_payments|safe }};
+const CONTRIBUTOR_NAME_PAIRS = {{ contributor_name_pairs|safe }};
 {% endautoescape %}
 const paymentTypes = PAYMENT_TYPES;
 
@@ -191,18 +192,23 @@ function getSenderAndDescription(fullDescription) {
     };
 }
 
+function matchesContributorPayment(sender, description) {
+    const haystack = `${sender || ''} ${description || ''}`.toUpperCase();
+    return CONTRIBUTOR_NAME_PAIRS.some(({ first_name, last_name }) => {
+        const first = String(first_name || '').trim();
+        const last = String(last_name || '').trim();
+        if (!first || !last) return false;
+        return haystack.includes(first.toUpperCase()) && haystack.includes(last.toUpperCase());
+    });
+}
+
 function determinePaymentType(sender, description) {
-    // TODO: retrieve beneficiaries and contributors from the database
-    const tempContributors = ['GRZEGORZ PAWLAK', 'SOŚNIERZ KLIMKOWSKI', 'BARBARA LISTEK'];
     const tempInvoices = ['KODPOL', 'FAKTURA'];
 
     const upperSender = sender.toUpperCase();
     const upperDescription = description.toUpperCase();
 
-    const isContributorPayment = tempContributors.some(contributor => 
-        upperSender.includes(contributor.toUpperCase()) || 
-        upperDescription.includes(contributor.toUpperCase())
-    );
+    const isContributorPayment = matchesContributorPayment(sender, description);
 
     const isInvoicePayment = tempInvoices.some(invoice => 
         upperSender.includes(invoice.toUpperCase()) || 

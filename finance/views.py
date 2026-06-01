@@ -98,7 +98,11 @@ def add_multiple_transfers(request):
 
     context = {
         'payment_types': payment_types_json,
-        'all_payments': json.dumps(list(all_payments), cls=DjangoJSONEncoder)
+        'all_payments': json.dumps(list(all_payments), cls=DjangoJSONEncoder),
+        'contributor_name_pairs': json.dumps(
+            _bulk_transfer_contributor_name_pairs(),
+            ensure_ascii=False,
+        ),
     }
     return render(request, 'finance/add_multiple_transfers.html', context)
 
@@ -2532,6 +2536,23 @@ def api_get_filtered_orders(request):
     return get_filtered_orders(request)
 
 
+def _bulk_transfer_contributor_name_pairs():
+    """
+    Imiona i nazwiska aktywnych kontrybutorów do heurystyki typu „Wsparcie” przy imporcie wyciągu.
+    Wymagane oba pola User.first_name i User.last_name.
+    """
+    pairs = []
+    users = User.objects.filter(is_active=True, profile__is_contributor=True).only(
+        'first_name', 'last_name',
+    )
+    for user in users:
+        first = (user.first_name or '').strip()
+        last = (user.last_name or '').strip()
+        if first and last:
+            pairs.append({'first_name': first, 'last_name': last})
+    return pairs
+
+
 def _bulk_transfer_lob_match_names():
     """
     Imiona i nazwiska aktywnych użytkowników do heurystyki LOB „foster” przy imporcie wyciągu.
@@ -2581,6 +2602,7 @@ def api_get_bulk_transfers_context(request):
             'payment_type_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.PAYMENT_TYPES],
             'lob_choices': [{'value': v, 'label': lbl} for v, lbl in Payment.LOB_CHOICES],
             'lob_match_names': _bulk_transfer_lob_match_names(),
+            'contributor_name_pairs': _bulk_transfer_contributor_name_pairs(),
             'existing_payments': existing_payments,
         },
         json_dumps_params={'ensure_ascii': False},
