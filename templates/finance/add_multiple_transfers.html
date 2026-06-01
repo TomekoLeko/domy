@@ -35,15 +35,14 @@
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
-                            <th>Nadawca</th>
-                            <th>Opis</th>
+                            <th>Szczegóły</th>
                             <th>Dodał</th>
                             <th>Akcje</th>
                         </tr>
                     </thead>
                     <tbody id="tempPaymentsTable">
                         <tr>
-                            <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
+                            <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
                         </tr>
                     </tbody>
                 </table>
@@ -68,14 +67,13 @@
                             <th>Typ</th>
                             <th>Kwota</th>
                             <th>Użytkownik</th>
-                            <th>Nadawca</th>
-                            <th>Opis</th>
+                            <th>Szczegóły</th>
                             <th>Dodał</th>
                         </tr>
                     </thead>
                     <tbody id="acceptedPaymentsTable">
                         <tr>
-                            <td colspan="8" class="text-center">Brak zaakceptowanych przelewów</td>
+                            <td colspan="7" class="text-center">Brak zaakceptowanych przelewów</td>
                         </tr>
                     </tbody>
                 </table>
@@ -85,11 +83,19 @@
 </div>
 
 <style>
-    .description-field, .description-cell {
-        max-width: 30rem;
-        overflow-wrap: break-word;
-        word-wrap: break-word;
-        white-space: normal;
+    .bulk-szczegoly {
+        max-width: 22rem;
+        min-width: 10rem;
+    }
+    .bulk-szczegoly-line {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1.35;
+    }
+    .bulk-szczegoly-line + .bulk-szczegoly-line {
+        margin-top: 0.15rem;
     }
 </style>
 
@@ -192,6 +198,34 @@ function getSenderAndDescription(fullDescription) {
     };
 }
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatBulkSzczegolyCell(sender, description) {
+    const senderText = (sender || '').trim();
+    const descText = (description || '').trim();
+    const senderAttr = senderText ? ` title="${escapeHtml(senderText).replace(/"/g, '&quot;')}"` : '';
+    const descAttr = descText ? ` title="${escapeHtml(descText).replace(/"/g, '&quot;')}"` : '';
+    return `<td class="bulk-szczegoly details-field">
+            <span class="bulk-szczegoly-line payment-field sender-field"${senderAttr}>${senderText ? escapeHtml(senderText) : '&nbsp;'}</span>
+            <span class="bulk-szczegoly-line payment-field description-field"${descAttr}>${descText ? escapeHtml(descText) : '&nbsp;'}</span>
+        </td>`;
+}
+
+function formatBulkSzczegolyReadonlyCell(sender, description) {
+    const senderText = (sender || '').trim();
+    const descText = (description || '').trim();
+    const senderAttr = senderText ? ` title="${escapeHtml(senderText).replace(/"/g, '&quot;')}"` : '';
+    const descAttr = descText ? ` title="${escapeHtml(descText).replace(/"/g, '&quot;')}"` : '';
+    return `<td class="bulk-szczegoly">
+            <span class="bulk-szczegoly-line"${senderAttr}>${senderText ? escapeHtml(senderText) : '&nbsp;'}</span>
+            <span class="bulk-szczegoly-line"${descAttr}>${descText ? escapeHtml(descText) : '&nbsp;'}</span>
+        </td>`;
+}
+
 function matchesContributorPayment(sender, description) {
     const haystack = `${sender || ''} ${description || ''}`.toUpperCase();
     return CONTRIBUTOR_NAME_PAIRS.some(({ first_name, last_name }) => {
@@ -229,7 +263,7 @@ function displayTemporaryPayments(payments) {
     if (payments.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
+                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
         return;
     }
@@ -250,8 +284,7 @@ function displayTemporaryPayments(payments) {
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td class="payment-field user-field"></td>
-            <td class="payment-field sender-field">${payment.sender}</td>
-            <td class="payment-field description-field">${payment.description}</td>
+            ${formatBulkSzczegolyCell(payment.sender, payment.description)}
             <td>-</td>
             <td>
                 <div class="btn-group" role="group" style="gap: 5px;">
@@ -382,8 +415,7 @@ function updateAcceptedPaymentsTable() {
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td>${payment.user}</td>
-            <td>${payment.sender}</td>
-            <td class="description-cell">${payment.description}</td>
+            ${formatBulkSzczegolyReadonlyCell(payment.sender, payment.description)}
         </tr>
     `).join('');
 
@@ -438,7 +470,7 @@ function checkTemporaryTable() {
     if (tbody.children.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center">Brak przelewów do wyświetlenia</td>
+                <td colspan="8" class="text-center">Brak przelewów do wyświetlenia</td>
             </tr>`;
     }
 }
@@ -463,7 +495,7 @@ function cancelAcceptedPayment(index) {
 
     // Clear "no payments" message if it exists
     const tbody = document.getElementById('tempPaymentsTable');
-    if (tbody.querySelector('td[colspan="9"]')) {
+    if (tbody.querySelector('td[colspan="8"]')) {
         tbody.innerHTML = '';  // Clear the "no payments" message
     }
 
@@ -491,8 +523,7 @@ function displayTemporaryPayment(payment) {
                 ${payment.amount >= 0 ? '+' : ''}${payment.amount.toFixed(2)} zł
             </td>
             <td class="payment-field user-field">${payment.user}</td>
-            <td class="payment-field sender-field">${payment.sender}</td>
-            <td class="payment-field description-field">${payment.description}</td>
+            ${formatBulkSzczegolyCell(payment.sender, payment.description)}
             <td>-</td>
             <td>
                 <div class="btn-group" role="group" style="gap: 5px;">
