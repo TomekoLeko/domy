@@ -18,6 +18,11 @@ urlpatterns = [
     path('api/users/', views.api_users_list, name='api_users_list'),
     path('api/users/update/', views.api_update_user_profile, name='api_update_user_profile'),
     path(
+        'api/users/<int:user_id>/delete/',
+        views.api_delete_user,
+        name='api_delete_user',
+    ),
+    path(
         'api/users/<int:user_id>/monthly-contributions/',
         views.api_user_monthly_contributions,
         name='api_user_monthly_contributions',

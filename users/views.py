@@ -4,6 +4,7 @@ from .forms import RegisterForm, LoginForm
 from django.urls import reverse
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from django.db.models import ProtectedError
 from .password_messages import password_errors_polish
 from products.models import PriceList
 from .models import Profile
@@ -18,7 +19,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from finance.models import MonthlyContributionUsage
+from finance.models import MonthlyContributionUsage, Payment
 
 def register(request):
   if request.user.is_authenticated:
@@ -333,6 +334,48 @@ def api_user_shipping_address(request, user_id):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_delete_user(request, user_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    if request.user.id == user_id:
+        return Response(
+            {"detail": "Nie możesz usunąć własnego konta z tego panelu."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "Użytkownik nie został znaleziony."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if Payment.objects.filter(created_by=target_user).exists():
+        return Response(
+            {
+                "detail": (
+                    "Nie można usunąć użytkownika, który utworzył płatności w systemie. "
+                    "Najpierw przypisz te płatności innemu użytkownikowi lub usuń je."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        target_user.delete()
+    except ProtectedError:
+        return Response(
+            {"detail": "Nie można usunąć użytkownika powiązanego z innymi danymi w systemie."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response({"status": "success"}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
