@@ -74,6 +74,7 @@ def _admin_product_to_dict(request, product):
         'type': product.type,
         'type_display': product.get_type_display(),
         'exclude_from_catalog': product.exclude_from_catalog,
+        'is_active': product.is_active,
     }
 
 
@@ -138,6 +139,10 @@ def _update_admin_catalog_item_from_post(
     product.volume_unit = request.POST.get('volume_unit') or product.volume_unit
     product.type = product_type
     product.exclude_from_catalog = exclude_from_catalog
+    product.is_active = _parse_bool_form_value(
+        request.POST.get('is_active'),
+        default=product.is_active,
+    )
 
     if assign_categories:
         category_ids = request.POST.getlist('categories')
@@ -344,7 +349,7 @@ def api_admin_price_lists(request):
 @require_GET
 @require_authenticated_staff_or_superuser
 def api_admin_products(request):
-    products = Product.objects.filter(is_active=True).prefetch_related('images', 'categories').order_by('id')
+    products = Product.objects.prefetch_related('images', 'categories').order_by('id')
     include_shipments = request.GET.get('include_shipments', '').lower() in ('1', 'true', 'yes')
     if not include_shipments:
         legacy_include = request.GET.get('include_services', '').lower() in ('1', 'true', 'yes')
