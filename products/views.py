@@ -30,6 +30,7 @@ def _price_list_to_dict(request, price_list):
         prices_data.append({
             'product_id': price.product_id,
             'product_name': price.product.name,
+            'product_type': price.product.type,
             'image_url': image_url,
             'vat': str(price.product.vat),
             'net_price': str(price.net_price),
