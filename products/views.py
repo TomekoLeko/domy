@@ -31,6 +31,8 @@ def _price_list_to_dict(request, price_list):
             'product_id': price.product_id,
             'product_name': price.product.name,
             'product_type': price.product.type,
+            'volume_value': str(price.product.volume_value),
+            'volume_unit': price.product.volume_unit,
             'image_url': image_url,
             'vat': str(price.product.vat),
             'net_price': str(price.net_price),
