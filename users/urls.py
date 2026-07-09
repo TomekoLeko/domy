@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/auth/account/validate-password/', views.api_validate_new_password, name='api_validate_new_password'),
     path('api/auth/account/update/', views.api_update_my_account, name='api_update_my_account'),
     path('api/users/', views.api_users_list, name='api_users_list'),
+    path('api/users/create/', views.api_create_user, name='api_create_user'),
     path('api/users/update/', views.api_update_user_profile, name='api_update_user_profile'),
     path(
         'api/users/<int:user_id>/delete/',

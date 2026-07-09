@@ -122,6 +122,60 @@ def _api_staff_forbidden_response():
     )
 
 
+def _serialize_admin_user(user):
+    profile, _ = Profile.objects.get_or_create(user=user)
+    display_name = (
+        profile.name
+        or f"{user.first_name} {user.last_name}".strip()
+        or f"{user.username} (login)"
+    )
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": display_name,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "email": user.email or "",
+        "profile": {
+            "name": profile.name or "",
+            "phone": profile.phone or "",
+            "address": profile.address or "",
+            "city": profile.city or "",
+            "postal": profile.postal or "",
+            "parcel_locker_code": profile.parcel_locker_code or "",
+            "is_beneficiary": bool(profile.is_beneficiary),
+            "monthly_limit": profile.monthly_limit,
+            "discount_rate_percent": (
+                str(profile.discount_rate_percent)
+                if profile.discount_rate_percent is not None
+                else None
+            ),
+            "price_list_id": profile.price_list_id,
+        },
+    }
+
+
+def _apply_admin_user_profile_data(profile, data):
+    profile.name = data.get("name", "")
+    profile.phone = data.get("phone", "")
+    profile.address = data.get("address", "")
+    profile.city = data.get("city", "")
+    profile.postal = data.get("postal", "")
+    profile.parcel_locker_code = data.get("parcel_locker_code", "")
+    profile.is_beneficiary = bool(data.get("is_beneficiary", False))
+    monthly_limit = data.get("monthly_limit")
+    profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
+    discount_rate_percent = data.get("discount_rate_percent")
+    profile.discount_rate_percent = (
+        discount_rate_percent if discount_rate_percent not in ("", None) else None
+    )
+    if data.get("price_list"):
+        profile.price_list_id = data.get("price_list")
+    else:
+        profile.price_list = None
+    profile.save()
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_users_list(request):
@@ -131,38 +185,7 @@ def api_users_list(request):
     users = User.objects.all().prefetch_related('profile')
     price_lists = PriceList.objects.all()
 
-    serialized_users = []
-    for user in users:
-        profile, _ = Profile.objects.get_or_create(user=user)
-        display_name = (
-            profile.name
-            or f"{user.first_name} {user.last_name}".strip()
-            or f"{user.username} (login)"
-        )
-        serialized_users.append({
-            "id": user.id,
-            "username": user.username,
-            "display_name": display_name,
-            "first_name": user.first_name or "",
-            "last_name": user.last_name or "",
-            "email": user.email or "",
-            "profile": {
-                "name": profile.name or "",
-                "phone": profile.phone or "",
-                "address": profile.address or "",
-                "city": profile.city or "",
-                "postal": profile.postal or "",
-                "parcel_locker_code": profile.parcel_locker_code or "",
-                "is_beneficiary": bool(profile.is_beneficiary),
-                "monthly_limit": profile.monthly_limit,
-                "discount_rate_percent": (
-                    str(profile.discount_rate_percent)
-                    if profile.discount_rate_percent is not None
-                    else None
-                ),
-                "price_list_id": profile.price_list_id,
-            },
-        })
+    serialized_users = [_serialize_admin_user(user) for user in users]
 
     serialized_price_lists = [
         {"id": price_list.id, "name": price_list.name}
@@ -198,25 +221,7 @@ def api_update_user_profile(request):
         user.email = data.get("email", "")
         user.save()
 
-        profile.name = data.get("name", "")
-        profile.phone = data.get("phone", "")
-        profile.address = data.get("address", "")
-        profile.city = data.get("city", "")
-        profile.postal = data.get("postal", "")
-        profile.parcel_locker_code = data.get("parcel_locker_code", "")
-        profile.is_beneficiary = bool(data.get("is_beneficiary", False))
-        monthly_limit = data.get("monthly_limit")
-        profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
-        discount_rate_percent = data.get("discount_rate_percent")
-        profile.discount_rate_percent = (
-            discount_rate_percent if discount_rate_percent not in ("", None) else None
-        )
-
-        if data.get("price_list"):
-            profile.price_list_id = data.get("price_list")
-        else:
-            profile.price_list = None
-        profile.save()
+        _apply_admin_user_profile_data(profile, data)
 
         return Response(
             {"status": "success", "message": "Profile updated successfully"},
@@ -226,6 +231,63 @@ def api_update_user_profile(request):
         return Response(
             {"status": "error", "message": "User not found"},
             status=status.HTTP_404_NOT_FOUND,
+        )
+    except Exception as e:
+        return Response(
+            {"status": "error", "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_create_user(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    data = request.data
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not username:
+        return Response(
+            {"detail": "Pole login jest wymagane"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not password:
+        return Response(
+            {"detail": "Pole hasło jest wymagane"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if User.objects.filter(username=username).exists():
+        return Response(
+            {"detail": "Użytkownik o takim loginie już istnieje"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    password_errors = password_errors_polish(password)
+    if password_errors:
+        return Response(
+            {"detail": " ".join(password_errors)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        user = User(
+            username=username,
+            first_name=data.get("first_name", ""),
+            last_name=data.get("last_name", ""),
+            email=data.get("email", ""),
+        )
+        user.set_password(password)
+        user.save()
+
+        profile, _ = Profile.objects.get_or_create(user=user)
+        _apply_admin_user_profile_data(profile, data)
+
+        return Response(
+            {"status": "success", "user": _serialize_admin_user(user)},
+            status=status.HTTP_201_CREATED,
         )
     except Exception as e:
         return Response(
