@@ -143,6 +143,7 @@ def _serialize_admin_user(user):
             "city": profile.city or "",
             "postal": profile.postal or "",
             "parcel_locker_code": profile.parcel_locker_code or "",
+            "is_contributor": bool(profile.is_contributor),
             "is_beneficiary": bool(profile.is_beneficiary),
             "monthly_limit": profile.monthly_limit,
             "discount_rate_percent": (
@@ -162,6 +163,7 @@ def _apply_admin_user_profile_data(profile, data):
     profile.city = data.get("city", "")
     profile.postal = data.get("postal", "")
     profile.parcel_locker_code = data.get("parcel_locker_code", "")
+    profile.is_contributor = bool(data.get("is_contributor", False))
     profile.is_beneficiary = bool(data.get("is_beneficiary", False))
     monthly_limit = data.get("monthly_limit")
     profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
