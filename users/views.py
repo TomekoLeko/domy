@@ -243,6 +243,40 @@ def api_update_user_profile(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def api_change_user_password(request, user_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    new_password = request.data.get("new_password") or ""
+    if not new_password:
+        return Response(
+            {"detail": "Pole hasło jest wymagane"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "Użytkownik nie został znaleziony."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    password_errors = password_errors_polish(new_password, user=target_user)
+    if password_errors:
+        return Response(
+            {"detail": " ".join(password_errors)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    target_user.set_password(new_password)
+    target_user.save()
+
+    return Response({"status": "success"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def api_create_user(request):
     if not (request.user.is_staff or request.user.is_superuser):
         return _api_staff_forbidden_response()
