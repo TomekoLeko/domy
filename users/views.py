@@ -4,6 +4,7 @@ from .forms import RegisterForm, LoginForm
 from django.urls import reverse
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from django.db.models import ProtectedError
 from .password_messages import password_errors_polish
 from products.models import PriceList
 from .models import Profile
@@ -18,7 +19,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from finance.models import MonthlyContributionUsage
+from finance.models import MonthlyContributionUsage, Payment
 
 def register(request):
   if request.user.is_authenticated:
@@ -121,6 +122,62 @@ def _api_staff_forbidden_response():
     )
 
 
+def _serialize_admin_user(user):
+    profile, _ = Profile.objects.get_or_create(user=user)
+    display_name = (
+        profile.name
+        or f"{user.first_name} {user.last_name}".strip()
+        or f"{user.username} (login)"
+    )
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": display_name,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "email": user.email or "",
+        "profile": {
+            "name": profile.name or "",
+            "phone": profile.phone or "",
+            "address": profile.address or "",
+            "city": profile.city or "",
+            "postal": profile.postal or "",
+            "parcel_locker_code": profile.parcel_locker_code or "",
+            "is_contributor": bool(profile.is_contributor),
+            "is_beneficiary": bool(profile.is_beneficiary),
+            "monthly_limit": profile.monthly_limit,
+            "discount_rate_percent": (
+                str(profile.discount_rate_percent)
+                if profile.discount_rate_percent is not None
+                else None
+            ),
+            "price_list_id": profile.price_list_id,
+        },
+    }
+
+
+def _apply_admin_user_profile_data(profile, data):
+    profile.name = data.get("name", "")
+    profile.phone = data.get("phone", "")
+    profile.address = data.get("address", "")
+    profile.city = data.get("city", "")
+    profile.postal = data.get("postal", "")
+    profile.parcel_locker_code = data.get("parcel_locker_code", "")
+    profile.is_contributor = bool(data.get("is_contributor", False))
+    profile.is_beneficiary = bool(data.get("is_beneficiary", False))
+    monthly_limit = data.get("monthly_limit")
+    profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
+    discount_rate_percent = data.get("discount_rate_percent")
+    profile.discount_rate_percent = (
+        discount_rate_percent if discount_rate_percent not in ("", None) else None
+    )
+    if data.get("price_list"):
+        profile.price_list_id = data.get("price_list")
+    else:
+        profile.price_list = None
+    profile.save()
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_users_list(request):
@@ -130,38 +187,7 @@ def api_users_list(request):
     users = User.objects.all().prefetch_related('profile')
     price_lists = PriceList.objects.all()
 
-    serialized_users = []
-    for user in users:
-        profile, _ = Profile.objects.get_or_create(user=user)
-        display_name = (
-            profile.name
-            or f"{user.first_name} {user.last_name}".strip()
-            or f"{user.username} (login)"
-        )
-        serialized_users.append({
-            "id": user.id,
-            "username": user.username,
-            "display_name": display_name,
-            "first_name": user.first_name or "",
-            "last_name": user.last_name or "",
-            "email": user.email or "",
-            "profile": {
-                "name": profile.name or "",
-                "phone": profile.phone or "",
-                "address": profile.address or "",
-                "city": profile.city or "",
-                "postal": profile.postal or "",
-                "parcel_locker_code": profile.parcel_locker_code or "",
-                "is_beneficiary": bool(profile.is_beneficiary),
-                "monthly_limit": profile.monthly_limit,
-                "discount_rate_percent": (
-                    str(profile.discount_rate_percent)
-                    if profile.discount_rate_percent is not None
-                    else None
-                ),
-                "price_list_id": profile.price_list_id,
-            },
-        })
+    serialized_users = [_serialize_admin_user(user) for user in users]
 
     serialized_price_lists = [
         {"id": price_list.id, "name": price_list.name}
@@ -197,25 +223,7 @@ def api_update_user_profile(request):
         user.email = data.get("email", "")
         user.save()
 
-        profile.name = data.get("name", "")
-        profile.phone = data.get("phone", "")
-        profile.address = data.get("address", "")
-        profile.city = data.get("city", "")
-        profile.postal = data.get("postal", "")
-        profile.parcel_locker_code = data.get("parcel_locker_code", "")
-        profile.is_beneficiary = bool(data.get("is_beneficiary", False))
-        monthly_limit = data.get("monthly_limit")
-        profile.monthly_limit = monthly_limit if monthly_limit not in ("", None) else None
-        discount_rate_percent = data.get("discount_rate_percent")
-        profile.discount_rate_percent = (
-            discount_rate_percent if discount_rate_percent not in ("", None) else None
-        )
-
-        if data.get("price_list"):
-            profile.price_list_id = data.get("price_list")
-        else:
-            profile.price_list = None
-        profile.save()
+        _apply_admin_user_profile_data(profile, data)
 
         return Response(
             {"status": "success", "message": "Profile updated successfully"},
@@ -225,6 +233,97 @@ def api_update_user_profile(request):
         return Response(
             {"status": "error", "message": "User not found"},
             status=status.HTTP_404_NOT_FOUND,
+        )
+    except Exception as e:
+        return Response(
+            {"status": "error", "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_change_user_password(request, user_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    new_password = request.data.get("new_password") or ""
+    if not new_password:
+        return Response(
+            {"detail": "Pole hasło jest wymagane"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "Użytkownik nie został znaleziony."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    password_errors = password_errors_polish(new_password, user=target_user)
+    if password_errors:
+        return Response(
+            {"detail": " ".join(password_errors)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    target_user.set_password(new_password)
+    target_user.save()
+
+    return Response({"status": "success"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_create_user(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    data = request.data
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not username:
+        return Response(
+            {"detail": "Pole login jest wymagane"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not password:
+        return Response(
+            {"detail": "Pole hasło jest wymagane"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if User.objects.filter(username=username).exists():
+        return Response(
+            {"detail": "Użytkownik o takim loginie już istnieje"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    password_errors = password_errors_polish(password)
+    if password_errors:
+        return Response(
+            {"detail": " ".join(password_errors)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        user = User(
+            username=username,
+            first_name=data.get("first_name", ""),
+            last_name=data.get("last_name", ""),
+            email=data.get("email", ""),
+        )
+        user.set_password(password)
+        user.save()
+
+        profile, _ = Profile.objects.get_or_create(user=user)
+        _apply_admin_user_profile_data(profile, data)
+
+        return Response(
+            {"status": "success", "user": _serialize_admin_user(user)},
+            status=status.HTTP_201_CREATED,
         )
     except Exception as e:
         return Response(
@@ -333,6 +432,48 @@ def api_user_shipping_address(request, user_id):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_delete_user(request, user_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return _api_staff_forbidden_response()
+
+    if request.user.id == user_id:
+        return Response(
+            {"detail": "Nie możesz usunąć własnego konta z tego panelu."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"detail": "Użytkownik nie został znaleziony."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if Payment.objects.filter(created_by=target_user).exists():
+        return Response(
+            {
+                "detail": (
+                    "Nie można usunąć użytkownika, który utworzył płatności w systemie. "
+                    "Najpierw przypisz te płatności innemu użytkownikowi lub usuń je."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        target_user.delete()
+    except ProtectedError:
+        return Response(
+            {"detail": "Nie można usunąć użytkownika powiązanego z innymi danymi w systemie."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response({"status": "success"}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])

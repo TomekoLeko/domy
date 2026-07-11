@@ -30,6 +30,9 @@ def _price_list_to_dict(request, price_list):
         prices_data.append({
             'product_id': price.product_id,
             'product_name': price.product.name,
+            'product_type': price.product.type,
+            'volume_value': str(price.product.volume_value),
+            'volume_unit': price.product.volume_unit,
             'image_url': image_url,
             'vat': str(price.product.vat),
             'net_price': str(price.net_price),
@@ -74,6 +77,7 @@ def _admin_product_to_dict(request, product):
         'type': product.type,
         'type_display': product.get_type_display(),
         'exclude_from_catalog': product.exclude_from_catalog,
+        'is_active': product.is_active,
     }
 
 
@@ -138,6 +142,10 @@ def _update_admin_catalog_item_from_post(
     product.volume_unit = request.POST.get('volume_unit') or product.volume_unit
     product.type = product_type
     product.exclude_from_catalog = exclude_from_catalog
+    product.is_active = _parse_bool_form_value(
+        request.POST.get('is_active'),
+        default=product.is_active,
+    )
 
     if assign_categories:
         category_ids = request.POST.getlist('categories')
@@ -344,7 +352,7 @@ def api_admin_price_lists(request):
 @require_GET
 @require_authenticated_staff_or_superuser
 def api_admin_products(request):
-    products = Product.objects.filter(is_active=True).prefetch_related('images', 'categories').order_by('id')
+    products = Product.objects.prefetch_related('images', 'categories').order_by('id')
     include_shipments = request.GET.get('include_shipments', '').lower() in ('1', 'true', 'yes')
     if not include_shipments:
         legacy_include = request.GET.get('include_services', '').lower() in ('1', 'true', 'yes')
@@ -1428,12 +1436,55 @@ _ORDER_ITEMS_PREFETCH_FOR_LIST = Prefetch(
 )
 
 
+CONTRIBUTOR_PAYER_LABEL = 'Kontrybutor'
+
+
+def _is_contributor_funded_order_item(order_item, order_buyer_id):
+    return (
+        order_item.buyer_id is not None
+        and order_buyer_id is not None
+        and order_item.buyer_id != order_buyer_id
+    )
+
+
+def _serialize_order_item_for_buyer_orders_list(request, order_item, order_buyer_id):
+    first_image = order_item.product.images.first()
+    image_url = (
+        request.build_absolute_uri(first_image.image.url)
+        if first_image and first_image.image
+        else None
+    )
+    if _is_contributor_funded_order_item(order_item, order_buyer_id):
+        buyer_id = None
+        buyer_name = CONTRIBUTOR_PAYER_LABEL
+    else:
+        buyer_id = order_item.buyer_id
+        buyer_name = (
+            order_item.buyer.get_organization_name_or_full_name() or order_item.buyer.username
+            if order_item.buyer
+            else None
+        )
+    return {
+        'id': order_item.id,
+        'product_id': order_item.product_id,
+        'product_name': order_item.product.name,
+        'image_url': image_url,
+        'price': str(order_item.price),
+        'buyer_id': buyer_id,
+        'buyer_name': buyer_name,
+        'left_to_pay': str(order_item.left_to_pay),
+        'product_type': order_item.product.type,
+    }
+
+
 def api_list_of_orders_for_buyer(request):
     """
     API: lista zamówień dla podanego kupującego.
     GET /api/orders/?buyer_id=<id>
     - Staff/superuser: może pobrać zamówienia dla dowolnego kupującego.
     - Zalogowany użytkownik: może pobrać wyłącznie własne zamówienia.
+    Pozycje opłacone przez kontrybutora (buyer_id != order.buyer_id) zwracają
+    buyer_id=null i buyer_name="Kontrybutor" — bez ujawniania tożsamości płatnika.
     Zwraca 200: { "orders": [...] }
     """
     if not request.user.is_authenticated:
@@ -1459,19 +1510,9 @@ def api_list_of_orders_for_buyer(request):
         buyer_payable_total = Decimal('0')
         payments_by_id = defaultdict(lambda: {'date': None, 'amount': Decimal('0')})
         for item in order.items.all():
-            first_image = item.product.images.first()
-            image_url = request.build_absolute_uri(first_image.image.url) if first_image and first_image.image else None
-            items_data.append({
-                'id': item.id,
-                'product_id': item.product_id,
-                'product_name': item.product.name,
-                'image_url': image_url,
-                'price': str(item.price),
-                'buyer_id': item.buyer_id,
-                'buyer_name': item.buyer.get_organization_name_or_full_name() or item.buyer.username if item.buyer else None,
-                'left_to_pay': str(item.left_to_pay),
-                'product_type': item.product.type,
-            })
+            items_data.append(
+                _serialize_order_item_for_buyer_orders_list(request, item, order.buyer_id)
+            )
             if item.buyer_id == buyer.id:
                 left_to_pay_buyer += item.left_to_pay
                 buyer_payable_total += item.price
