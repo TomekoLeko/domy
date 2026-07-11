@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.utils import timezone
 from decimal import Decimal
 from .category_icons import DEFAULT_CATEGORY_ICON
 
@@ -181,11 +182,43 @@ class Order(models.Model):
         verbose_name='Status rozliczenia',
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    order_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2)
     max_payable_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            now = timezone.now()
+            month = now.month
+            year = now.year
+
+            last_order = (
+                Order.objects.filter(
+                    created_at__month=month,
+                    created_at__year=year,
+                    order_number__isnull=False,
+                )
+                .exclude(order_number='')
+                .order_by('-id')
+                .first()
+            )
+
+            if last_order and last_order.order_number:
+                try:
+                    last_number = int(last_order.order_number.split('/')[0])
+                    new_number = str(last_number + 1).zfill(2)
+                except (ValueError, IndexError):
+                    new_number = '01'
+            else:
+                new_number = '01'
+
+            self.order_number = f"{new_number}/{str(month).zfill(2)}/{year}"
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"Order {self.id} by {self.buyer.profile.name or self.buyer.username}"
+        label = self.order_number or self.id
+        return f"Order {label} by {self.buyer.profile.name or self.buyer.username}"
 
     def update_payment_status_from_settlement(self):
         """

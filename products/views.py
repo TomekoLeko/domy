@@ -1537,6 +1537,7 @@ def api_list_of_orders_for_buyer(request):
         )
         orders_data.append({
             'id': order.id,
+            'order_number': order.order_number or '',
             'status': order.status,
             'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),
