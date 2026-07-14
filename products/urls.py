@@ -17,6 +17,7 @@ from stock.supply_orders_api import (
     api_list_supply_orders,
     api_update_supply_order,
 )
+from .backups_api import api_sync_dev_images
 from . import views
 from . import carts_views
 from . import cart_create_order
@@ -120,4 +121,5 @@ urlpatterns = [
     path('products/add-category/', views.add_category, name='add_category'),
     path('cart/toggle/', carts_views.toggle_cart, name='toggle_cart'),
     path('cart/determine-contribution-usage/', carts_views.determine_contribution_usage, name='determine_contribution_usage'),
+    path('api/diagnostics/sync-dev-images/', api_sync_dev_images, name='api_sync_dev_images'),
 ]
