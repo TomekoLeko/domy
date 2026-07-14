@@ -180,7 +180,12 @@ else:
 
 DATABASE_URL = os.getenv('DATABASE_URL')  # Get DATABASE_URL from the environment
 if DATABASE_URL:
-    DATABASES['default'] = dj_database_url.config(default=DATABASE_URL, conn_max_age=600, ssl_require=True)
+    # SSL wymagane tylko na produkcji; lokalny Postgres zwykle nie obsluguje SSL.
+    DATABASES['default'] = dj_database_url.config(
+        default=DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=ENVIRONMENT == 'production',
+    )
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
