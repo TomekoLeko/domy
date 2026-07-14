@@ -593,6 +593,29 @@ def api_add_price_list(request):
 
 @require_POST
 @require_authenticated_staff_or_superuser
+def api_delete_price_list(request, price_list_id):
+    price_list = get_object_or_404(PriceList, id=price_list_id)
+
+    assigned_profiles_count = Profile.objects.filter(price_list_id=price_list.id).count()
+    if assigned_profiles_count > 0:
+        return JsonResponse(
+            {
+                'detail': (
+                    f'Nie można usunąć cennika przypisanego do {assigned_profiles_count} '
+                    f'użytkownik{"a" if assigned_profiles_count == 1 else "ów"}. '
+                    'Najpierw zmień im cennik w panelu użytkowników.'
+                ),
+            },
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+
+    price_list.delete()
+    return JsonResponse({'status': 'success'}, json_dumps_params={'ensure_ascii': False})
+
+
+@require_POST
+@require_authenticated_staff_or_superuser
 def api_save_price(request):
     try:
         data = json.loads(request.body) if request.body else {}
@@ -1537,6 +1560,7 @@ def api_list_of_orders_for_buyer(request):
         )
         orders_data.append({
             'id': order.id,
+            'order_number': order.order_number or '',
             'status': order.status,
             'payment_status': order.payment_status,
             'created_at': order.created_at.isoformat(),

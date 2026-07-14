@@ -26,6 +26,11 @@ urlpatterns = [
     path('api/products/', views.api_products_list, name='api_products_list'),
     path('api/admin/price-lists/', views.api_admin_price_lists, name='api_admin_price_lists'),
     path('api/admin/price-lists/add/', views.api_add_price_list, name='api_add_price_list'),
+    path(
+        'api/admin/price-lists/delete/<int:price_list_id>/',
+        views.api_delete_price_list,
+        name='api_delete_price_list',
+    ),
     path('api/admin/price-lists/save/', views.api_save_price, name='api_save_price'),
     path('api/admin/products/', views.api_admin_products, name='api_admin_products'),
     path('api/admin/products/add/', views.api_admin_add_product, name='api_admin_add_product'),
