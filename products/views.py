@@ -1,7 +1,7 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
 from .order_service_fee import append_shipment_order_item
 from django.conf import settings
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from domy.decorators import require_authenticated_staff_or_superuser
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,6 +19,7 @@ from finance.models import Payment, SettlementAllocation
 from stock.views import calculate_physical_stock_level, calculate_virtual_stock_level
 from users.models import Profile
 from .category_icons import ALLOWED_CATEGORY_ICONS, ALLOWED_CATEGORY_ICON_KEYS, DEFAULT_CATEGORY_ICON
+from io import BytesIO
 
 def _price_list_to_dict(request, price_list):
     prices_data = []
@@ -1637,6 +1638,43 @@ def api_list_of_orders_for_admin(request):
         },
         json_dumps_params={'ensure_ascii': False},
     )
+
+
+@require_GET
+def api_order_checklist_pdf(request, order_id):
+    """
+    API: PDF lista kontrolna zamówienia (pozycje zagregowane po produkcie).
+    GET /api/orders/<order_id>/checklist-pdf/
+    Tylko staff/superuser. Zwraca application/pdf.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Permission denied'}, status=403)
+
+    order = get_object_or_404(
+        Order.objects.select_related('buyer').prefetch_related('items__product'),
+        id=order_id,
+    )
+
+    try:
+        from .order_checklist_pdf import build_order_checklist_pdf
+
+        pdf_bytes = build_order_checklist_pdf(order)
+    except FileNotFoundError as exc:
+        return JsonResponse({'detail': str(exc)}, status=500)
+    except Exception:
+        return JsonResponse({'detail': 'Nie udało się wygenerować PDF'}, status=500)
+
+    filename = f'lista-kontrolna-zamowienie-{order.id}.pdf'
+    response = FileResponse(
+        BytesIO(pdf_bytes),
+        content_type='application/pdf',
+        as_attachment=True,
+        filename=filename,
+    )
+    return response
 
 
 @require_POST
