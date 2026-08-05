@@ -74,6 +74,11 @@ urlpatterns = [
     path('api/cart/order/', views.api_create_order, name='api_create_order'),
     path('api/orders/', views.api_list_of_orders_for_buyer, name='api_list_of_orders_for_buyer'),
     path('api/orders/admin/', views.api_list_of_orders_for_admin, name='api_list_of_orders_for_admin'),
+    path(
+        'api/orders/<int:order_id>/checklist-pdf/',
+        views.api_order_checklist_pdf,
+        name='api_order_checklist_pdf',
+    ),
     path('api/orders/<int:order_id>/status/', views.api_update_order_status, name='api_update_order_status'),
     path('api/orders/<int:order_id>/payment-status/', views.api_update_order_payment_status, name='api_update_order_payment_status'),
     path('api/orders/delete/<int:order_id>/', views.api_delete_order, name='api_delete_order'),
