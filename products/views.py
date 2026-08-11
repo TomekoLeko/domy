@@ -1,5 +1,6 @@
 from .models import Product, ProductImage, PriceList, Price, Cart, CartItem, Order, OrderItem, ProductCategory
 from .order_service_fee import append_shipment_order_item
+from .order_emails import send_admin_new_order_email
 from django.conf import settings
 from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
@@ -1418,6 +1419,9 @@ def api_create_order(request):
     append_shipment_order_item(order)
 
     cart.delete()
+
+    order_id = order.id
+    transaction.on_commit(lambda: send_admin_new_order_email(order_id))
 
     items_data = [
         {
