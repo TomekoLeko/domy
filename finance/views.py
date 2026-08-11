@@ -836,7 +836,8 @@ def _send_order_ready_for_payment_email(order_id):
     left_to_pay_display = f"{left_to_pay:.2f}"
 
     order_date_display = _format_polish_order_date(order.created_at)
-    subject = f"Zamówienie #{order.id} z {order_date_display} gotowe do opłacenia."
+    order_label = order.order_number or order.id
+    subject = f"Zamówienie #{order_label} z {order_date_display} gotowe do opłacenia."
     message = (
         '<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.6;">'
         "<p style=\"margin:0 0 12px 0;\">Hej!</p>"
@@ -847,7 +848,7 @@ def _send_order_ready_for_payment_email(order_id):
         "LEKO Tomasz Krystyniak<br>"
         "ul. Tatarakowa 7, 11-036 Unieszewo<br>"
         "mBank: 57 1140 2004 0000 3102 7504 5989<br>"
-        f'Tytuł: "Zamówienie #{order.id}"'
+        f'Tytuł: "Zamówienie #{order_label}"'
         "</p>"
         "<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:20px 0 14px 0;\">"
         "<div style=\"text-align:center;color:#6b7280;font-size:13px;\">"
