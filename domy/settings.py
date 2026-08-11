@@ -261,3 +261,4 @@ MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{UPLOAD_PATH}/"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MAIL_WEBHOOK = os.getenv("MAIL_WEBHOOK", "")
+ADMIN_ORDER_EMAIL = os.getenv("ADMIN_ORDER_EMAIL", "ays@vp.pl")

@@ -21,6 +21,32 @@ class Supplier(models.Model):
         verbose_name = "Dostawca"
         verbose_name_plural = "Dostawcy"
 
+
+class Vacation(models.Model):
+    """Urlop — okres niedostępności do realizacji zamówień."""
+
+    start_date = models.DateField(verbose_name='Data od')
+    end_date = models.DateField(verbose_name='Data do')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValidationError({'end_date': 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Urlop {self.start_date} – {self.end_date}"
+
+    class Meta:
+        ordering = ['start_date']
+        verbose_name = 'Urlop'
+        verbose_name_plural = 'Urlopy'
+
 class SupplyOrder(models.Model):
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='supply_orders')
     invoice = models.ForeignKey('finance.Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='supply_orders')

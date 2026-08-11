@@ -5,10 +5,12 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from stock.models import StockReduction
 from django.utils import timezone
 from django.contrib import messages
 from .order_service_fee import append_shipment_order_item
+from .order_emails import send_admin_new_order_email
 
 
 def create_stock_reductions(order, order_items):
@@ -61,6 +63,9 @@ def create_order(request):
         append_shipment_order_item(order)
 
         cart.delete()
+
+        order_id = order.id
+        transaction.on_commit(lambda: send_admin_new_order_email(order_id))
 
         request.session['cart_open'] = False
         if 'cart_contribution' in request.session:

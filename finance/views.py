@@ -10,7 +10,6 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.serializers.json import DjangoJSONEncoder
-from django.conf import settings
 import json
 from datetime import datetime, date
 import calendar
@@ -20,8 +19,7 @@ from domy.decorators import require_authenticated_staff_or_superuser
 from decimal import Decimal, InvalidOperation
 from .models import Supplier
 import logging
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+from domy.mail_webhook import post_mail_webhook
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
@@ -807,16 +805,6 @@ def _format_polish_order_date(dt):
 
 
 def _send_order_ready_for_payment_email(order_id):
-    webhook_url = (getattr(settings, 'MAIL_WEBHOOK', '') or '').strip()
-    if not webhook_url:
-        logger.warning("MAIL_WEBHOOK is not configured; skipping order email for order_id=%s", order_id)
-        return {
-            'provider': 'make_webhook',
-            'attempted': False,
-            'sent': False,
-            'reason': 'webhook_not_configured',
-        }
-
     order = (
         Order.objects
         .filter(id=order_id)
@@ -836,7 +824,8 @@ def _send_order_ready_for_payment_email(order_id):
     left_to_pay_display = f"{left_to_pay:.2f}"
 
     order_date_display = _format_polish_order_date(order.created_at)
-    subject = f"Zamówienie #{order.id} z {order_date_display} gotowe do opłacenia."
+    order_label = order.order_number or order.id
+    subject = f"Zamówienie {order_label} z {order_date_display} gotowe do opłacenia."
     message = (
         '<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.6;">'
         "<p style=\"margin:0 0 12px 0;\">Hej!</p>"
@@ -847,7 +836,7 @@ def _send_order_ready_for_payment_email(order_id):
         "LEKO Tomasz Krystyniak<br>"
         "ul. Tatarakowa 7, 11-036 Unieszewo<br>"
         "mBank: 57 1140 2004 0000 3102 7504 5989<br>"
-        f'Tytuł: "Zamówienie #{order.id}"'
+        f'Tytuł: "Zamówienie {order_label}"'
         "</p>"
         "<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:20px 0 14px 0;\">"
         "<div style=\"text-align:center;color:#6b7280;font-size:13px;\">"
@@ -857,51 +846,12 @@ def _send_order_ready_for_payment_email(order_id):
         "</div>"
     )
 
-    payload = {
-        'receiver': order.buyer.email,
-        'subject': subject,
-        'content': message,
-    }
-
-    try:
-        req = Request(
-            webhook_url,
-            data=json.dumps(payload).encode('utf-8'),
-            headers={
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
-            method='POST',
-        )
-        with urlopen(req, timeout=10):
-            return {
-                'provider': 'make_webhook',
-                'attempted': True,
-                'sent': True,
-                'reason': None,
-            }
-    except (HTTPError, URLError, TimeoutError, ValueError):
-        logger.exception(
-            "Failed to send webhook order email for order_id=%s",
-            order.id,
-        )
-        return {
-            'provider': 'make_webhook',
-            'attempted': True,
-            'sent': False,
-            'reason': 'request_failed',
-        }
-    except Exception:
-        logger.exception(
-            "Unexpected error while sending webhook order email for order_id=%s",
-            order.id,
-        )
-        return {
-            'provider': 'make_webhook',
-            'attempted': True,
-            'sent': False,
-            'reason': 'unexpected_error',
-        }
+    return post_mail_webhook(
+        order.buyer.email,
+        subject,
+        message,
+        context_label=f"order ready for payment order_id={order.id}",
+    )
 
 
 def _split_order_payment_amount_across_buyer_line_items(amount, buyer_items):
