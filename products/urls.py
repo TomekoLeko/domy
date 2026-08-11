@@ -10,6 +10,13 @@ from stock.suppliers_api import (
     api_edit_supplier,
     api_list_suppliers,
 )
+from stock.vacations_api import (
+    api_add_vacation,
+    api_delete_vacation,
+    api_edit_vacation,
+    api_list_vacations,
+    api_vacation_notices,
+)
 from stock.supply_orders_api import (
     api_assign_supply_order_invoice,
     api_create_supply_order,
@@ -118,6 +125,16 @@ urlpatterns = [
         api_delete_supplier,
         name='api_delete_supplier',
     ),
+    path('api/admin/vacations/', api_list_vacations, name='api_list_vacations'),
+    path('api/admin/vacations/add/', api_add_vacation, name='api_add_vacation'),
+    path('api/admin/vacations/edit/<int:vacation_id>/', api_edit_vacation, name='api_edit_vacation'),
+    path(
+        'api/admin/vacations/delete/<int:vacation_id>/',
+        api_delete_vacation,
+        name='api_delete_vacation',
+    ),
+    path('api/vacations/notices/', api_vacation_notices, name='api_vacation_notices'),
+
     path('orders/', views.orders, name='orders'),
     path('orders/update-status/', views.update_order_status, name='update_order_status'),
     path('orders/delete/<int:order_id>/', views.delete_order, name='delete_order'),
