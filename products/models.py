@@ -46,6 +46,7 @@ class Product(models.Model):
 
     UNIT_CHOICES = [
         ("l", "Litry"),
+        ("ml", "Mililitry"),
         ("kg", "Kilogramy"),
         ("pcs", "Sztuki"),
     ]
