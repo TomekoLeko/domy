@@ -1766,3 +1766,76 @@ def assign_buyer_to_order_item(request):
             'message': str(e)
         }, status=500)
 
+
+def _order_buyer_left_to_pay(order):
+    buyer_id = order.buyer_id
+    left_to_pay = Decimal('0.00')
+    for item in order.items.all():
+        if item.buyer_id == buyer_id:
+            left_to_pay += item.left_to_pay
+    return left_to_pay
+
+
+@require_GET
+def api_dashboard(request):
+    """
+    GET /api/dashboard/ — dane pulpitu admina (na razie nieopłacone zamówienia).
+
+    Nieopłacone = status zamówienia inny niż pending oraz payment_status
+    pending lub partial (to samo kryterium co rozliczenie na stronie Zamówienia).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Authentication required'}, status=401)
+
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'detail': 'Permission denied'}, status=403)
+
+    item_qs = OrderItem.objects.select_related('buyer').prefetch_related(
+        Prefetch(
+            'settlement_allocations',
+            queryset=SettlementAllocation.objects.select_related('payment'),
+        ),
+        Prefetch(
+            'payments',
+            queryset=Payment.objects.prefetch_related(
+                'related_order_items',
+                'settlement_allocations',
+            ),
+        ),
+    )
+    orders = (
+        Order.objects.exclude(status='pending')
+        .filter(payment_status__in=['pending', 'partial'])
+        .select_related('buyer')
+        .prefetch_related(Prefetch('items', queryset=item_qs))
+        .order_by('-created_at')
+    )
+
+    unpaid_orders = []
+    for order in orders:
+        buyer = order.buyer
+        unpaid_orders.append({
+            'id': order.id,
+            'buyer_id': order.buyer_id,
+            'buyer_name': (
+                (buyer.get_organization_name_or_full_name() or buyer.username) if buyer else None
+            ),
+            'created_at': order.created_at.isoformat(),
+            'left_to_pay': str(_order_buyer_left_to_pay(order)),
+            'status': order.status,
+            'payment_status': order.payment_status,
+        })
+
+    return JsonResponse(
+        {
+            'unpaid_orders': unpaid_orders,
+            'order_status_choices': [
+                {'value': value, 'label': label} for value, label in Order.STATUS_CHOICES
+            ],
+            'payment_status_choices': [
+                {'value': value, 'label': label} for value, label in Order.PAYMENT_STATUS_CHOICES
+            ],
+        },
+        json_dumps_params={'ensure_ascii': False},
+    )
+
