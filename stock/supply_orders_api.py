@@ -82,6 +82,8 @@ def _product_option_to_dict(product):
         'id': product.id,
         'name': product.name,
         'vat': _decimal_str(product.vat),
+        'volume_value': _decimal_str(product.volume_value),
+        'volume_unit': product.volume_unit,
     }
 
 

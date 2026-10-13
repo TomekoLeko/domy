@@ -59,10 +59,31 @@ def api_add_supplier(request):
     payload = _parse_supplier_payload(data)
     if not payload['name']:
         return JsonResponse({'detail': 'name is required'}, status=400)
+    if len(payload['name']) > 255:
+        return JsonResponse(
+            {'detail': 'Nazwa dostawcy jest za długa.'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+
+    existing = Supplier.objects.filter(name__iexact=payload['name']).order_by('id').first()
+    if existing:
+        return JsonResponse(
+            {
+                'status': 'success',
+                'created': False,
+                'supplier': _supplier_to_dict(existing),
+            },
+            json_dumps_params={'ensure_ascii': False},
+        )
 
     supplier = Supplier.objects.create(**payload)
     return JsonResponse(
-        {'status': 'success', 'supplier': _supplier_to_dict(supplier)},
+        {
+            'status': 'success',
+            'created': True,
+            'supplier': _supplier_to_dict(supplier),
+        },
         json_dumps_params={'ensure_ascii': False},
     )
 
