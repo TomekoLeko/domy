@@ -1,12 +1,14 @@
 """API dostaw (SupplyOrder) dla panelu React."""
 
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from domy.decorators import require_authenticated_staff_or_superuser
@@ -46,6 +48,7 @@ def _supply_order_to_dict(supply_order):
         'id': supply_order.id,
         'order_number': supply_order.order_number or '',
         'created_at': supply_order.created_at.isoformat() if supply_order.created_at else None,
+        'received_at': supply_order.received_at.isoformat() if supply_order.received_at else None,
         'supplier': {
             'id': supply_order.supplier_id,
             'name': supply_order.supplier.name if supply_order.supplier_id else '',
@@ -79,6 +82,8 @@ def _product_option_to_dict(product):
         'id': product.id,
         'name': product.name,
         'vat': _decimal_str(product.vat),
+        'volume_value': _decimal_str(product.volume_value),
+        'volume_unit': product.volume_unit,
     }
 
 
@@ -108,6 +113,31 @@ def api_list_supply_orders(request):
         },
         json_dumps_params={'ensure_ascii': False},
     )
+
+
+def _parse_received_at(value, *, required=False):
+    if value is None or value == '':
+        if required:
+            return None, JsonResponse(
+                {'detail': 'received_at is required'},
+                status=400,
+                json_dumps_params={'ensure_ascii': False},
+            )
+        return None, None
+    if not isinstance(value, str):
+        return None, JsonResponse(
+            {'detail': 'received_at must be YYYY-MM-DD'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
+    try:
+        return date.fromisoformat(value.strip()[:10]), None
+    except ValueError:
+        return None, JsonResponse(
+            {'detail': 'received_at must be YYYY-MM-DD'},
+            status=400,
+            json_dumps_params={'ensure_ascii': False},
+        )
 
 
 def _parse_optional_receiving_cost(value):
@@ -252,6 +282,12 @@ def api_create_supply_order(request):
     if invoice_err is not None:
         return invoice_err
 
+    received_at, received_err = _parse_received_at(data.get('received_at'))
+    if received_err is not None:
+        return received_err
+    if received_at is None:
+        received_at = timezone.localdate()
+
     parsed_entries, err = _parse_stock_entries(data.get('stock_entries'))
     if err is not None:
         return err
@@ -270,7 +306,11 @@ def api_create_supply_order(request):
 
     try:
         with transaction.atomic():
-            supply_order = SupplyOrder.objects.create(supplier=supplier, invoice=invoice)
+            supply_order = SupplyOrder.objects.create(
+                supplier=supplier,
+                invoice=invoice,
+                received_at=received_at,
+            )
             for entry in parsed_entries:
                 product = Product.objects.get(id=entry['product_id'])
                 StockEntry.objects.create(
@@ -322,6 +362,12 @@ def api_update_supply_order(request, supply_order_id):
     )
     if invoice_err is not None:
         return invoice_err
+
+    received_at = supply_order.received_at
+    if 'received_at' in data:
+        received_at, received_err = _parse_received_at(data.get('received_at'), required=True)
+        if received_err is not None:
+            return received_err
 
     parsed_entries, err = _parse_stock_entries(data.get('stock_entries'))
     if err is not None:
@@ -399,7 +445,8 @@ def api_update_supply_order(request, supply_order_id):
         with transaction.atomic():
             supply_order.supplier = supplier
             supply_order.invoice = invoice
-            supply_order.save(update_fields=['supplier', 'invoice'])
+            supply_order.received_at = received_at
+            supply_order.save(update_fields=['supplier', 'invoice', 'received_at'])
 
             for entry_data in parsed_entries:
                 product = Product.objects.get(id=entry_data['product_id'])

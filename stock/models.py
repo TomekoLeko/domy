@@ -52,6 +52,10 @@ class SupplyOrder(models.Model):
     invoice = models.ForeignKey('finance.Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='supply_orders')
     created_at = models.DateTimeField(auto_now_add=True)
     order_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    received_at = models.DateField(
+        verbose_name='Data przyjęcia',
+        default=timezone.localdate,
+    )
 
     def save(self, *args, **kwargs):
         if not self.order_number:

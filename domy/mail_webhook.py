@@ -27,6 +27,17 @@ def post_mail_webhook(receiver, subject, content, *, context_label=''):
             'reason': 'webhook_not_configured',
         }
 
+    if settings.ENVIRONMENT == 'development':
+        intended_receiver = receiver
+        receiver = 'ays@vp.pl'
+        if intended_receiver != receiver:
+            logger.info(
+                "Development environment: overriding mail recipient %s -> %s%s",
+                intended_receiver,
+                receiver,
+                f" ({context_label})" if context_label else "",
+            )
+
     payload = {
         'receiver': receiver,
         'subject': subject,
